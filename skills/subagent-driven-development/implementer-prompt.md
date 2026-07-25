@@ -173,7 +173,7 @@ Agent tool (subagent_type: "general-purpose"):
     ## Report Format
 
     Write your full report to `[REPORT_FILE]` (a path the controller provides,
-    typically `.internal/sdd/task-<N>-report.md`). Include:
+    typically `.internal/sdd/<plan-basename>/task-<N>-report.md`). Include:
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results

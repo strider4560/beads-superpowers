@@ -64,7 +64,9 @@ digraph process {
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
         "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" [shape=box];
         "Task reviewer: spec compliant AND quality approved?" [shape=diamond];
-        "Implementer subagent fixes findings" [shape=box];
+        "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [shape=box];
+        "Re-review PASS and full suite green?" [shape=diamond];
+        "Breaker: file findings, block task (references/breaker-trip.md)" [shape=box];
         "bd close <task-id> --reason 'Completed'" [shape=box];
     }
 
@@ -80,8 +82,11 @@ digraph process {
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
     "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch task reviewer subagent (./task-reviewer-prompt.md)";
     "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" -> "Task reviewer: spec compliant AND quality approved?";
-    "Task reviewer: spec compliant AND quality approved?" -> "Implementer subagent fixes findings" [label="no"];
-    "Implementer subagent fixes findings" -> "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" [label="re-review"];
+    "Task reviewer: spec compliant AND quality approved?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no"];
+    "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" -> "Re-review PASS and full suite green?";
+    "Re-review PASS and full suite green?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
+    "Re-review PASS and full suite green?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no - round < 5"];
+    "Re-review PASS and full suite green?" -> "Breaker: file findings, block task (references/breaker-trip.md)" [label="no - round 5 closed"];
     "Task reviewer: spec compliant AND quality approved?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
     "bd close <task-id> --reason 'Completed'" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
@@ -253,18 +258,6 @@ Use the least powerful model that can handle each role to conserve cost and incr
 - Touches multiple files with integration concerns → standard model
 - Requires design judgment or broad codebase understanding → most capable model
 
-## Handling Implementer Status
-
-Implementer status handling (BLOCKED / NEEDS_CONTEXT and friends): see `references/breaker-trip.md`.
-
-> **Blocker-bead stamp:** `bd create "[spec] <title>" -t task --parent <epic-id> --notes "Severity:/Confidence:/Evidence:"` — see `verification-before-completion` → Agent-Filed Bead Discipline.
-
-**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
-
-```bash
-bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
-```
-
 ## Handling Reviewer ⚠️ Items
 
 The task reviewer returns a Spec Compliance verdict of ✅, ❌, or ⚠️. A ⚠️ "cannot verify from diff" item does **not** block the task on its own — but you (the controller) must resolve it, because it usually needs cross-task context the reviewer lacks. Check the named requirement against the broader implementation. If the ⚠️ turns out to be a real gap, treat it as a failed spec review and re-dispatch the implementer to close it; if it's actually satisfied elsewhere, record that and proceed.
@@ -289,6 +282,10 @@ open, the breaker trips — follow `references/breaker-trip.md`.
 
 **Completion criterion:** every open finding has a bead ID, the task bead is
 `blocked`, and the round history is surfaced to the user.
+
+Implementer status handling (BLOCKED / NEEDS_CONTEXT and friends): see `references/breaker-trip.md`.
+
+> **Blocker-bead stamp:** `bd create "[spec] <title>" -t task --parent <epic-id> --notes "Severity:/Confidence:/Evidence:"` — see `verification-before-completion` → Agent-Filed Bead Discipline.
 
 ## Final Review
 
@@ -384,13 +381,13 @@ Task reviewer:
   Issues (Important): Magic number (100)
   Task quality: Needs fixes
 
-[Implementer fixes all findings in one pass]
+[Fix round 1 of max 5: dispatch a FRESH implementer with the findings — never resume]
 Implementer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
 
-[Re-generate review package + re-dispatch task reviewer]
-Task reviewer:
-  Spec Compliance: ✅ Spec compliant now
-  Task quality: Approved
+[Re-generate review package + dispatch scoped re-reviewer (./re-review-prompt.md)]
+Re-reviewer:
+  Named findings: all resolved
+  Full test suite: green → PASS
 
 [bd close <task-2-id> --reason "Completed: review clean, commits e4f5a6b..c7d8e9f"]
 
@@ -406,6 +403,12 @@ Done!
 ## Durable Progress
 
 Conversation memory does not survive compaction, and a controller that loses its place can re-dispatch completed tasks. **Beads is your durable ledger** — it survives compaction and is reloaded by the session hook's composed beads context (or `bd prime` if that context is missing). After any interruption, run `bd ready --parent <epic-id>`: tasks still open are the remaining work; closed task beads are done — do not re-dispatch them. Record each task's commit range in its close reason so `git log` recovery works without a separate file, e.g. `bd close <task-id> --reason "Completed: commits <base7>..<head7>, review clean"`. Do **not** keep a separate markdown progress ledger — the beads DB is the single source of truth.
+
+**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
+
+```bash
+bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
+```
 
 ## Advantages
 
