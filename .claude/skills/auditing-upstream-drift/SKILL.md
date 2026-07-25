@@ -53,6 +53,12 @@ These shared skills intentionally differ from upstream superpowers. When Phase 5
 | **.codex-plugin/marketplace.json** | ships it (version-synced mirror of .claude-plugin's) | no such file | kept deliberately for Codex marketplace flows |
 | **Gemini harness** | not shipped (deferred — bead sci4, believed EOL) | gemini-extension.json + GEMINI.md | upstream's own gemini-tools.md pointer is broken; revisit 2026-10 |
 | **OpenCode plugin** | upstream's `.opencode/plugins/` file as base + minimal beads graft (composer bootstrap, compaction re-injection, pointer fallback) | `superpowers.js` static-bootstrap transform | beads context is the fork's core; layout/mechanism otherwise upstream-verbatim |
+| **subagent-driven-development** (fix rounds) | fresh implementer dispatch every fix round | resume the implementer rounds 1–3, fresh one tier up at 4–5 | resume needs an addressable live subagent — most of our supported harnesses may lack it; fresh dispatch also strengthens external-signal verification and avoids the author defending their own defect (ADR-0064) |
+| **subagent-driven-development** (workspace) | `.internal/sdd/<plan-basename>/` | `.superpowers/sdd/<plan-basename>/` | one canonical `.internal/` scratch root (ADR-0013); shape adopted, path not |
+| **subagent-driven-development** (breaker trip) | controller adjudicates nothing — findings are filed and surfaced, the user decides | controller adjudicates each open finding, may park minors | Production-Grade Doctrine: descoping authority is the human's |
+| **subagent-driven-development** (severity) | severity preserved at the breaker; security findings block the epic and are never parkable | findings flattened into one disposition list | the reviewer's own security floor says a rationale never downgrades a regression |
+| **subagent-driven-development** (re-review) | PASS requires the reviewer's verdict AND a green full suite | reviewer's verdict alone | a fix-diff reviewer structurally cannot see out-of-diff regressions |
+| **subagent-driven-development** (fix context) | fix round carries only the latest report section | full prior report | full history is quadratic across rounds and re-anchors fresh eyes on failed approaches |
 
 When a CHANGED skill from Phase 5 matches a row here, mark it **SKIP (deliberate divergence)** in the report — not drift.
 
