@@ -47,6 +47,17 @@ CB4_SITES=(
   skills/write-documentation/SKILL.md
   skills/verification-before-completion/SKILL.md
 )
+# CB-5 (Reviewer security floor): the task-reviewer's security-floor paragraph is
+# duplicated verbatim into the re-review prompt (scoped re-review after a fix round)
+# so a re-reviewer applies the same non-negotiable severity rule. Byte-identical at
+# both sites — a softened copy at either site is a security regression in itself.
+CB5_SIG="automatically **Critical / blocking**"
+CB5_ANCHOR="**Security floor:**"
+CB5_ENDRE='is not one[.][)]'
+CB5_SITES=(
+  skills/subagent-driven-development/task-reviewer-prompt.md
+  skills/subagent-driven-development/re-review-prompt.md
+)
 # KB read-depth fragment (ADR-0058): one byte-identical ASCII sentence at every
 # retrieval instruction site; stripping the read mandate strips the fragment.
 KB_SIG="hits are pointers, not knowledge"
@@ -206,6 +217,8 @@ check_block "CB-4 memory convention" "$CB4_SIG" "${CB4_SITES[@]}"
 assert_line_identical "CB-4 memory convention (byte-identity)" "$CB4_SIG" "${CB4_SITES[@]}"
 assert_block_identical "CB-3 Capture gate (byte-identity)" "$CB3_ANCHOR" '^```$' "${CB3_SITES[@]}"
 check_block "KB read-depth fragment" "$KB_SIG" "${KB_SITES[@]}"
+check_block "CB-5 Reviewer security floor" "$CB5_SIG" "${CB5_SITES[@]}"
+assert_block_identical "CB-5 Reviewer security floor (byte-identity)" "$CB5_ANCHOR" "$CB5_ENDRE" "${CB5_SITES[@]}"
 check_kernels
 
 if [ "$FAIL" -eq 0 ]; then
