@@ -417,4 +417,54 @@ else
 fi
 rm -rf "$SB16"
 
+# Mutation 17: test-sdd-structure.sh (Task 6) — deleting the SDD skill's
+# breaker-trip.md context-pointer target must fail RED (dangling pointer);
+# the unmutated copy must pass GREEN (control, proves discrimination).
+# Fixture-isolated by direct copy (not git ls-files, like mutations 13-16):
+# the guard script tests/skills/test-sdd-structure.sh is new in this same
+# task and may not be tracked yet when this selftest runs, so git ls-files
+# would silently omit it and understate the fixture. Copying
+# skills/subagent-driven-development/ and the guard script by explicit path
+# into mktemp -d, preserving the guard's expected ROOT-relative layout
+# (tests/skills/<script> + skills/<dir>), reproduces exactly what the guard
+# resolves via "$(dirname "$0")/../..". The real tree is never touched.
+SB17=$(mktemp -d)
+if ! mkdir -p "$SB17/skills" "$SB17/tests/skills"; then
+  echo "SELFTEST FAIL: mutation-17 setup mkdir failed (rig broken, not a caught mutation)"; rc=1
+elif ! cp -rf "$REPO_ROOT/skills/subagent-driven-development" "$SB17/skills/subagent-driven-development"; then
+  echo "SELFTEST FAIL: mutation-17 setup copy skill dir failed (rig broken, not a caught mutation)"; rc=1
+elif ! cp -f "$REPO_ROOT/tests/skills/test-sdd-structure.sh" "$SB17/tests/skills/test-sdd-structure.sh"; then
+  echo "SELFTEST FAIL: mutation-17 setup copy guard script failed (rig broken, not a caught mutation)"; rc=1
+else
+  rm -f "$SB17/skills/subagent-driven-development/references/breaker-trip.md"
+  expect_red "sdd structure: dangling breaker-trip.md pointer" \
+    bash "$SB17/tests/skills/test-sdd-structure.sh"
+  cp -f "$REPO_ROOT/skills/subagent-driven-development/references/breaker-trip.md" \
+    "$SB17/skills/subagent-driven-development/references/breaker-trip.md"
+  expect_green "sdd structure: pointer target restored (control)" \
+    bash "$SB17/tests/skills/test-sdd-structure.sh"
+fi
+rm -rf "$SB17"
+
+# Mutation 18: test-sdd-structure.sh (Task 6) — pushing SDD's SKILL.md past
+# the 500-line C1 budget must fail RED; the unmutated copy must pass GREEN
+# (control). Same fixture-isolation as mutation 17.
+SB18=$(mktemp -d)
+if ! mkdir -p "$SB18/skills" "$SB18/tests/skills"; then
+  echo "SELFTEST FAIL: mutation-18 setup mkdir failed (rig broken, not a caught mutation)"; rc=1
+elif ! cp -rf "$REPO_ROOT/skills/subagent-driven-development" "$SB18/skills/subagent-driven-development"; then
+  echo "SELFTEST FAIL: mutation-18 setup copy skill dir failed (rig broken, not a caught mutation)"; rc=1
+elif ! cp -f "$REPO_ROOT/tests/skills/test-sdd-structure.sh" "$SB18/tests/skills/test-sdd-structure.sh"; then
+  echo "SELFTEST FAIL: mutation-18 setup copy guard script failed (rig broken, not a caught mutation)"; rc=1
+else
+  for _ in $(seq 1 60); do echo >> "$SB18/skills/subagent-driven-development/SKILL.md"; done
+  expect_red "sdd structure: SKILL.md over the 500-line budget" \
+    bash "$SB18/tests/skills/test-sdd-structure.sh"
+  cp -f "$REPO_ROOT/skills/subagent-driven-development/SKILL.md" \
+    "$SB18/skills/subagent-driven-development/SKILL.md"
+  expect_green "sdd structure: SKILL.md back under budget (control)" \
+    bash "$SB18/tests/skills/test-sdd-structure.sh"
+fi
+rm -rf "$SB18"
+
 exit "$rc"
