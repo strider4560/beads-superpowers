@@ -53,7 +53,7 @@ CB4_SITES=(
 # both sites — a softened copy at either site is a security regression in itself.
 CB5_SIG="automatically **Critical / blocking**"
 CB5_ANCHOR="**Security floor:**"
-CB5_ENDRE='is not one'
+CB5_ENDRE='is not one[.][)]'
 CB5_SITES=(
   skills/subagent-driven-development/task-reviewer-prompt.md
   skills/subagent-driven-development/re-review-prompt.md
