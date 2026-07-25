@@ -6,7 +6,7 @@
     "name": "Dillon Frawley",
     "email": "dillon@algocents.com"
   },
-  "homepage": "https://github.com/DollarDill/beads-superpowers",
+  "homepage": "https://algocents.com/beads-superpowers/",
   "license": "MIT",
   "keywords": [
     "brainstorming",
@@ -35,6 +35,6 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/DollarDill/beads-superpowers"
+    "websiteURL": "https://algocents.com/beads-superpowers/"
   }
 }
