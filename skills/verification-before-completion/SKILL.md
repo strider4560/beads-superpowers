@@ -7,8 +7,6 @@ description: Use when about to claim work is complete, fixed, or passing, before
 
 ## Overview
 
-Claiming work is complete without verification is dishonesty, not efficiency.
-
 **Core principle:** Evidence before claims, always.
 
 **Violating the letter of this rule is violating the spirit of this rule.**
@@ -137,15 +135,6 @@ When no verification command exists (no test suite, CI down, external dependency
 ❌ Trust agent report
 ```
 
-## Why This Matters
-
-From 24 failure memories:
-- your human partner said "I don't believe you" - trust broken
-- Undefined functions shipped - would crash
-- Missing requirements shipped - incomplete features
-- Time wasted on false completion → redirect → rework
-- Violates: "Honesty is a core value. If you lie, you'll be replaced."
-
 ## When To Apply
 
 **ALWAYS before:**
@@ -179,14 +168,6 @@ A bead closed without evidence is worse than a bead left open — it corrupts th
 ```bash
 bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
 ```
-
-## The Bottom Line
-
-**No shortcuts for verification.**
-
-Run the command. Read the output. THEN claim the result.
-
-This is non-negotiable.
 
 ## Integration
 
