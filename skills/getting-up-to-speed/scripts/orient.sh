@@ -48,18 +48,30 @@ absorb(d)
 haz,hi=[],[]
 _HAZ=re.compile(r"\b(never|always|do not|dont)\b",re.I)
 for k,v in sorted(items.items()):
-    body=re.sub(r"^@[^\n]*\n?","",v,count=1).replace("\n"," ").strip()
+    body=re.sub(r"^@[^\n]*\n?","",v,count=1)
+    body=re.sub(r"\s+"," ",body).strip()
     m=re.search(r"@salience=(\d)",v)
-    hm=_HAZ.search(body)
+    is_haz=bool(_HAZ.search(body))
     is_hi=bool(m and int(m.group(1))>=4)
-    if hm:
-        # Center the excerpt on the hazard phrase (not always the body start)
-        # so the printed gist visibly shows the imperative that earned the
-        # hazard classification, instead of silently truncating past it.
-        start=max(0, hm.start()-20)
-        haz.append((k, body[start:start+80]))
+    # Gist always opens at the start of the body (readable, scannable), never
+    # centered on a matched phrase — a mid-string window reads as noise
+    # ("— ed by the upgrade)") and defeats the point of a digest. Hazard
+    # classification is conveyed by bucket ordering (haz+hi below) and the
+    # total=/digest=/hazard= summary line, not by reshaping the excerpt.
+    if len(body)<=80:
+        excerpt=body
+    else:
+        excerpt=body[:80]
+        if not body[80].isspace():
+            # 80-char cut landed mid-word: trim back to the last whole word.
+            cut=excerpt.rfind(" ")
+            if cut>0:
+                excerpt=excerpt[:cut]
+        excerpt=excerpt.rstrip()+"…"
+    if is_haz:
+        haz.append((k, excerpt))
     elif is_hi:
-        hi.append((k, body[:80]))
+        hi.append((k, excerpt))
 import re as _re
 _SECRET=_re.compile(r"(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY)")
 _MASK="[REDACTED]"
