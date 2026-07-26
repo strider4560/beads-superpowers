@@ -11,10 +11,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Implementation now starts from an approved spec or plan. Before the first edit the agent states the file it is working from — `Working from: <path>` — or says there isn't one and brainstorms first. A task from an approved plan, a finished root-cause investigation, and typo/comment/rename work all satisfy it, so it stays quiet on trivial changes. This rule previously lived only in an optional orchestrator file, which meant a default install did not actually have it.
+- `writing-plans` now checks the knowledge store and past memories before planning and reports what it found, so a plan can't silently repeat a mistake you already recorded. `brainstorming` gained the memory half of the same check — it previously searched knowledge-beads only, missing the entire memory store.
+- A new guardrail-floor check runs as part of `just guards`. It counts each skill's guardrail lines against a committed baseline and fails if a skill drops to zero or decreases without a recorded justification — so a future compression pass can't quietly strip a skill's last bright-line rule.
 - `subagent-driven-development`: scoped re-review prompt for fix rounds, and a five-round breaker whose trip procedure lives in `references/breaker-trip.md`. Unresolved findings are filed as beads and surfaced — the loop no longer runs unbounded.
 
 ### Changed
 
+- Session start is leaner, and your memories are actually reachable. The hook now injects the latest continuation memory plus a pointer instead of trying to carry a curated slice of the whole store; the fuller digest — every high-salience or hazard-class memory, deduped and hazard-first — is built on demand when you run `getting-up-to-speed`. On a ~150-memory store the old path surfaced 2 memories and never surfaced a single "never do X" safety rule, because none of them carry high salience. The digest surfaces those first.
+- The bootstrap's skill-priority rule is now unconditional. It previously applied only "when multiple skills apply", which an agent could sidestep by deciding only one did.
+- Ten skills are shorter without losing enforcement — anecdotes, statistics, and duplicated cross-references removed, while every distinct rationalization phrase is kept verbatim because the model pattern-matches on specific wording. Guardrail counts are unchanged across all ten.
 - `subagent-driven-development`: the SDD workspace is now scoped per plan (`.internal/sdd/<plan-basename>/`), so two plans in one working tree cannot share brief filenames. `review-package` takes the plan file as its first argument.
 - `subagent-driven-development`: fix rounds dispatch a fresh implementer rather than resuming, and a re-review PASS now requires the full test suite to be green.
 - The installer end-to-end test suite (`just docker`) now runs under **Podman** as well as Docker — it auto-detects whichever is installed (Docker first), or you can force one with `CONTAINER_RUNTIME=podman just docker`. Contributors on Podman-only machines can now run the full installer E2E.
