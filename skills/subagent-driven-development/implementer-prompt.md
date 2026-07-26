@@ -148,10 +148,32 @@ Agent tool (subagent_type: "general-purpose"):
     the amended code and append the results to your report file. Reviewers
     will not re-run tests for you — your report is the test evidence.
 
+    ## After Review Findings
+
+    If this dispatch hands you review findings, you are continuing a task a previous
+    implementer started. You have: the task brief, the findings, and the most recent
+    section of the report file. Earlier rounds are in the report file if you need
+    them — read it, don't guess.
+
+    For each finding: fix it, or explain concretely why it is not a defect. Do not
+    silently skip one. If two findings conflict, say so and stop rather than
+    picking one.
+
+    - Write a failing test FIRST for any behavioral fix (RED), then make it pass
+      (GREEN). Report both.
+    - Run the FULL test suite, not just the tests near your change. A fix that
+      resolves its finding and breaks something else is not a fix.
+    - Test output must be pristine — no new warnings, no tests you skipped.
+    - **Append** a new section to the report file for this round. Never overwrite
+      earlier rounds; the accumulated report is the durable record.
+
+    Then reply to the controller with the same short status contract as your first
+    report.
+
     ## Report Format
 
     Write your full report to `[REPORT_FILE]` (a path the controller provides,
-    typically `.internal/sdd/task-<N>-report.md`). Include:
+    typically `.internal/sdd/<plan-basename>/task-<N>-report.md`). Include:
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results

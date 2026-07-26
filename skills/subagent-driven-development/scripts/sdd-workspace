@@ -1,21 +1,39 @@
 #!/usr/bin/env bash
-# Resolve and ensure the working-tree directory SDD uses for its short-lived
-# artifacts: task briefs, implementer reports, review packages, and the
-# progress ledger. Print the directory's absolute path.
+# Resolve and ensure the per-plan working-tree directory SDD uses for its
+# short-lived artifacts: task briefs, implementer reports, and review packages.
+# Print the directory's absolute path.
 #
 # The workspace lives in the working tree (not under .git/) because Claude Code
 # treats .git/ as a protected path and denies agent writes there. It self-ignores
-# via a '*' .gitignore: these skills ship to users' repos, where .internal/ is NOT
-# guaranteed to be gitignored — the self-ignore keeps scratch out of git regardless.
+# via a '*' .gitignore at the base: these skills ship to users' repos, where
+# .internal/ is NOT guaranteed to be gitignored — the self-ignore keeps scratch
+# out of git regardless, and one base-level file covers every plan beneath it.
+#
+# Scoped per plan so two plans in one working tree cannot share brief filenames.
+# Fails loudly on a missing PLAN_FILE: a silent fallback to a shared directory
+# would reintroduce exactly the collision this scoping closes.
 #
 # Single source of truth for the workspace location, so task-brief and
 # review-package cannot drift to different directories.
 #
-# Usage: sdd-workspace
+# Usage: sdd-workspace PLAN_FILE
 set -euo pipefail
 
+if [ $# -ne 1 ]; then
+  echo "usage: sdd-workspace PLAN_FILE" >&2
+  exit 2
+fi
+
+plan=$1
+[ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+
 root=$(git rev-parse --show-toplevel)
-dir="$root/.internal/sdd"
+base="$root/.internal/sdd"
+mkdir -p "$base"
+printf '*\n' > "$base/.gitignore"
+
+slug=$(basename "$plan")
+slug=${slug%.md}
+dir="$base/$slug"
 mkdir -p "$dir"
-printf '*\n' > "$dir/.gitignore"
 cd "$dir" && pwd

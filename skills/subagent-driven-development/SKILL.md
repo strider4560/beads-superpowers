@@ -64,7 +64,9 @@ digraph process {
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
         "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" [shape=box];
         "Task reviewer: spec compliant AND quality approved?" [shape=diamond];
-        "Implementer subagent fixes findings" [shape=box];
+        "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [shape=box];
+        "Re-review PASS and full suite green?" [shape=diamond];
+        "Breaker: file findings, block task (references/breaker-trip.md)" [shape=box];
         "bd close <task-id> --reason 'Completed'" [shape=box];
     }
 
@@ -80,8 +82,11 @@ digraph process {
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
     "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch task reviewer subagent (./task-reviewer-prompt.md)";
     "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" -> "Task reviewer: spec compliant AND quality approved?";
-    "Task reviewer: spec compliant AND quality approved?" -> "Implementer subagent fixes findings" [label="no"];
-    "Implementer subagent fixes findings" -> "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" [label="re-review"];
+    "Task reviewer: spec compliant AND quality approved?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no"];
+    "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" -> "Re-review PASS and full suite green?";
+    "Re-review PASS and full suite green?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
+    "Re-review PASS and full suite green?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no - round < 5"];
+    "Re-review PASS and full suite green?" -> "Breaker: file findings, block task (references/breaker-trip.md)" [label="no - round 5 closed"];
     "Task reviewer: spec compliant AND quality approved?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
     "bd close <task-id> --reason 'Completed'" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
@@ -215,8 +220,8 @@ digraph parallel_batch {
 When a parallel task fails review:
 
 1. **Do not merge** its task branch into the epic branch.
-2. **Option A — Re-dispatch:** Keep the task worktree. Re-dispatch a fix subagent with reviewer feedback. Re-review after fix.
-3. **Option B — Discard:** `bd worktree remove .worktrees/<task-name>` discards the branch. Task bead stays open and will appear in the next `bd ready --parent` batch.
+2. **Option A — Fix rounds:** Keep the task worktree and run **`## Fix Rounds` / `## The Breaker`** below, unchanged: five-round cap, a FRESH implementer every round, scoped re-review via `./re-review-prompt.md`, PASS gated on a green full suite. Parallel mode gets no unbounded loop.
+3. **Option B — Discard:** not a controller call. Discarding a failed task's branch (`bd worktree remove .worktrees/<task-name>`) is a disposition **the user** decides — surface it per `references/breaker-trip.md`; never adjudicate it yourself.
 4. Other parallel tasks that passed review are still merged independently — one failure does not block the batch.
 
 ### Mode Selection
@@ -253,45 +258,58 @@ Use the least powerful model that can handle each role to conserve cost and incr
 - Touches multiple files with integration concerns → standard model
 - Requires design judgment or broad codebase understanding → most capable model
 
-## Handling Implementer Status
-
-Implementer subagents report one of four statuses. Handle each appropriately:
-
-**DONE:** Proceed to spec compliance review.
-
-**DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
-
-**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
-
-**BLOCKED:** The implementer cannot complete the task. Assess the blocker:
-1. If it's a context problem, provide more context and re-dispatch with the same model
-2. If the task requires more reasoning, re-dispatch with a more capable model
-3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, escalate to the human
-
-> **Blocker-bead stamp:** `bd create "[spec] <title>" -t task --parent <epic-id> --notes "Severity:/Confidence:/Evidence:"` — see `verification-before-completion` → Agent-Filed Bead Discipline.
-
-**Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
-
-**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
-
-```bash
-bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
-```
-
 ## Handling Reviewer ⚠️ Items
 
 The task reviewer returns a Spec Compliance verdict of ✅, ❌, or ⚠️. A ⚠️ "cannot verify from diff" item does **not** block the task on its own — but you (the controller) must resolve it, because it usually needs cross-task context the reviewer lacks. Check the named requirement against the broader implementation. If the ⚠️ turns out to be a real gap, treat it as a failed spec review and re-dispatch the implementer to close it; if it's actually satisfied elsewhere, record that and proceed.
+
+## Fix Rounds
+
+A review returning findings starts a fix round: dispatch a **fresh implementer**
+(never resume) with the task brief, the current findings, and only the **most
+recent** section of the report file. **Record `ROUND0_HEAD` (round 0's final
+commit, not `BASE`) before dispatching fix round 1** — it is round 1's `<fix-base>`.
+Then dispatch a scoped re-review filling `re-review-prompt.md` against
+`scripts/review-package <plan-file> <fix-base> HEAD`.
+
+**A re-review PASS requires the reviewer's verdict AND a green full test suite** —
+**you (the controller) run the suite** and report it in `[SUITE_STATUS]`. What the
+scoped reviewer cannot see, and why, is in `references/breaker-trip.md`.
+
+**Completion criterion:** re-review returns PASS with a green suite, or the round
+counter increments.
+
+## The Breaker
+
+The fix loop runs at most **five rounds**. If round five closes with findings still
+open, the breaker trips — follow `references/breaker-trip.md`.
+
+**Completion criterion:** every open finding has a bead ID, the task bead is
+`blocked`, and the round history is surfaced to the user.
+
+Implementer status handling (BLOCKED / NEEDS_CONTEXT and friends): see `references/breaker-trip.md`.
+
+> **Blocker-bead stamp:** `bd create "[spec] <title>" -t task --parent <epic-id> --notes "Severity:/Confidence:/Evidence:"` — see `verification-before-completion` → Agent-Filed Bead Discipline.
+
+## Final Review
+
+Run `scripts/review-package <plan-file> <MERGE_BASE> HEAD` and dispatch a
+most-capable-tier reviewer over the whole branch — the only place the composite of
+all fix rounds is examined. Findings go to one fix subagent, then one scoped
+re-review; residuals follow the breaker rules.
+
+**Teardown:** remove the plan's workspace once the final review is clean **and**
+each task's outcome and any implementer-raised concerns are recorded in beads.
+Reports are the only non-regenerable artifact — delete once the record is durable.
 
 ## File Handoffs
 
 Hand task text and review diffs to subagents as **files**, not pasted context — this keeps large text out of your own context and gives subagents a single thing to read.
 
-- Before dispatching an implementer, run `scripts/task-brief <plan-file> <N>` → writes `.internal/sdd/task-<N>-brief.md`. Pass that path to the implementer as "read this first — it is your requirements."
-- The implementer writes its full report to `.internal/sdd/task-<N>-report.md` (you name the path in the dispatch via `[REPORT_FILE]`); the reviewer reads it as a file.
-- Before dispatching the reviewer, run `scripts/review-package <BASE> <HEAD>` → writes `.internal/sdd/review-<base7>..<head7>.diff` (commit log + file stat + unified diff). Pass that path to the reviewer. `BASE` is the commit recorded before the implementer ran — never `HEAD~1`.
+- Before dispatching an implementer, run `scripts/task-brief <plan-file> <N>` → writes `.internal/sdd/<plan-basename>/task-<N>-brief.md`. Pass that path to the implementer as "read this first — it is your requirements."
+- The implementer writes its full report to `.internal/sdd/<plan-basename>/task-<N>-report.md` (you name the path via `[REPORT_FILE]`); the reviewer reads it as a file. Fix rounds **append** to it.
+- Before dispatching the reviewer, run `scripts/review-package <plan-file> <BASE> <HEAD>` → writes `.internal/sdd/<plan-basename>/review-<base7>..<head7>.diff`. `BASE` is the commit recorded before the implementer ran — never `HEAD~1`.
 - The reviewer is **read-only**: it must not mutate the working tree, the index, HEAD, or branch state.
-- `.internal/sdd/` is resolved **per working tree** (`scripts/sdd-workspace`). In Parallel Batch Mode each `bd worktree` therefore gets its own isolated directory — concurrent tasks never collide on brief/report/diff filenames.
+- The workspace is resolved **per plan, per working tree** (`scripts/sdd-workspace <plan-file>`). Two plans in one tree never share brief filenames, and in Parallel Batch Mode each `bd worktree` gets its own tree.
 
 ## Prompt Templates
 
@@ -303,6 +321,7 @@ Dispatch via the `Agent` tool:
 
 - `./implementer-prompt.md` - Dispatch implementer subagent
 - `./task-reviewer-prompt.md` - Dispatch the single task reviewer subagent (returns spec-compliance + code-quality verdicts in one read-only pass)
+- `./re-review-prompt.md` - Scoped re-reviewer for fix rounds (checks the named findings only; PASS also requires a green suite)
 
 ## Example Workflow
 
@@ -335,7 +354,7 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
-[Generate review package: scripts/review-package BASE HEAD]
+[Generate review package: scripts/review-package PLAN_FILE BASE HEAD]
 [Dispatch single task reviewer with the brief, report file, and diff]
 Task reviewer:
   Spec Compliance: ✅ Spec compliant - all requirements met, nothing extra
@@ -365,13 +384,13 @@ Task reviewer:
   Issues (Important): Magic number (100)
   Task quality: Needs fixes
 
-[Implementer fixes all findings in one pass]
+[Fix round 1 of max 5: dispatch a FRESH implementer with the findings — never resume]
 Implementer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
 
-[Re-generate review package + re-dispatch task reviewer]
-Task reviewer:
-  Spec Compliance: ✅ Spec compliant now
-  Task quality: Approved
+[Re-generate review package + dispatch scoped re-reviewer (./re-review-prompt.md)]
+Re-reviewer:
+  Named findings: all resolved
+  Full test suite: green → PASS
 
 [bd close <task-2-id> --reason "Completed: review clean, commits e4f5a6b..c7d8e9f"]
 
@@ -387,6 +406,12 @@ Done!
 ## Durable Progress
 
 Conversation memory does not survive compaction, and a controller that loses its place can re-dispatch completed tasks. **Beads is your durable ledger** — it survives compaction and is reloaded by the session hook's composed beads context (or `bd prime` if that context is missing). After any interruption, run `bd ready --parent <epic-id>`: tasks still open are the remaining work; closed task beads are done — do not re-dispatch them. Record each task's commit range in its close reason so `git log` recovery works without a separate file, e.g. `bd close <task-id> --reason "Completed: commits <base7>..<head7>, review clean"`. Do **not** keep a separate markdown progress ledger — the beads DB is the single source of truth.
+
+**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
+
+```bash
+bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
+```
 
 ## Advantages
 
@@ -445,9 +470,8 @@ Conversation memory does not survive compaction, and a controller that loses its
 - Don't rush them into implementation
 
 **If reviewer finds issues:**
-- Implementer (same subagent) fixes them
-- Reviewer reviews again
-- Repeat until approved
+- A fresh implementer fixes them, then a scoped re-review checks those findings
+- "Just one more fix round, it's nearly there" is the rationalization — the loop is capped at five rounds. At the cap, file the findings and surface them (`references/breaker-trip.md`)
 - Don't skip the re-review
 
 **If subagent fails task:**
