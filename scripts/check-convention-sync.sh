@@ -91,6 +91,7 @@ KERNEL_MAP=(
   'skills/using-git-worktrees/SKILL.md|A skipped, dismissed, or auto-resolved answer is not consent'
   'skills/executing-plans/SKILL.md|bd import -'
   'skills/finishing-a-development-branch/SKILL.md|document-release must have run on this branch'
+  'skills/test-driven-development/SKILL.md|state the file you are working from'
 )
 
 FAIL=0
