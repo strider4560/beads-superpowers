@@ -48,7 +48,11 @@ absorb(d)
 haz,hi=[],[]
 _HAZ=re.compile(r"\b(never|always|do not|dont)\b",re.I)
 for k,v in sorted(items.items()):
-    body=re.sub(r"^@[^\n]*\n?","",v,count=1)
+    # Strip leading @key=value metadata tokens, not "up to the first newline":
+    # some memories store header+body on a single line with no newline
+    # separator at all, and the old ^@[^\n]*\n? regex then had no newline to
+    # stop at, consuming the entire string and leaving an empty body.
+    body=re.sub(r"^(@\S+\s+)+","",v)
     body=re.sub(r"\s+"," ",body).strip()
     m=re.search(r"@salience=(\d)",v)
     is_haz=bool(_HAZ.search(body))
