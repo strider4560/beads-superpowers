@@ -2,41 +2,78 @@
 # check-guardrail-floor.sh — ADR-0049 "never remove to zero", made mechanical.
 #
 # Pattern rationale: matches this repo's ACTUAL guardrail vocabulary
-# (MUST, NEVER, Iron Law, "## Red Flags", **Never, **Always, **Do not,
-# FORBIDDEN), case-SENSITIVE. These are deliberate authored markers, so
-# case is signal, not noise: a broad case-insensitive pattern (e.g. also
-# matching "must"/"never" as generic English) let ordinary prose count as
-# guardrails — measured repo-wide, that produced 193 matched lines of
-# which only 73 were real guardrail markers, meaning a skill could lose
-# every genuine guardrail and still pass. The precise pattern above
-# matches exactly those 73 real markers.
+# (MUST, NEVER, Iron Law, "## Red Flags", **Never/**Always/**Do not headings,
+# FORBIDDEN). Case sensitivity is deliberately MIXED, not uniform:
+#   - Bare RFC-2119 tokens (MUST, NEVER, FORBIDDEN) plus the "Iron Law" and
+#     "## Red Flags" markers are case-SENSITIVE. These are deliberate
+#     shouting-case / fixed-heading conventions in this repo's skills, and
+#     lowercase prose ("must", "never" as ordinary English) must NOT count
+#     as a guardrail. A broad case-insensitive match on these tokens
+#     produced 193 matched lines repo-wide of which only 73 were real
+#     guardrail markers — under that pattern a skill could lose every
+#     genuine guardrail and still pass.
+#   - The "**"-prefixed markers (**Never, **Always, **Do not) are
+#     case-INSENSITIVE, matched via explicit [Nn]/[Aa]/[Dd]... character
+#     classes (POSIX ERE has no inline case-fold flag). A heading written
+#     as "**DO NOT**" or "**NEVER:**" is exactly as much a guardrail marker
+#     as "**Never:**" — requiring exact title case there would let that
+#     heading style silently escape the count, which is a real gap: exact
+#     "\*\*Never" / "\*\*Always" matched zero occurrences of any all-caps
+#     "**DO NOT**"-style heading in this repo even though such headings are
+#     guardrail markers.
+# Net effect: 75 matches across the library (verified) vs. 73 under the
+# strictly-title-case version — the only two new matches are inline
+# "**never**" / "**ALWAYS...**" bolded normative language, not ordinary
+# prose picked up by accident.
 #
 # This is a FLOOR check, NOT a string-presence check on specific wording —
 # it never asserts which marker a skill must use, only that authored
 # guardrail density doesn't silently erode.
 #
-# The zero-check is RELATIVE to the baseline, not absolute: it fails only
-# when a skill had count > 0 in the baseline and now has 0 (a real
-# removal-to-zero per ADR-0049). A skill baselined at 0 is a legitimate
-# capability/technique skill that deliberately carries no bright lines
-# (e.g. dispatching-parallel-agents uses "## Common Mistakes" / "## When
-# NOT to Use" instead) and must NOT be forced to invent guardrails just to
-# pass an absolute floor. A file with no baseline entry at all (a new
-# skill) never fails this check — it is reported informationally so a
-# baseline entry can be added.
+# Baseline semantics:
+#   - The baseline file MUST exist. Its absence (deleted, lost in a bad
+#     merge/rebase, a .gitignore mistake) means this guard has no reference
+#     data to compare against, so it fails loudly and exits non-zero before
+#     the per-file loop runs, instead of silently skipping every file's
+#     zero/decrease checks (a guard with no reference data that still
+#     prints OK is worse than no guard at all).
+#   - baseline > 0, current == 0       -> FAIL (real removal-to-zero,
+#                                        ADR-0049).
+#   - baseline > 0, current < baseline -> FAIL (unjustified decrease).
+#   - baseline == 0 (a recorded row)   -> legitimate and never re-flagged;
+#                                        a skill can be a capability/
+#                                        technique skill with no bright
+#                                        lines (e.g. dispatching-parallel-
+#                                        agents) and this never forces one
+#                                        in as long as it stays at >= 0.
+#   - no baseline row, current == 0    -> FAIL. A missing row cannot be
+#                                        told apart from a gutted skill
+#                                        whose baseline row was also
+#                                        dropped, so it does NOT get the
+#                                        benefit of the doubt — only a
+#                                        disclosed, recorded zero is
+#                                        legitimate.
+#   - no baseline row, current > 0     -> INFO (genuinely new skill;
+#                                        nothing lost, just needs a
+#                                        baseline row added).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT" || exit 1
 BASELINE="scripts/guardrail-floor-baseline.txt"
-PAT='MUST|NEVER|Iron Law|## Red Flags|\*\*Never|\*\*Always|\*\*Do not|FORBIDDEN'
+if [ ! -f "$BASELINE" ]; then
+  echo "FAIL: $BASELINE is missing — guardrail-floor has no reference data to check against"
+  exit 1
+fi
+PAT='MUST|NEVER|Iron Law|## Red Flags|FORBIDDEN|\*\*[Nn][Ee][Vv][Ee][Rr]|\*\*[Aa][Ll][Ww][Aa][Yy][Ss]|\*\*[Dd][Oo] [Nn][Oo][Tt]'
 fail=0
 for f in skills/*/SKILL.md; do
   n=$(grep -cE "$PAT" "$f" || true)
-  prev=""
-  if [ -f "$BASELINE" ]; then
-    prev=$(awk -v k="$f" '$1==k{print $2}' "$BASELINE")
-  fi
+  prev=$(awk -v k="$f" '$1==k{print $2}' "$BASELINE")
   if [ -z "$prev" ]; then
-    echo "INFO: $f has no baseline entry (new skill, count=$n); add one to $BASELINE"
+    if [ "$n" -eq 0 ]; then
+      echo "FAIL: $f has no baseline entry AND zero guardrail lines (indistinguishable from a gutted skill whose row was also dropped; add a baseline entry only if this zero is genuine — ADR-0049)"; fail=1
+    else
+      echo "INFO: $f has no baseline entry (new skill, count=$n); add one to $BASELINE"
+    fi
     continue
   fi
   if [ "$prev" -gt 0 ] && [ "$n" -eq 0 ]; then
