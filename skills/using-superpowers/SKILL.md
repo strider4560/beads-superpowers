@@ -54,7 +54,7 @@ When a decision is hard to reverse, surprising without context, and a genuine tr
 
 ## Beads
 
-`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. Session close = land the plane: `bd close` → `bd dolt push` → `git push`.
+`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. If beads context wasn't injected this session, run `bd prime`. Session close = land the plane: `bd close` → `bd dolt push` → `git push`.
 
 ## Skill Name Resolution
 

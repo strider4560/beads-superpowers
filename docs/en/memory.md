@@ -12,9 +12,9 @@ Every session starts from zero context and ends with the process gone. What surv
 
 ## What happens when a session starts
 
-A `SessionStart` hook runs before the agent sees your first message. It reads the `using-superpowers` skill (the bootstrap that routes to every other skill), then composes a beads context alongside it: a curated selection of memories, a pointer to the latest continuation thread, and a pointer to the knowledge store. All of it lands in the agent's context before you type anything.
+A `SessionStart` hook runs before the agent sees your first message. It reads the `using-superpowers` skill (the bootstrap that routes to every other skill), then composes a beads context alongside it: the latest continuation memory, a pointer to the on-demand memory digest, and a pointer to the knowledge store. All of it lands in the agent's context before you type anything.
 
-The curated memory selection favors a handful of high-salience entries over the entire store, not an exhaustive dump, so a session that has accumulated hundreds of memories doesn't open every one of them at once. If another hook already registered `bd prime` for this project, the SessionStart hook detects it and yields, so beads context is never injected twice.
+The hook keeps this injected slice small on purpose, capped to fit one continuation memory rather than a tour of the whole store, so a session that has accumulated hundreds of memories doesn't open them all at once. The fuller set — every high-salience or hazard-class memory, deduped — is generated on demand instead: the `getting-up-to-speed` skill's orientation script builds it when a session actually asks. If another hook already registered `bd prime` for this project, the SessionStart hook detects it and yields, so beads context is never injected twice.
 
 ```mermaid
 sequenceDiagram
@@ -28,12 +28,12 @@ sequenceDiagram
   alt bd prime already registered elsewhere
     SH-->>A: Inject skills bootstrap only (yields to avoid duplicate memory injection)
   else
-    SH->>BD: Request curated memories, latest thread pointer, knowledge-store pointer
-    BD-->>SH: Salience-selected memories and pointers
-    SH->>SH: Compose skills bootstrap + curated memories + thread pointer + knowledge-store pointer
-    SH-->>A: Inject composed context
+    SH->>BD: Request latest continuation memory + thread/knowledge-store pointers
+    BD-->>SH: Continuation memory and pointers
+    SH->>SH: Compose skills bootstrap + continuation memory + digest pointer + knowledge-store pointer
+    SH-->>A: Inject composed context, capped to a byte budget
   end
-  Note over A: Agent starts oriented: skills loaded, prior state in view
+  Note over A: Agent starts oriented: skills loaded, prior state in view; full digest is one command away
 ```
 
 ## What a memory is here
@@ -42,7 +42,7 @@ sequenceDiagram
 
 | Store | Holds | Surfaced how | Synthetic example |
 |---|---|---|---|
-| Injected memory | Lessons, patterns, root causes, and corrections: standalone rules you want handed back unprompted | At every session start, salience-selected | "lesson: the staging config lives in `config/staging.yaml`, not the repo root" |
+| Injected memory | Lessons, patterns, root causes, and corrections: standalone rules you want handed back unprompted | Continuation memory at every session start; the full salience-selected set on demand | "lesson: the staging config lives in `config/staging.yaml`, not the repo root" |
 | Deferred knowledge-bead | Research, design notes, and decisions: reference material you'd re-open when a related question comes up | On demand, by topic label or keyword search | "design: why the retry queue uses exponential backoff instead of a fixed interval" |
 
 Both stores persist and sync with your beads database, but only the first one gets pushed into a session's face unprompted. A deferred knowledge-bead is a pointer, not dead storage: it's there the moment you search for it.
@@ -57,7 +57,7 @@ flowchart TD
   B --> C["Curation sweep classifies the note"]
   C -->|"lesson / pattern / root-cause / correction"| D["Stays an injected memory"]
   C -->|"research / design / decision"| E["Becomes a deferred knowledge-bead"]
-  D --> F["Resurfaced at a later session start"]
+  D --> F["Continuation resurfaces next session; rest via on-demand digest"]
   E --> G["Retrieved on demand, by topic or keyword"]
   F --> H["Updated in place, or superseded / tombstoned"]
   G --> H
@@ -75,8 +75,8 @@ flowchart LR
   B --> C["Close finished tasks, sync the store, push"]
   C --> D["Optional: write a handoff document"]
   D --> E["Next session starts"]
-  E --> F["Hook injects curated context"]
-  F --> G["Orientation skill confirms current state"]
+  E --> F["Hook injects continuation memory + digest pointer"]
+  F --> G["Orientation skill pulls the memory digest + confirms current state"]
   G --> A
 ```
 

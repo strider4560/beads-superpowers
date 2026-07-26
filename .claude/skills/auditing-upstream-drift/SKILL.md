@@ -49,7 +49,7 @@ These shared skills intentionally differ from upstream superpowers. When Phase 5
 | **SessionStart matcher** | `startup|resume|clear|compact` | `startup|clear|compact` | added in bd-3ogl.2 to cover session resumption |
 | **writing-skills** | not shipped — removed 2026-07-10 (e4w8) | ships the writing-skills meta-skill | upstream maintenance weight; Check 5.2 will list it as upstream-new — mark SKIP |
 | **.pi/extensions/superpowers.ts** | appends composed beads context (`bd prime` exec) + `beads-superpowers:` bootstrap marker | bootstrap-only extension | beads context is the fork's reason to exist |
-| `test-driven-development` `spec-backed` floor | Fork-only. Upstream has no design-artifact precondition. Do NOT file as "revert toward upstream" — it is the default-install design gate, pinned in `KERNEL_MAP`. |
+| **test-driven-development** `spec-backed` floor | Fork-only design-artifact precondition before code | no design-artifact precondition | Do NOT file as "revert toward upstream" — it is the default-install design gate, pinned in `KERNEL_MAP` |
 | **.codex-plugin/marketplace.json** | ships it (version-synced mirror of .claude-plugin's) | no such file | kept deliberately for Codex marketplace flows |
 | **Gemini harness** | not shipped (deferred — bead sci4, believed EOL) | gemini-extension.json + GEMINI.md | upstream's own gemini-tools.md pointer is broken; revisit 2026-10 |
 | **OpenCode plugin** | upstream's `.opencode/plugins/` file as base + minimal beads graft (composer bootstrap, compaction re-injection, pointer fallback) | `superpowers.js` static-bootstrap transform | beads context is the fork's core; layout/mechanism otherwise upstream-verbatim |
