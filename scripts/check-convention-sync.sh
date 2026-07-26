@@ -67,6 +67,7 @@ KB_SITES=(
   skills/research-driven-development/SKILL.md
   skills/research-driven-development/researcher-prompt.md
   skills/getting-up-to-speed/SKILL.md
+  skills/writing-plans/SKILL.md
   hooks/session-start
 )
 # --- Per-site kernel map (ADR-0049): each redesigned skill pins ONE ASCII invariant
