@@ -26,7 +26,56 @@ else
     echo "== blocked =="
     bd blocked 2>/dev/null | head -12
     echo "== memories =="
-    bd memories 2>/dev/null | head -1        # count line only — bodies come via the hook
+    if ! command -v python3 >/dev/null 2>&1; then
+        # Visible degradation, never a silent partial digest: a truncated-body parse
+        # detects only 19 of 71 hazard rules (27%) while reading as complete.
+        printf 'digest requires python3 — showing count only\n'
+        bd memories 2>/dev/null | head -1
+        printf 'search: bd memories <keyword> · fetch: bd recall <key>\n'
+    else
+# shellcheck disable=SC2016  # the markdown-style backticks around {k} are literal Python print output, not bash command substitution; single quotes are intentional to keep the whole python3 -c script opaque to bash
+bd memories --json 2>/dev/null | python3 -c '
+import json,sys,re
+d=json.load(sys.stdin); items={}
+def absorb(o):
+    if isinstance(o,dict):
+        for k,v in o.items():
+            if isinstance(v,str): items[k]=v
+            else: absorb(v)
+    elif isinstance(o,list):
+        for e in o: absorb(e)
+absorb(d)
+haz,hi=[],[]
+_HAZ=re.compile(r"\b(never|always|do not|dont)\b",re.I)
+for k,v in sorted(items.items()):
+    body=re.sub(r"^@[^\n]*\n?","",v,count=1).replace("\n"," ").strip()
+    m=re.search(r"@salience=(\d)",v)
+    hm=_HAZ.search(body)
+    is_hi=bool(m and int(m.group(1))>=4)
+    if hm:
+        # Center the excerpt on the hazard phrase (not always the body start)
+        # so the printed gist visibly shows the imperative that earned the
+        # hazard classification, instead of silently truncating past it.
+        start=max(0, hm.start()-20)
+        haz.append((k, body[start:start+80]))
+    elif is_hi:
+        hi.append((k, body[:80]))
+import re as _re
+_SECRET=_re.compile(r"(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY)")
+_MASK="[REDACTED]"
+for k,b in haz+hi:
+    # Read-side defence in depth: the write-side memory-curator kernel is the
+    # primary control, but this script now emits many excerpts, so redact
+    # high-confidence credential shapes before printing. _MASK is a plain
+    # variable (not a literal inline) because this whole block sits inside a
+    # bash single-quoted python3 -c "..." — any single-quote character here
+    # would break out of the outer bash quoting, and a same-quote literal
+    # nested inside an f-string expression needs Python 3.12+ (PEP 701).
+    body_r=_SECRET.sub(_MASK, b)
+    print(f"`{k}` — {body_r}")
+print(f"total={len(items)} digest={len(haz)+len(hi)} hazard={len(haz)}")
+' 2>/dev/null || printf 'digest unavailable — search: bd memories <keyword>\n'
+    fi
 fi
 
 echo "== handoff =="
