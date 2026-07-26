@@ -189,7 +189,7 @@ This plugin uses `bd` (beads) for ALL task tracking.
 
 ### Modifying an Existing Skill
 
-1. **Do NOT remove** anti-rationalization tables, Iron Laws, or Red Flags sections in upstream-inherited skills. Fork-only skills follow the composition pattern (ADR-0049): compress to the strongest rows, positive-framed — never remove to zero
+1. **Compress to strongest rows, positive-framed (ADR-0049):** All skills follow this pattern. Collapse redundant *corrections*, but retain every distinct rationalization *phrase* verbatim — the model pattern-matches on specific phrasing. Never reduce a skill's guardrail content to zero; mechanically enforced by `bash scripts/check-guardrail-floor.sh`
 2. **Do NOT add** TodoWrite references — use `bd` commands
 3. Verify after changes: run `bash scripts/check-todowrite.sh` — must report "No active TodoWrite references"
 
