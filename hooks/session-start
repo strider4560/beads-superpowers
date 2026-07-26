@@ -10,9 +10,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BSP_MEM_CEILING=1400
-# Continuation memory measures ~1KB; ceiling stays deliberately ABOVE that so
-# ordinary growth doesn't evict it — never size a budget to today's measurement.
+BSP_MEM_CEILING=1550
+# Gates the COMPOSED entry (body + "### <key>\n" header + "\n\n" scaffolding —
+# hooks/session-start's bsp_compose_memories `entry=` block), not the raw
+# recalled body. Live continuation memory measures ~1256B body / ~1302B
+# composed; 1550 leaves ~250B of deliberate headroom above that so ordinary
+# growth doesn't evict it — never size a budget to today's measurement. Stays
+# below the 1623B worst-case bsp_allowance (bootstrap at its 6144B ceiling,
+# pointer + wrap overhead), so it can never be clamped by the min() below.
 # Bulk memory surfacing lives in scripts/orient.sh (getting-up-to-speed skill,
 # no byte envelope, on demand); this ceiling only needs to hold the
 # continuation memory plus the retrieval hint below.
