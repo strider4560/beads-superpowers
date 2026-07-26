@@ -20,6 +20,10 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Save plans to:** `.internal/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
 
+## Knowledge Check
+
+Before writing tasks, query the knowledge store: `bd list --label <topic> --status all` + `bd search "<keywords>" --status all` + `bd memories <keyword>` (the memory half — lessons, patterns, root-causes; knowledge-beads alone miss it entirely). Then read — hits are pointers, not knowledge: `bd show <id1> <id2> ...` / `bd recall <key>` for every hit that plausibly bears on this plan. Emit `KB check: N bead hits, M memory hits, K read` plus a one-line disposition per read hit — folded into a task (which one) or ruled out (why).
+
 ## Scope Check
 
 If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
