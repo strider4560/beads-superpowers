@@ -25,10 +25,11 @@ Then announce "Using [skill] to [purpose]" and follow the skill exactly. If it h
 
 ## Skill Priority
 
-When multiple skills apply, process skills come first — they set the approach, then implementation skills carry it out. Brainstorming and systematic-debugging are the most common process skills, but the rule holds for any of them.
+Process skills come first — they set the approach, implementation skills carry it out. Implementation is **spec-backed**: it starts from an approved spec or plan, and you state the file you are working from before the first edit.
 
 - "Let's build X" → beads-superpowers:brainstorming first, then implementation skills.
 - "Fix this bug" → beads-superpowers:systematic-debugging first, then domain skills.
+- No spec or plan file yet, and it's more than a typo? Brainstorm before you edit.
 
 ## Red Flags
 
