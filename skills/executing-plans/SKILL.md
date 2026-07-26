@@ -11,7 +11,7 @@ Load plan, review critically, execute all tasks, report when complete.
 
 **Announce at start:** "I'm using the executing-plans skill to implement this plan."
 
-**Note:** Tell your human partner that Superpowers works much better with access to subagents. The quality of its work will be significantly higher if run on a platform with subagent support (such as Claude Code or Codex). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
+**Note:** Tell your human partner that Superpowers works much better with access to subagents (such as Claude Code or Codex). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
 
 ## The Process
 
@@ -117,8 +117,6 @@ bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / patt
 
 **Required workflow skills:**
 - **beads-superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **beads-superpowers:writing-plans** - Creates the plan this skill executes
-- **beads-superpowers:finishing-a-development-branch** - Complete development after all tasks
 
 **Each execution step should use:**
 - **beads-superpowers:test-driven-development** - RED-GREEN-REFACTOR for each task's implementation
