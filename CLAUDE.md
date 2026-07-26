@@ -189,7 +189,7 @@ This plugin uses `bd` (beads) for ALL task tracking.
 
 ### Modifying an Existing Skill
 
-1. **Compress to strongest rows, positive-framed (ADR-0049):** All skills follow this pattern. Collapse redundant *corrections*, but retain every distinct rationalization *phrase* verbatim — the model pattern-matches on specific phrasing. Never reduce a skill's guardrail content to zero; mechanically enforced by `bash scripts/check-guardrail-floor.sh`
+1. **Compress to strongest rows, positive-framed (ADR-0049):** All skills follow this pattern. Collapse redundant *corrections*, but retain every distinct rationalization *phrase* verbatim — the model pattern-matches on specific phrasing. Never reduce a skill's guardrail content (anti-rationalization tables, Iron Laws, Red Flags sections) to zero; mechanically enforced by `bash scripts/check-guardrail-floor.sh`
 2. **Do NOT add** TodoWrite references — use `bd` commands
 3. Verify after changes: run `bash scripts/check-todowrite.sh` — must report "No active TodoWrite references"
 
