@@ -210,33 +210,6 @@ bd worktree remove .worktrees/<task-name>
 | Parallel subagent work | Create one `bd worktree` per task, orchestrator manages lifecycle (max 5) |
 | Working across worktrees | `bd -C .worktrees/<name> ready` — run bd in a worktree without cd |
 
-## Common Mistakes
-
-### Using `git worktree` instead of `bd worktree`
-
-- **Problem:** Raw `git worktree add` misses `.gitignore` setup and safety checks — while beads database sharing works via git common directory, you lose the automation `bd worktree create` provides
-- **Fix:** ALWAYS use `bd worktree create`. If you catch yourself typing `git worktree`, stop and use `bd worktree` instead.
-
-### Skipping ignore verification
-
-- **Problem:** Worktree contents get tracked, pollute git status
-- **Fix:** Verify with `git check-ignore` after creation (`bd worktree create` handles this automatically, but verify as a safety net)
-
-### Bare-name worktree paths
-
-- **Problem:** `bd worktree create <name>` creates at `./<name>`, cluttering the repo root
-- **Fix:** Always pass the full path: `bd worktree create .worktrees/<name>` — location + `.gitignore` handled in one step
-
-### Proceeding with failing tests
-
-- **Problem:** Can't distinguish new bugs from pre-existing issues
-- **Fix:** Report failures, get explicit permission to proceed
-
-### Hardcoding setup commands
-
-- **Problem:** Breaks on projects using different tools
-- **Fix:** Auto-detect from project files (package.json, etc.)
-
 ## Example Workflow
 
 ```
@@ -264,18 +237,17 @@ bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / patt
 ## Red Flags
 
 **Never:**
-- Use raw `git worktree` commands — ALWAYS use `bd worktree`
-- Create worktree without verifying it's ignored (project-local)
-- Skip baseline test verification
-- Proceed with failing tests without asking
-- Assume directory location when ambiguous
-- Skip CLAUDE.md check
+- Use raw `git worktree` commands — ALWAYS use `bd worktree`. If you catch yourself typing `git worktree`, stop and use `bd worktree` instead
+- Create worktree without verifying it's ignored (project-local) — worktree contents get tracked, pollute git status
+- Skip baseline test verification, or proceed with failing tests without asking — can't distinguish new bugs from pre-existing issues
+- Assume directory location when ambiguous, or skip CLAUDE.md check
+- Hardcode setup commands — breaks on projects using different tools
 
 **Always:**
 - Use `bd worktree create` / `bd worktree list` / `bd worktree remove`
 - Let `bd worktree create` handle path and `.gitignore`
-- Auto-detect and run project setup
-- Verify clean test baseline
+- Auto-detect and run project setup from project files (package.json, etc.)
+- Verify clean test baseline; report failures and get explicit permission to proceed
 
 ## Integration
 
