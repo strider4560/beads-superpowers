@@ -32,7 +32,7 @@ check_exact "Pruned N superseded continuation pointers" "$SKILL"
 # --- Consent + secrets guardrails (security floor: must stay inline) ---
 check_exact "FORBIDDEN" "$SKILL"
 check_exact "never echo doc body sections that could carry secrets" "$SKILL"
-check_exact "never bare \`bd memories\`" "$SKILL"
+check_exact "bounded by selection and shape, not by a forbidden call" "$SKILL"
 
 # --- Scale band (Heavy threshold current, stale band gone) ---
 check_exact "> 150" "$SKILL"

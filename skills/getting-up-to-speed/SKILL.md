@@ -11,7 +11,7 @@ Orient on the project before any work: re-derive the current state from **ground
 
 **When NOT to use:** a single targeted question; already oriented this session and nothing changed; a fresh empty repo (use the `project-init` skill).
 
-**frugal bd kernel:** bounded reads only; never bare `bd memories`. `bd ready --claim` is FORBIDDEN here — orientation ends at the terminal contract and the user picks the work.
+**frugal bd kernel:** bounded by selection and shape, not by a forbidden call — the memory digest emits a defined tier as short gists, never every body. `bd ready --claim` is FORBIDDEN here — orientation ends at the terminal contract and the user picks the work.
 
 ## Steps
 
@@ -25,7 +25,7 @@ Copy this checklist into your working response and tick as you go:
 
 ### 1 — Gather (at most 2 tool calls)
 
-Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled sections: `scale` (tracked=N, git=0|1), `ledger`, `ready`, `in-progress`, `blocked`, `memories` (count only), `handoff` (`path=`, `head_sha=`, `doc_sha=`, `doc_mtime=`, `last_commit_time=`, `inbox_count=`). It never runs `bd dolt` commands — orientation stays read-only. If `== handoff ==` has a `path=` line, `Read` that file (the second call); quote only its short headline — never echo doc body sections that could carry secrets. The handoff is a synthesized narrative → cross-check it in step 4 and tag it ⚠️, never "verified".
+Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled sections: `scale` (tracked=N, git=0|1), `ledger`, `ready`, `in-progress`, `blocked`, `memories` (digest: `key — gist` lines, hazard-class first, then salience >=4), `handoff` (`path=`, `head_sha=`, `doc_sha=`, `doc_mtime=`, `last_commit_time=`, `inbox_count=`). It never runs `bd dolt` commands — orientation stays read-only. If `== handoff ==` has a `path=` line, `Read` that file (the second call); quote only its short headline — never echo doc body sections that could carry secrets. The handoff is a synthesized narrative → cross-check it in step 4 and tag it ⚠️, never "verified".
 
 - No `<beads-context>` block visible this session → run `bd prime` once before the script.
 - bd missing / `.beads` absent → the bd sections read SKIP: skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped".
@@ -44,7 +44,7 @@ Done when: every planned read of the chosen path has returned.
 
 ### 3 — Drill (bounded)
 
-`bd show <id> | head -30` on the top 3 open ready beads by priority — this feeds the "Known operational quirks" line. The summary table still lists up to 10 from `bd ready`.
+`bd show <id> | head -30` on the top 3 open ready beads by priority — this feeds the "Relevant to ready work" line. The summary table still lists up to 10 from `bd ready`.
 
 Done when: 3 beads drilled (or step skipped with reason).
 
@@ -96,8 +96,9 @@ Then emit **exactly** this structure. Deterministic sections (`(verified)`) carr
 ## Recent Activity
 <3–5 commits as narrative · in-progress beads · prior thread from handoff. Degrades to "Fresh session — no prior in-session delta".>
 
-**Known operational quirks:** <from bd memories keyword scan + kb-labeled beads (`bd search --status all`) + docs/known-issues — read the bodies of hits you cite: hits are pointers, not knowledge>
-**Other captured memories:** <count + retrieval pointer>
+**Memory digest (verified):** <the orient.sh `== memories ==` lines, hazard-class first — these are the operational rules that bind this repo>
+**Relevant to ready work:** <keyword-scan the remainder against the top ready beads; then read — hits are pointers, not knowledge — quoting full bodies only for hits. Never echo credential-shaped content from a memory body — the same rule as the handoff doc above>
+**Remaining:** <total minus digest count> — search `bd memories <keyword>`, fetch `bd recall <key>`
 
 ---
 <"Welcome back — last thread was <X>." ONLY when the freshness verdict is fresh; if possibly-stale: "Note: the newest handoff (<date>, <DOC_SHA>) predates HEAD — background context, not necessarily the last session.">
