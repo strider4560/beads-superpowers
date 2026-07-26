@@ -53,6 +53,9 @@ GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
 GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)
 IS_WORKTREE=$( [ "$GIT_DIR" != "$GIT_COMMON" ] && echo "yes" || echo "no" )
 IS_DETACHED=$( git symbolic-ref HEAD >/dev/null 2>&1 && echo "no" || echo "yes" )
+# Capture now, while still inside the workspace — Step 5 changes directory
+# before Step 6 needs this value
+WORKTREE_PATH=$(git rev-parse --show-toplevel)
 ```
 
 | Context | Detection | Menu |
@@ -143,23 +146,27 @@ Note: Merge is unavailable because HEAD is detached — there is no branch to me
 #### Option 1: Merge Locally
 
 ```bash
-# Switch to base branch
+# Leave the worktree first — checkout, merge, and worktree removal all have to
+# run from the main repo root, and Step 6 needs the path captured in Step 2
+MAIN_ROOT=$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)
+cd "$MAIN_ROOT"
+
+# Merge first — verify the merged result before removing anything
 git checkout <base-branch>
-
-# Pull latest
 git pull
-
-# Merge feature branch
 git merge <feature-branch>
 
 # Verify tests on merged result
 <test command>
-
-# If tests pass
-git branch -d <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 6)
+If tests fail on the merged result: stop, leave the worktree and branch in place, and investigate. Nothing has been pushed, so the merge is local and recoverable.
+
+Once the merged result is green, clean up the worktree (Step 6) **first** — git refuses to delete a branch that is still checked out in a live worktree — then delete the branch:
+
+```bash
+git branch -d <feature-branch>
+```
 
 #### Option 2: Push and Create PR
 
@@ -193,7 +200,7 @@ EOF
 esac
 ```
 
-Then: Cleanup worktree (Step 6)
+Keep the worktree — PR feedback gets fixed there, so it stays until the work lands.
 
 #### Option 3: Keep As-Is
 
@@ -217,33 +224,32 @@ Wait for exact confirmation.
 
 If confirmed:
 ```bash
+MAIN_ROOT=$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)
+cd "$MAIN_ROOT"
 git checkout <base-branch>
+```
+
+Then clean up the worktree (Step 6) — git refuses to delete a branch still checked out in a live worktree — and force-delete the branch:
+
+```bash
 git branch -D <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 6)
-
 ### Step 6: Cleanup Worktree
 
-**For Options 1, 2, 4:**
+**Runs for Option 1 and confirmed discards. Options 2 and 3 always keep the worktree** — PR feedback gets fixed in it, and it stays until the work lands.
 
-Check if in worktree:
-```bash
-bd worktree info
-```
-
-If yes, check provenance before removing:
+`GIT_DIR == GIT_COMMON` means a normal repo with no worktree to clean up — done. Otherwise check provenance before removing, using the `WORKTREE_PATH` captured in Step 2, from before Step 5 changed directory:
 
 ```bash
 # Only remove worktrees inside .worktrees/ (created by our tooling)
-WORKTREE_PATH=$(bd worktree info --path 2>/dev/null)
 case "$WORKTREE_PATH" in
   */.worktrees/*) bd worktree remove "$WORKTREE_PATH" ;;
   *) echo "WARNING: This worktree is not inside .worktrees/ — it may have been created externally. Skipping automatic removal." ;;
 esac
 ```
 
-**For Option 3:** Keep worktree.
+`bd worktree remove` refuses while the branch has unpushed commits. Verify the work is safe first — `git merge-base --is-ancestor <branch-tip> <base>` — and only then re-run with `--force`.
 
 **Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
 
@@ -355,7 +361,7 @@ git status    # MUST show "up to date with origin"
 - Detect environment before presenting options (Step 2)
 - Present 4 options for normal/worktree context, 3 for detached HEAD, via your structured question tool
 - Get typed confirmation for discard option
-- Clean up worktree for merge/PR/discard options only (not keep-as-is)
+- Clean up worktree for merge and confirmed-discard only (PR and keep-as-is preserve it)
 - Check worktree provenance before automatic removal
 
 - Work is NOT complete until both syncs succeed
