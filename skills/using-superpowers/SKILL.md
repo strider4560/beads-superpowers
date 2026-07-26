@@ -37,8 +37,8 @@ These thoughts mean STOP—you're rationalizing:
 
 | Thought | Reality |
 |---------|---------|
-| "I need more context first" / "let me explore the codebase first" / "I can check git/files quickly" / "let me gather information first" / "I'll just do this one thing first" | Skills tell you HOW. Check first. |
-| "This is just a simple question" / "this doesn't need a formal skill" / "this doesn't count as a task" / "the skill is overkill" | Action = task. If a skill exists, use it. |
+| "I need more context first" / "let me explore the codebase first" / "I can check git/files quickly" / "let me gather information first" / "I'll just do this one thing first" | Skills tell you HOW. Check BEFORE doing anything. |
+| "This is just a simple question" / "this doesn't need a formal skill" / "this doesn't count as a task" / "the skill is overkill" | Action = task. If a skill exists, use it. Simple things become complex. |
 | "I remember this skill" | Skills evolve. Read current version. |
 | "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
 | "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
