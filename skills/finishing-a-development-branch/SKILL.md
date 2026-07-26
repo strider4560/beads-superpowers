@@ -7,8 +7,6 @@ description: Use when implementation is complete, all tests pass, and you need t
 
 ## Overview
 
-Guide completion of development work by presenting clear options and handling chosen workflow.
-
 **Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.
 
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
@@ -59,9 +57,9 @@ IS_DETACHED=$( git symbolic-ref HEAD >/dev/null 2>&1 && echo "no" || echo "yes" 
 
 | Context | Detection | Menu |
 |---------|-----------|------|
-| Normal repo | `git rev-parse --git-dir` equals `git rev-parse --git-common-dir`, and `git symbolic-ref HEAD` succeeds | Full 4 options |
-| Named-branch worktree | `git rev-parse --git-dir` differs from `git rev-parse --git-common-dir`, and `git symbolic-ref HEAD` succeeds | Full 4 options |
-| Detached HEAD | `git symbolic-ref HEAD` fails (exit code 128) | Reduced 3 options (no "Merge locally") |
+| Normal repo | `IS_WORKTREE=no`, `IS_DETACHED=no` | Full 4 options |
+| Named-branch worktree | `IS_WORKTREE=yes`, `IS_DETACHED=no` | Full 4 options |
+| Detached HEAD | `IS_DETACHED=yes` | Reduced 3 options (no "Merge locally") |
 
 ### Step 3: Determine Base Branch
 
@@ -336,21 +334,12 @@ git status    # MUST show "up to date with origin"
 
 ## Common Mistakes
 
-**Skipping test verification**
-- **Problem:** Merge broken code, create failing PR
-- **Fix:** Always verify tests before offering options
-
-**Open-ended questions**
-- **Problem:** "What should I do next?" → ambiguous
-- **Fix:** Use your structured question tool (4 options for normal/worktree context, 3 for detached HEAD)
-
-**Automatic worktree cleanup**
-- **Problem:** Remove worktree when might need it (Option 2, 3)
-- **Fix:** Only cleanup for Options 1 and 4
-
-**No confirmation for discard**
-- **Problem:** Accidentally delete work
-- **Fix:** Require typed "discard" confirmation
+| Mistake | Problem | Fix |
+|---------|---------|-----|
+| **Skipping test verification** | Merge broken code, create failing PR | Always verify tests before offering options |
+| **Open-ended questions** | "What should I do next?" → ambiguous | Use your structured question tool (4 options for normal/worktree context, 3 for detached HEAD) |
+| **Automatic worktree cleanup** | Remove worktree when might need it (Option 2, 3) | Only cleanup for Options 1 and 4 |
+| **No confirmation for discard** | Accidentally delete work | Require typed "discard" confirmation |
 
 ## Red Flags
 
