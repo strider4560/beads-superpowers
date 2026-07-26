@@ -39,12 +39,19 @@
 #     (a guard with no reference data that still prints OK is worse than no
 #     guard at all — this applies to corrupt data exactly as much as to a
 #     missing file).
-#   - Only the FIRST matching row for a given file counts (awk ... {exit}).
-#     If a baseline ever ends up with two rows for the same key (bad merge),
-#     the earlier row wins deterministically and the guard still runs a real
-#     check, rather than letting `prev` become a multi-line string that
-#     silently disables numeric comparisons for that file. This does not
-#     detect the duplicate itself — only that it doesn't break the check.
+#   - Duplicate rows for the same file key are rejected, not resolved.
+#     Two rows for one key means two (possibly conflicting) recorded values
+#     for the same skill — e.g. "4" and "999" — and silently picking either
+#     one, even deterministically, can mask a real regression: a drop from
+#     999 to 500 would pass unnoticed if the check only ever compared
+#     against 4. Before any value is looked up, the number of rows matching
+#     the current file's key is counted; more than one row FAILs loudly,
+#     naming the file, instead of silently choosing a winner. The
+#     `{print $2; exit}` first-match form is still used for the actual
+#     lookup once a key is known to have exactly one row — it is dead code
+#     on the duplicate path (that path FAILs and `continue`s before reaching
+#     the lookup) but is kept for the single-row case, where "first match"
+#     and "only match" are the same row.
 #   - Every row's count is validated as a plain non-negative integer before
 #     any arithmetic runs against it (`case ... ''|*[!0-9]*)`). A row with a
 #     missing, non-numeric, or otherwise malformed count FAILs loudly and
@@ -99,6 +106,10 @@ for f in skills/*/SKILL.md; do
     ''|*[!0-9]*)
       echo "FAIL: $f produced a non-numeric guardrail count from grep -c ('$n') — cannot validate"; fail=1; continue ;;
   esac
+  rowcount=$(awk -v k="$f" '$1==k{c++} END{print c+0}' "$BASELINE")
+  if [ "$rowcount" -gt 1 ]; then
+    echo "FAIL: $BASELINE has $rowcount rows for $f — duplicate baseline entry (two conflicting values for one key; reference data must be trustworthy, not a tie to break)"; fail=1; continue
+  fi
   prev=$(awk -v k="$f" '$1==k{print $2; exit}' "$BASELINE")
   if [ -z "$prev" ]; then
     if [ "$n" -eq 0 ]; then
