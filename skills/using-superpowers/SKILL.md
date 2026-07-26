@@ -37,18 +37,12 @@ These thoughts mean STOP—you're rationalizing:
 
 | Thought | Reality |
 |---------|---------|
-| "This is just a simple question" | Questions are tasks. Check for skills. |
-| "I need more context first" | Skill check comes BEFORE clarifying questions. |
-| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
-| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
-| "Let me gather information first" | Skills tell you HOW to gather information. |
-| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I need more context first" / "let me explore the codebase first" / "I can check git/files quickly" / "let me gather information first" / "I'll just do this one thing first" | Skills tell you HOW. Check first. |
+| "This is just a simple question" / "this doesn't need a formal skill" / "this doesn't count as a task" / "the skill is overkill" | Action = task. If a skill exists, use it. |
 | "I remember this skill" | Skills evolve. Read current version. |
-| "This doesn't count as a task" | Action = task. Check for skills. |
-| "The skill is overkill" | Simple things become complex. Use it. |
-| "I'll just do this one thing first" | Check BEFORE doing anything. |
 | "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
 | "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+| "This bead is specified enough — I'll just implement it" | **Spec-backed**: name the spec/plan file, or brainstorm first. |
 
 ## Production-Grade Doctrine
 
@@ -60,7 +54,7 @@ When a decision is hard to reverse, surprising without context, and a genuine tr
 
 ## Beads
 
-`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. The session hook injects composed beads context (curated memories + workflow pointer) at session start; if none was injected this session, run `bd prime`. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. Session close = land the plane: `bd close` → `bd dolt push` → `git push`.
+`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. Session close = land the plane: `bd close` → `bd dolt push` → `git push`.
 
 ## Skill Name Resolution
 
