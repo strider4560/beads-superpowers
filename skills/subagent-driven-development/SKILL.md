@@ -220,8 +220,8 @@ digraph parallel_batch {
 When a parallel task fails review:
 
 1. **Do not merge** its task branch into the epic branch.
-2. **Option A — Re-dispatch:** Keep the task worktree. Re-dispatch a fix subagent with reviewer feedback. Re-review after fix.
-3. **Option B — Discard:** `bd worktree remove .worktrees/<task-name>` discards the branch. Task bead stays open and will appear in the next `bd ready --parent` batch.
+2. **Option A — Fix rounds:** Keep the task worktree and run **`## Fix Rounds` / `## The Breaker`** below, unchanged: five-round cap, a FRESH implementer every round, scoped re-review via `./re-review-prompt.md`, PASS gated on a green full suite. Parallel mode gets no unbounded loop.
+3. **Option B — Discard:** not a controller call. Discarding a failed task's branch (`bd worktree remove .worktrees/<task-name>`) is a disposition **the user** decides — surface it per `references/breaker-trip.md`; never adjudicate it yourself.
 4. Other parallel tasks that passed review are still merged independently — one failure does not block the batch.
 
 ### Mode Selection
@@ -266,11 +266,14 @@ The task reviewer returns a Spec Compliance verdict of ✅, ❌, or ⚠️. A �
 
 A review returning findings starts a fix round: dispatch a **fresh implementer**
 (never resume) with the task brief, the current findings, and only the **most
-recent** section of the report file. Then dispatch a scoped re-review filling
-`re-review-prompt.md` against `scripts/review-package <plan-file> <fix-base> HEAD`.
+recent** section of the report file. **Record `ROUND0_HEAD` (round 0's final
+commit, not `BASE`) before dispatching fix round 1** — it is round 1's `<fix-base>`.
+Then dispatch a scoped re-review filling `re-review-prompt.md` against
+`scripts/review-package <plan-file> <fix-base> HEAD`.
 
-**A re-review PASS requires the reviewer's verdict AND a green full test suite.**
-What the scoped reviewer cannot see, and why, is in `references/breaker-trip.md`.
+**A re-review PASS requires the reviewer's verdict AND a green full test suite** —
+**you (the controller) run the suite** and report it in `[SUITE_STATUS]`. What the
+scoped reviewer cannot see, and why, is in `references/breaker-trip.md`.
 
 **Completion criterion:** re-review returns PASS with a green suite, or the round
 counter increments.

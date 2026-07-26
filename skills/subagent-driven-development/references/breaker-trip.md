@@ -49,7 +49,10 @@ breaker as evidence of a clean task.
 4. **Surface to the user and STOP.** Present **both** dispositions:
    - **Resolve** the open findings on the current branch, or
    - **Discard the fix rounds** and return to the round-0 state, preserved at the
-     recorded per-task `BASE`. Round 0 passed its own full task review and failed
+     recorded `ROUND0_HEAD` — round 0's final commit, which `SKILL.md` requires the
+     controller to record before fix round 1. **Not** the per-task `BASE`: that is
+     the commit *before* the implementer ran, so resetting there destroys round 0
+     along with the fix rounds. Round 0 passed its own full task review and failed
      only on the enumerated findings.
 
    Include the round-0 verdict and the round count so the choice is informed. After
