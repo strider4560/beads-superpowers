@@ -10,7 +10,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BSP_MEM_CEILING=8192
+BSP_MEM_CEILING=1400
+# Continuation memory measures ~1KB; ceiling stays deliberately ABOVE that so
+# ordinary growth doesn't evict it — never size a budget to today's measurement.
+# Bulk memory surfacing lives in scripts/orient.sh (getting-up-to-speed skill,
+# no byte envelope, on demand); this ceiling only needs to hold the
+# continuation memory plus the retrieval hint below.
 # Claude Code persists any hook output's additionalContext OUT-OF-LINE above
 # 10,000 chars (hard-coded, per-hook-output, not configurable):
 #   https://code.claude.com/docs/en/hooks   (verified 2026-07-12, ADR-0052)
@@ -103,8 +108,7 @@ ${body}
     done <<<"$(printf '%s\n' "$selected" | sort -t$'\t' -k1,1nr)"
 
     printf '## Persistent Memories (core)\n\n%s' "$section"
-    # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
-    [ "$skipped" -gt 0 ] && printf '+%s more core memories over budget — `bd memories <kw>`\n' "$skipped"
+    [ "$skipped" -gt 0 ] && printf 'full digest: run the getting-up-to-speed skill\n'
     # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
     printf 'core memories: %s of %s injected (salience>=4 + latest continuation, %s-byte budget) — search the rest: `bd memories <keyword>` · fetch: `bd recall <key>`\n' \
         "$injected" "$total_count" "$ceiling"

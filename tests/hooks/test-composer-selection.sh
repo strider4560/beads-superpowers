@@ -60,7 +60,7 @@ echo "$out" | grep -q "core memories: 4 of 6 injected" || { echo "FAIL: disclosu
 #    section -> continuation degrades to a pointer line (ADR-0052: no bypass).
 out=$(bsp_compose_memories 90)
 echo "$out" | grep -q "CONTINUATION NEW BODY" || { echo "FAIL: continuation clipped at 90"; exit 1; }
-echo "$out" | grep -q "more core memories over budget" || { echo "FAIL: no +N tail"; exit 1; }
+echo "$out" | grep -q "full digest: run the getting-up-to-speed skill" || { echo "FAIL: no full-digest tail"; exit 1; }
 out=$(bsp_compose_memories 40)
 echo "$out" | grep -q "CONTINUATION NEW BODY" && { echo "FAIL: continuation body injected over allowance (bypass not removed)"; exit 1; }
 # shellcheck disable=SC2016  # backticks are literal markdown in the asserted output, not expansions
@@ -90,7 +90,7 @@ FIX
 printf 'SHORT CONT BODY XXXX\n' > "$TMP/fixtures/recall-continuation-2026-07-07-x.txt"
 out=$(bsp_compose_memories 60)
 echo "$out" | grep -q "SHORT CONT BODY" || { echo "FAIL: continuation clipped in byte-ceiling test"; exit 1; }
-echo "$out" | grep -q "more core memories over budget" || { echo "FAIL: multi-byte body not clipped — ceiling counted chars, not bytes"; exit 1; }
+echo "$out" | grep -q "full digest: run the getting-up-to-speed skill" || { echo "FAIL: multi-byte body not clipped — ceiling counted chars, not bytes"; exit 1; }
 echo "$out" | grep -q "core memories: 1 of 2 injected" || { echo "FAIL: byte-test disclosure wrong"; exit 1; }
 
 # 6. large-store pipefail regression: listing > 64KB pipe buffer with an EARLY
