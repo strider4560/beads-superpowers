@@ -14,4 +14,11 @@ for f in hooks/hooks.json hooks/codex-hooks.json; do
     fi
   done
 done
+
+if grep -Fq '"shell": "bash"' "$ROOT/hooks/hooks.json"; then
+  echo "PASS: hooks/hooks.json declares shell:bash (Windows: git-bash, not cmd.exe)"
+else
+  echo "FAIL: hooks/hooks.json is missing \"shell\": \"bash\" — the hook runs under cmd.exe on Windows"; fail=1
+fi
+
 exit $fail
