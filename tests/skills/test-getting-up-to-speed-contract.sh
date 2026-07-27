@@ -131,12 +131,16 @@ check_exact "left in inbox" "$SKILL"
 check_exact "Current State" "$SKILL"
 check_exact "Recent Activity" "$SKILL"
 
-# --- CHANGE-DETECTOR — retained until cc-eval covers the possibly-stale summary
-# wording ("predates HEAD") and the continuation-pointer prune policy (key-prefix
-# scoping, never-guess-delete, the "Pruned N ..." report line). The freshness
-# CLASSIFIER itself is now covered behaviorally above; these pin only the narrative
-# text built on top of it. Do NOT "fix" a failure here by re-pinning the new prose;
-# either convert it to behavioral or delete it under the bar above. ---
+# --- CHANGE-DETECTOR — retained until cc-eval covers the Current-State freshness
+# display wording (the space-separated "possibly stale" in the Last-handoff line's
+# display template — distinct from the hyphenated "possibly-stale" classifier token
+# already covered behaviorally above), the "predates HEAD" possibly-stale narrative,
+# and the continuation-pointer prune policy (key-prefix scoping, never-guess-delete,
+# the "Pruned N ..." report line). These pin only the narrative/display text built on
+# top of the now-behaviorally-tested classifier. Do NOT "fix" a failure here by
+# re-pinning the new prose; either convert it to behavioral or delete it under the
+# bar above. ---
+check_exact "possibly stale" "$SKILL"
 check_exact "predates HEAD" "$SKILL"
 check_exact "key prefix" "$SKILL"
 check_exact "never guess-delete" "$SKILL"
