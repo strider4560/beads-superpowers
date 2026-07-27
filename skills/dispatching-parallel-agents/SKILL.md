@@ -157,7 +157,7 @@ Subagent-Driven Development uses this skill's **pattern** — not the skill itse
 
 1. SDD detects independent task batches via `bd ready --parent <epic-id>` (tasks with no unresolved dependencies)
 2. Orchestrator creates one `bd worktree` per task — subagent receives path, never creates worktrees itself
-3. Dispatches all implementer subagents in one message via multiple `Agent` tool calls (max 5 per batch)
+3. Dispatches all implementer subagents in one message via multiple dispatch calls (max 5 per batch)
 4. SDD handles merge-back into the epic worktree after review
 
 **Key difference from standalone use:** In SDD, the orchestrator manages the full lifecycle (worktree creation → dispatch → review → merge → cleanup). This skill describes the dispatch pattern; SDD adds the orchestration layer.
@@ -175,10 +175,10 @@ Orchestrator creates per-task worktrees:
   bd worktree create .worktrees/task-b --branch feature/epic/task-b
   bd worktree create .worktrees/task-c --branch feature/epic/task-c
 
-Dispatches 3 subagents in parallel (one Agent call each, same message):
-  Agent 1 → "Work from: .worktrees/task-a" → implements validation
-  Agent 2 → "Work from: .worktrees/task-b" → implements middleware
-  Agent 3 → "Work from: .worktrees/task-c" → updates docs
+Dispatches 3 subagents in parallel (one dispatch call each, same message):
+  Subagent 1 → "Work from: .worktrees/task-a" → implements validation
+  Subagent 2 → "Work from: .worktrees/task-b" → implements middleware
+  Subagent 3 → "Work from: .worktrees/task-c" → updates docs
 
 After all 3 pass review:
   git merge feature/epic/task-a (in epic worktree)

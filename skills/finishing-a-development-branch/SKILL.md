@@ -163,10 +163,13 @@ git branch -d <feature-branch>
 #### Option 2: Push and Create PR
 
 ```bash
-# Push branch
-git push -u origin <feature-branch>
-# From a detached HEAD there is no branch to name — push an explicit refspec:
-# git push origin HEAD:refs/heads/<new-branch>
+# Push branch — IS_DETACHED was captured in Step 2
+if [ "$IS_DETACHED" = "yes" ]; then
+  # No branch to name from a detached HEAD — push an explicit refspec:
+  git push origin HEAD:refs/heads/<new-branch>
+else
+  git push -u origin <feature-branch>
+fi
 
 # Create PR/MR via the forge's CLI (detected from the origin remote)
 REMOTE_URL=$(git remote get-url origin)
@@ -342,6 +345,8 @@ git status    # MUST show "up to date with origin"
 | **Open-ended questions** | "What should I do next?" → ambiguous | Use your structured question tool (3 options for normal/worktree context, 2 for detached HEAD) |
 | **Automatic worktree cleanup** | Remove worktree when might need it (Option 2, 3) | Only cleanup for Option 1 and confirmed discards |
 | **No confirmation for discard** | Accidentally delete work | Require typed "discard" confirmation |
+| **"They seem done with this feature — I'll offer to discard it"** | Discard offered unprompted, next to merge/PR options | The menu is complete as written. Discard happens only when your human partner asks for it in so many words. |
+| **"'Yeah, get rid of it' counts as confirmation"** | Loose language treated as authorization to permanently delete work | Only the typed word `discard` authorizes deletion. |
 
 ## Red Flags
 

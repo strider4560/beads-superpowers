@@ -209,7 +209,7 @@ bd worktree remove .worktrees/<task-name>
 | No package.json/Cargo.toml | Skip dependency install |
 | Parallel subagent work | Create one `bd worktree` per task, orchestrator manages lifecycle (max 5) |
 | Working across worktrees | `bd -C .worktrees/<name> ready` — run bd in a worktree without cd |
-| Permission error on worktree create | Sandbox blocks writes outside the repo — fall back to working in place; say so explicitly |
+| Permission error on worktree create | Sandbox blocks writes outside the repo — fall back to working in place; say so explicitly. If this fires during a parallel batch, run the remaining tasks sequentially — never parallel-dispatch into the shared tree |
 
 ## Example Workflow
 

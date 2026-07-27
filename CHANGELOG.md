@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `subagent-driven-development`: fix rounds dispatch a fresh implementer rather than resuming, and a re-review PASS now requires the full test suite to be green.
 - The installer end-to-end test suite (`just docker`) now runs under **Podman** as well as Docker — it auto-detects whichever is installed (Docker first), or you can force one with `CONTAINER_RUNTIME=podman just docker`. Contributors on Podman-only machines can now run the full installer E2E.
 - Superpowers upstream baseline moves to v6.2.0.
+- The SessionStart hook now also declares `bash` as its shell explicitly, matching upstream v6.2.0. Windows sessions on this fork already loaded correctly through `hooks/run-hook.cmd`'s cmd.exe-to-bash polyglot wrapper — the explicit declaration is added parity and a second line of defense, not a fix for a prior failure.
 - The completion menu no longer offers to discard finished, passing work — discarding is now an explicit-request-only path, with the same typed confirmation it always had.
 - Gemini CLI is supported again, bringing the harness count to ten.
 - Pull request creation no longer assumes `gh` specifically — the guidance now says "your forge's CLI," with `gh` and `glab` kept as examples.
@@ -41,8 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - The test-pollution bisection script no longer reports "all tests clean" when it matched no test files at all — its own documented search pattern was silently matching nothing, so every pollution hunt came back falsely clean.
 - Finishing a branch now actually removes the worktree it created. The cleanup step was calling a `bd` flag that doesn't exist, so it silently did nothing every time, and the branch delete that followed it failed because the worktree was still there.
-- Session start now works on Windows. The hook that loads skills and beads context at the start of every session was launching under `cmd.exe` there, which can't run it, so nothing loaded; it now specifies `bash` as its shell explicitly.
-- Finishing a branch from a detached HEAD and choosing to open a pull request no longer fails at the push — the instructions previously pushed a branch name that doesn't exist yet in that state; they now push with an explicit branch reference instead.
+- Finishing a branch from a detached HEAD and choosing to open a pull request no longer fails at the push — the push now branches on whether HEAD is detached, using an explicit `HEAD:refs/heads/<branch>` refspec in that case instead of a branch name that doesn't exist yet.
 - The reference to the code-reviewer template in `requesting-code-review` is now an actual link instead of a bare path — one occurrence pointed at the wrong relative location entirely, so following it by hand led nowhere.
 
 ## [0.15.0] - 2026-07-19
