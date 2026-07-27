@@ -14,6 +14,7 @@ FILES=(
   .codex-plugin/plugin.json  .codex-plugin/marketplace.json
   .cursor-plugin/plugin.json
   .kimi-plugin/plugin.json
+  gemini-extension.json GEMINI.md
   .agents/plugins/marketplace.json
   hooks/hooks-cursor.json hooks/run-hook.cmd
   skills/using-superpowers/SKILL.md

@@ -25,8 +25,8 @@ When a skill says to dispatch an agent via a prompt template:
 
 | Skill instruction | OpenCode equivalent |
 |-------------------|---------------------|
-| `Task tool (general-purpose)` with template from `code-reviewer.md` | Dispatch via `task` tool with template content |
-| `Task tool (general-purpose)` with inline prompt | Dispatch via `task` tool with the same prompt |
+| `Subagent (general-purpose):` with template from `code-reviewer.md` | Dispatch via `task` tool with template content |
+| `Subagent (general-purpose):` with inline prompt | Dispatch via `task` tool with the same prompt |
 
 ## Environment detection
 

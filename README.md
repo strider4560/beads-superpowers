@@ -14,7 +14,7 @@
 
 ---
 
-A plugin for Claude Code, Codex, OpenCode, and 6 more AI coding agents that makes your agent write tests before code, debug systematically instead of guessing, and remember what it worked on yesterday. Composable skills enforce the practices; a Dolt-backed issue tracker keeps context across sessions.
+A plugin for Claude Code, Codex, OpenCode, and 7 more AI coding agents that makes your agent write tests before code, debug systematically instead of guessing, and remember what it worked on yesterday. Composable skills enforce the practices; a Dolt-backed issue tracker keeps context across sessions.
 
 ## Quickstart
 
@@ -34,7 +34,7 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 
 Start a new Claude Code session and type "where are we" - the agent will load your `bd` context and pick up where you left off.
 
-Using a different agent? Jump to install for [Codex CLI](#codex-cli), [OpenCode](#opencode), [Cursor](#cursor), [GitHub Copilot CLI](#github-copilot-cli), [Kimi Code](#kimi-code), [Antigravity](#antigravity), [Factory Droid](#factory-droid), or [Pi](#pi).
+Using a different agent? Jump to install for [Codex CLI](#codex-cli), [OpenCode](#opencode), [Cursor](#cursor), [Gemini CLI](#gemini-cli), [GitHub Copilot CLI](#github-copilot-cli), [Kimi Code](#kimi-code), [Antigravity](#antigravity), [Factory Droid](#factory-droid), or [Pi](#pi).
 
 ## The Basic Workflow
 
@@ -194,6 +194,12 @@ Skills auto-register and the session bootstrap + beads context inject automatica
 ```
 
 Run this command inside Cursor Agent. Update via the Marketplace UI.
+
+### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/DollarDill/beads-superpowers
+```
 
 ### GitHub Copilot CLI
 

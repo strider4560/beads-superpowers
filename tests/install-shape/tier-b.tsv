@@ -4,3 +4,4 @@ kimi	kimi	.kimi-plugin/plugin.json	Kimi Code detected — native install: /plugi
 antigravity	agy	-	Antigravity detected — native install: agy plugin install https://github.com/DollarDill/beads-superpowers
 droid	droid	-	Factory Droid detected — native: droid plugin marketplace add https://github.com/DollarDill/beads-superpowers
 pi	pi	-	Pi detected — native install: pi install git:github.com/DollarDill/beads-superpowers
+gemini	gemini	gemini-extension.json	Gemini CLI detected — native install: gemini extensions install https://github.com/DollarDill/beads-superpowers

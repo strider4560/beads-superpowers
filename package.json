@@ -3,7 +3,7 @@
   "version": "0.15.0",
   "type": "module",
   "main": ".opencode/plugins/beads-superpowers.js",
-  "description": "Superpowers skills + Beads issue tracking for Claude Code, Codex, OpenCode, and 6 more AI coding agents — TDD, debugging, persistent task memory.",
+  "description": "Superpowers skills + Beads issue tracking for Claude Code, Codex, OpenCode, and 7 more AI coding agents — TDD, debugging, persistent task memory.",
   "author": "Dillon Frawley <dillon@algocents.com>",
   "keywords": [
     "pi-package",

@@ -60,9 +60,9 @@ WORKTREE_PATH=$(git rev-parse --show-toplevel)
 
 | Context | Detection | Menu |
 |---------|-----------|------|
-| Normal repo | `IS_WORKTREE=no`, `IS_DETACHED=no` | Full 4 options |
-| Named-branch worktree | `IS_WORKTREE=yes`, `IS_DETACHED=no` | Full 4 options |
-| Detached HEAD | `IS_DETACHED=yes` | Reduced 3 options (no "Merge locally") |
+| Normal repo | `IS_WORKTREE=no`, `IS_DETACHED=no` | Full 3 options |
+| Named-branch worktree | `IS_WORKTREE=yes`, `IS_DETACHED=no` | Full 3 options |
+| Detached HEAD | `IS_DETACHED=yes` | Reduced 2 options (no "Merge locally") |
 
 ### Step 3: Determine Base Branch
 
@@ -81,7 +81,7 @@ document-release must have run on this branch — evidence: a `docs:` commit in 
 
 **Use your structured question tool** to present options. Do NOT present choices as plain prose when your harness has a question tool; without one, numbered list + STOP. A skipped, dismissed, or auto-resolved answer is not consent — stop and ask in plain text.
 
-**For normal repo or named-branch worktree** (`IS_DETACHED=no`), present all 4 options:
+**For normal repo or named-branch worktree** (`IS_DETACHED=no`), present all 3 options:
 
 ```json
 {
@@ -95,15 +95,11 @@ document-release must have run on this branch — evidence: a `docs:` commit in 
       },
       {
         "label": "Create Pull Request",
-        "description": "Push branch to origin and open a PR via gh cli"
+        "description": "Push branch to origin and open a PR via your forge's CLI or the URL it prints on push"
       },
       {
         "label": "Keep as-is",
         "description": "Leave the branch and worktree intact — handle it later"
-      },
-      {
-        "label": "Discard work",
-        "description": "Permanently delete this branch and all its commits (requires confirmation)"
       }
     ],
     "multiSelect": false
@@ -111,7 +107,7 @@ document-release must have run on this branch — evidence: a `docs:` commit in 
 }
 ```
 
-**For detached HEAD** (`IS_DETACHED=yes`), present 3 options (omit "Merge locally"):
+**For detached HEAD** (`IS_DETACHED=yes`), present 2 options (omit "Merge locally"):
 
 ```json
 {
@@ -121,15 +117,11 @@ document-release must have run on this branch — evidence: a `docs:` commit in 
     "options": [
       {
         "label": "Create Pull Request",
-        "description": "Push branch to origin and open a PR via gh cli"
+        "description": "Push branch to origin and open a PR via your forge's CLI or the URL it prints on push"
       },
       {
         "label": "Keep as-is",
         "description": "Leave the worktree intact — handle it later"
-      },
-      {
-        "label": "Discard work",
-        "description": "Permanently delete all commits in this worktree (requires confirmation)"
       }
     ],
     "multiSelect": false
@@ -171,8 +163,13 @@ git branch -d <feature-branch>
 #### Option 2: Push and Create PR
 
 ```bash
-# Push branch
-git push -u origin <feature-branch>
+# Push branch — IS_DETACHED was captured in Step 2
+if [ "$IS_DETACHED" = "yes" ]; then
+  # No branch to name from a detached HEAD — push an explicit refspec:
+  git push origin HEAD:refs/heads/<new-branch>
+else
+  git push -u origin <feature-branch>
+fi
 
 # Create PR/MR via the forge's CLI (detected from the origin remote)
 REMOTE_URL=$(git remote get-url origin)
@@ -208,7 +205,9 @@ Report: "Keeping branch <name>. Worktree preserved at <path>."
 
 **Don't cleanup worktree.**
 
-#### Option 4: Discard
+#### If your human partner asks to discard the work
+
+This path exists only as a response to an explicit request to throw the work away. It is never offered in the menu.
 
 **Confirm first:**
 ```
@@ -334,7 +333,7 @@ git status    # MUST show "up to date with origin"
 | 1. Merge locally | ✓ | - | - | ✓ |
 | 2. Create PR | - | ✓ | ✓ | - |
 | 3. Keep as-is | - | - | ✓ | - |
-| 4. Discard | - | - | - | ✓ (force) |
+| Discard (explicit request only) | - | - | - | ✓ (force) |
 
 **Step 7 (Land the Plane) applies to ALL options.** After executing any option above, complete the session close ritual: close beads, `bd dolt push`, `git push`, `git status`.
 
@@ -343,9 +342,11 @@ git status    # MUST show "up to date with origin"
 | Mistake | Problem | Fix |
 |---------|---------|-----|
 | **Skipping test verification** | Merge broken code, create failing PR | Always verify tests before offering options |
-| **Open-ended questions** | "What should I do next?" → ambiguous | Use your structured question tool (4 options for normal/worktree context, 3 for detached HEAD) |
-| **Automatic worktree cleanup** | Remove worktree when might need it (Option 2, 3) | Only cleanup for Options 1 and 4 |
+| **Open-ended questions** | "What should I do next?" → ambiguous | Use your structured question tool (3 options for normal/worktree context, 2 for detached HEAD) |
+| **Automatic worktree cleanup** | Remove worktree when might need it (Option 2, 3) | Only cleanup for Option 1 and confirmed discards |
 | **No confirmation for discard** | Accidentally delete work | Require typed "discard" confirmation |
+| **"They seem done with this feature — I'll offer to discard it"** | Discard offered unprompted, next to merge/PR options | The menu is complete as written. Discard happens only when your human partner asks for it in so many words. |
+| **"'Yeah, get rid of it' counts as confirmation"** | Loose language treated as authorization to permanently delete work | Only the typed word `discard` authorizes deletion. |
 
 ## Red Flags
 
@@ -359,7 +360,7 @@ git status    # MUST show "up to date with origin"
 **Always:**
 - Verify tests before offering options
 - Detect environment before presenting options (Step 2)
-- Present 4 options for normal/worktree context, 3 for detached HEAD, via your structured question tool
+- Present 3 options for normal/worktree context, 2 for detached HEAD, via your structured question tool
 - Get typed confirmation for discard option
 - Clean up worktree for merge and confirmed-discard only (PR and keep-as-is preserve it)
 - Check worktree provenance before automatic removal

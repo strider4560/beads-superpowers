@@ -11,15 +11,16 @@ Load plan, review critically, execute all tasks, report when complete.
 
 **Announce at start:** "I'm using the executing-plans skill to implement this plan."
 
-**Note:** Tell your human partner that Superpowers works much better with access to subagents (such as Claude Code or Codex). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
+**Note:** Tell your human partner that this system works much better with access to subagents (Claude Code, Codex, Copilot CLI, and Gemini CLI all qualify; see the per-platform tool refs in `../using-superpowers/references/`). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
 
 ## The Process
 
 ### Step 1: Load and Review Plan
-1. Read plan file
-2. Review critically - identify any questions or concerns about the plan
-3. If concerns: Raise them with your human partner before starting
-4. If no concerns: Create epic bead and child beads for each task, then proceed
+1. Ensure an isolated workspace first — use the beads-superpowers:using-git-worktrees skill.
+2. Read plan file
+3. Review critically - identify any questions or concerns about the plan
+4. If concerns: Raise them with your human partner before starting
+5. If no concerns: Create epic bead and child beads for each task, then proceed
 
    Create the epic, then import the child tasks as JSONL:
 
@@ -55,7 +56,7 @@ EOF
 For each task:
 1. Get and claim the next task in one call: `bd ready --parent <epic-id> --claim` (use `bd ready --explain` to see dependency reasoning if task ordering is unclear)
 2. **Check description quality** before implementing: if the claimed task's description is a bare title with no actionable steps or context, STOP — do not proceed with implementation. The task is now claimed: flag it for human decision (`bd label add <task-id> human`, per Structured blocker handling below) so it doesn't dangle in-progress, and surface to the user what the description is missing.
-3. Follow each step exactly (plan has bite-sized steps)
+3. Follow each step exactly (plan has bite-sized steps), using the beads-superpowers:test-driven-development skill for the implementation — RED-GREEN-REFACTOR
 4. Run verifications as specified
 5. Close the task: `bd close <task-id> --reason "description of what was completed"`
 6. Check epic progress: `bd epic status <epic-id>` to see overall completion
@@ -112,11 +113,3 @@ After all tasks complete and verified:
 ```bash
 bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
 ```
-
-## Integration
-
-**Required workflow skills:**
-- **beads-superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-
-**Each execution step should use:**
-- **beads-superpowers:test-driven-development** - RED-GREEN-REFACTOR for each task's implementation

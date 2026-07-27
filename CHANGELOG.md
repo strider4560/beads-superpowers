@@ -24,10 +24,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `subagent-driven-development`: the SDD workspace is now scoped per plan (`.internal/sdd/<plan-basename>/`), so two plans in one working tree cannot share brief filenames. `review-package` takes the plan file as its first argument.
 - `subagent-driven-development`: fix rounds dispatch a fresh implementer rather than resuming, and a re-review PASS now requires the full test suite to be green.
 - The installer end-to-end test suite (`just docker`) now runs under **Podman** as well as Docker — it auto-detects whichever is installed (Docker first), or you can force one with `CONTAINER_RUNTIME=podman just docker`. Contributors on Podman-only machines can now run the full installer E2E.
+- Superpowers upstream baseline moves to v6.2.0.
+- The SessionStart hook now also declares `bash` as its shell explicitly, matching upstream v6.2.0. Windows sessions on this fork already loaded correctly through `hooks/run-hook.cmd`'s cmd.exe-to-bash polyglot wrapper — the explicit declaration is added parity and a second line of defense, not a fix for a prior failure.
+- The completion menu no longer offers to discard finished, passing work — discarding is now an explicit-request-only path, with the same typed confirmation it always had.
+- Gemini CLI is supported again, bringing the harness count to ten.
+- Pull request creation no longer assumes `gh` specifically — the guidance now says "your forge's CLI," with `gh` and `glab` kept as examples.
+- `dispatching-parallel-agents` swaps its Claude-specific `Task(...)` code block for fanning out subagents for a template any harness can follow, plus the rule that makes it work: multiple dispatch calls in the same response run in parallel, one call per response runs them one at a time.
+- `receiving-code-review` replaces an in-joke signal phrase ("Strange things are afoot at the Circle K") for pushing back out loud with a plain instruction — name the tension, then raise it with your partner — and relabels a "CLAUDE.md violation" as an "instruction-file violation," so the wording holds on harnesses that don't use that filename.
+- `test-driven-development`'s testing companion doc is now a positive catalog of how to write good tests, replacing the old list of anti-patterns to avoid.
+- Some skill contract tests now execute the actual script or prompt block they check instead of only searching its text for expected phrases, so a real behavior regression fails the test even when the surrounding wording is untouched.
 
 ### Removed
 
 - The `gh-pages` SEO redirect bridge is retired. The old GitHub Pages site at `dollardill.github.io/beads-superpowers` was unpublished and its branch deleted now that [algocents.com](https://algocents.com/beads-superpowers/) — the docs home since v0.13.0 — ranks for the same terms. `scripts/verify-ghpages-stubs.sh`, which existed only to check those redirects, is removed with it. The old URLs no longer redirect; use algocents.com.
+
+### Fixed
+
+- The test-pollution bisection script no longer reports "all tests clean" when it matched no test files at all — its own documented search pattern was silently matching nothing, so every pollution hunt came back falsely clean.
+- Finishing a branch now actually removes the worktree it created. The cleanup step was calling a `bd` flag that doesn't exist, so it silently did nothing every time, and the branch delete that followed it failed because the worktree was still there.
+- Finishing a branch from a detached HEAD and choosing to open a pull request no longer fails at the push — the push now branches on whether HEAD is detached, using an explicit `HEAD:refs/heads/<branch>` refspec in that case instead of a branch name that doesn't exist yet.
+- The reference to the code-reviewer template in `requesting-code-review` is now an actual link instead of a bare path — one occurrence pointed at the wrong relative location entirely, so following it by hand led nowhere.
 
 ## [0.15.0] - 2026-07-19
 

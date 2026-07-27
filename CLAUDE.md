@@ -77,7 +77,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Project Overview
 
-A plugin for Claude Code, Codex, and OpenCode (verified) plus 6 best-effort harnesses — Cursor, GitHub Copilot CLI, Kimi Code, Antigravity, Factory Droid, and Pi — that merges [Superpowers](https://github.com/obra/superpowers) skills (v6.1.1) with [Beads](https://github.com/gastownhall/beads) issue tracking (v1.1.0). It gives AI coding agents composable process-discipline skills (TDD, brainstorming, systematic debugging, code review, verification) plus persistent task memory via a Dolt-backed database.
+A plugin for Claude Code, Codex, and OpenCode (verified) plus 7 best-effort harnesses — Cursor, Gemini CLI, GitHub Copilot CLI, Kimi Code, Antigravity, Factory Droid, and Pi — that merges [Superpowers](https://github.com/obra/superpowers) skills (v6.2.0) with [Beads](https://github.com/gastownhall/beads) issue tracking (v1.1.0). It gives AI coding agents composable process-discipline skills (TDD, brainstorming, systematic debugging, code review, verification) plus persistent task memory via a Dolt-backed database.
 
 **Repository:** <https://github.com/DollarDill/beads-superpowers>
 **Version:** 0.15.0
@@ -97,7 +97,7 @@ A plugin for Claude Code, Codex, and OpenCode (verified) plus 6 best-effort harn
 - `.internal/` — Working docs (gitignored): specs from brainstorming, plans from writing-plans, research output, audits, reference docs, `.internal/sdd/` (SDD scratch), and `.internal/brainstorm/` (brainstorm server sessions).
 - `tests/` — deterministic suites (hooks, manifests, skills contracts, install-shape, installer docker/podman E2E, brainstorm-server Node tests) run via the `just` surface. (The 4 LLM-driven suites were removed in the 2026-07 fat audit — successor: the external eval-harness project.)
 - `scripts/` — `bump-version.sh` (sync version across all surfaces declared in `.version-bump.json` — JSON manifests + prose), `check-skill-count.sh` (guard: forbid hardcoded skill counts + structural self-consistency), `check-agent-bead-stamp.sh`, `check-zh-docs.sh`, `check-convention-sync.sh` (verify shared convention blocks are byte-identical across skills), `lint-shell.sh` (shellcheck gate over tracked `.sh` with committed baseline; visible SKIP when shellcheck absent), `check-askuser-genericization.sh` (guard: skills use generic question-tool phrasing — ADR-0041), `check-model-genericization.sh` (guard: no hardcoded Claude model names in harness-neutral content — capability tiers only), `check-guardrail-floor.sh` (guard: ADR-0049's "never remove to zero" made mechanical — counts guardrail lines per skill against the committed `guardrail-floor-baseline.txt` and fails on a drop to zero or an unjustified decrease; a recorded `0` is a legitimate, disclosed zero for capability skills with no bright lines).
-- `install.sh` — curl installer with 3-tier fallback chain (plugin system → npx → tarball/git clone). SHA-256 checksum validation, atomic rollback via staging directory, lazy prerequisites. Auto-detects Claude Code, Codex, OpenCode, and 6 more CLIs (Cursor, Copilot, Droid, Antigravity, Kimi, Pi).
+- `install.sh` — curl installer with 3-tier fallback chain (plugin system → npx → tarball/git clone). SHA-256 checksum validation, atomic rollback via staging directory, lazy prerequisites. Auto-detects Claude Code, Codex, OpenCode, and 7 more CLIs (Cursor, Copilot, Droid, Antigravity, Kimi, Pi, Gemini).
 
 ## Key Design Decisions
 
@@ -215,7 +215,7 @@ just guards     # all guard scripts (todowrite, bead-stamp, zh-docs, convention-
                 #   askuser-genericization, model-genericization, guardrail floor)
 just lint       # shellcheck gate alone (tracked .sh, baseline'd; SKIPs if shellcheck absent)
 just hooks      # tests/hooks/* (node tests SKIP visibly if node absent)
-just shape      # install-shape: 9 harnesses (Tier A full artifacts; Tier B hint+manifest)
+just shape      # install-shape: 10 harnesses (Tier A full artifacts; Tier B hint+manifest)
 just shape codex  # one harness
 just selftest   # guard-the-guards: mutations that must fail
 just server     # brainstorm-server Node tests (opt-in)
@@ -279,7 +279,7 @@ The `example-workflow/` directory provides a ready-to-use development workflow:
 
 | Source                                                    | Version           | What We Track                               |
 | --------------------------------------------------------- | ----------------- | ------------------------------------------- |
-| [obra/superpowers](https://github.com/obra/superpowers)   | v6.1.1 (baseline) | Skill content, new skills, hook changes     |
+| [obra/superpowers](https://github.com/obra/superpowers)   | v6.2.0 (baseline) | Skill content, new skills, hook changes     |
 | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.0 (baseline) | CLI commands, new features, bd prime format |
 | [garrytan/gstack](https://github.com/garrytan/gstack) `document-release` | snapshot 2026-07-17 | document-release skill lineage |
 | [mattpocock/skills](https://github.com/mattpocock/skills) `productivity/grilling` | snapshot 2026-07-17 | stress-test skill lineage |

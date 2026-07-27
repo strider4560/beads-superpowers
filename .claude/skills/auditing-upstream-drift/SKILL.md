@@ -25,7 +25,7 @@ This is the quality gate for the beads-superpowers plugin. It verifies everythin
 
 | Source | Repository | Our Baseline | What We Track |
 |--------|-----------|-------------|---------------|
-| **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.1.1 | Skills content, new skills, hook structure, plugin manifest |
+| **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | Skills content, new skills, hook structure, plugin manifest |
 | **Beads** | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.0 | CLI commands, new features, bd prime format, deprecations |
 
 ## Known Deliberate Divergences
@@ -51,7 +51,6 @@ These shared skills intentionally differ from upstream superpowers. When Phase 5
 | **.pi/extensions/superpowers.ts** | appends composed beads context (`bd prime` exec) + `beads-superpowers:` bootstrap marker | bootstrap-only extension | beads context is the fork's reason to exist |
 | **test-driven-development** `spec-backed` floor | Fork-only design-artifact precondition before code | no design-artifact precondition | Do NOT file as "revert toward upstream" — it is the default-install design gate, pinned in `KERNEL_MAP` |
 | **.codex-plugin/marketplace.json** | ships it (version-synced mirror of .claude-plugin's) | no such file | kept deliberately for Codex marketplace flows |
-| **Gemini harness** | not shipped (deferred — bead sci4, believed EOL) | gemini-extension.json + GEMINI.md | upstream's own gemini-tools.md pointer is broken; revisit 2026-10 |
 | **OpenCode plugin** | upstream's `.opencode/plugins/` file as base + minimal beads graft (composer bootstrap, compaction re-injection, pointer fallback) | `superpowers.js` static-bootstrap transform | beads context is the fork's core; layout/mechanism otherwise upstream-verbatim |
 | **subagent-driven-development** (fix rounds) | fresh implementer dispatch every fix round | resume the implementer rounds 1–3, fresh one tier up at 4–5 | resume needs an addressable live subagent — most of our supported harnesses may lack it; fresh dispatch also strengthens external-signal verification and avoids the author defending their own defect (ADR-0064) |
 | **subagent-driven-development** (workspace) | SDD workspace, task briefs, and review packages live under `.internal/sdd/<plan-basename>/` (self-ignored) | `.superpowers/sdd/<plan-basename>/` | one canonical `.internal/` scratch root (spec 2026-06-30); upstream's per-plan workspace shape adopted, path not — do not revert the path on re-sync |
@@ -59,6 +58,9 @@ These shared skills intentionally differ from upstream superpowers. When Phase 5
 | **subagent-driven-development** (severity) | severity preserved at the breaker; security findings block the epic and are never parkable | findings flattened into one disposition list | the reviewer's own security floor says a rationale never downgrades a regression |
 | **subagent-driven-development** (re-review) | PASS requires the reviewer's verdict AND a green full suite | reviewer's verdict alone | a fix-diff reviewer structurally cannot see out-of-diff regressions |
 | **subagent-driven-development** (fix context) | fix round carries only the latest report section | full prior report | full history is quadratic across rounds and re-anchors fresh eyes on failed approaches |
+| **test-driven-development** `writing-good-tests.md` | fork retains three classes of source-text assertion: **absence-of-defect pins** (fail only if a named defect returns), **security-floor pins** (credential prefixes the handoff skill must redact), and **CHANGE-DETECTOR presence pins** (~27 explicitly-labelled pins across `tests/skills/test-getting-up-to-speed-contract.sh`, `test-kb-triggers.sh`, and `test-session-handoff-contract.sh`, retained under the deletion bar — a pin may go only once converted to behavioral or covered by a bead in the external `cc-eval` tracker). Adoption also drops upstream's `(superpowers:writing-skills)` parenthetical — a dead cross-plugin reference, since `writing-skills` isn't shipped here and a bare `superpowers:` namespace resolves to the upstream plugin — the file's one deliberate deviation from byte-identical | upstream's Warning Signs forbid all source-text assertions | our shipped artifacts *are* prose that instructs agents, and no eval-harness consumes them yet; deleting the redaction pins would be an automatic Reject under the audit rubric's security floor, and deleting the change-detector pins on faith would convert a false alarm into false silence on real breakage. Adopt the six rules and the traps; keep these three classes. Mark SKIP, not Conflict |
+| **All shared skills** (guardrail heading) | guardrail sections are named `## Red Flags` | v6.2.0 renamed several to `## Common Rationalizations` (`using-git-worktrees`, `requesting-code-review`) | `## Red Flags` is a literal alternate in `scripts/check-guardrail-floor.sh`'s `PAT`; renaming a heading silently drops that skill's guardrail count and can trip — or worse, quietly relax — the floor. Adopt upstream's *rows*, keep our *heading*. Mark SKIP, not Conflict |
+| **brainstorming, writing-plans** (companion files) | not shipped — no `spec-document-reviewer-prompt.md` / `plan-document-reviewer-prompt.md` | still ships both files (v6.2.0, `skills/brainstorming/` and `skills/writing-plans/`) | orphans upstream — nothing dispatches them; upstream's own `writing-plans/SKILL.md` Self-Review section says self-review is "not a subagent dispatch"; upstream RELEASE-NOTES v5.0.6 (2026-03-24) records their deprecation in favor of inline self-review (~25 min subagent-review overhead vs. ~30s self-review, no measurable quality difference). Check 5.4 will list them as new companion files every audit — mark SKIP (known-dead), not missing capability |
 
 When a CHANGED skill from Phase 5 matches a row here, mark it **SKIP (deliberate divergence)** in the report — not drift.
 
@@ -124,7 +126,7 @@ git clone --depth 1 https://github.com/obra/superpowers.git /tmp/superpowers-ups
 **Check 5.1 — Version gap:**
 ```bash
 upstream_ver=$(grep '"version"' /tmp/superpowers-upstream/package.json | grep -o '[0-9.]*')
-echo "Upstream: v$upstream_ver | Our baseline: v6.1.1"
+echo "Upstream: v$upstream_ver | Our baseline: v6.2.0"
 ```
 
 **Check 5.2 — New skills in upstream:**
@@ -323,7 +325,7 @@ Write the report to `.internal/audits/YYYY-MM-DD-upstream-drift.md`:
 - Skill chain: PASS/FAIL
 
 ## Upstream Drift
-- Superpowers: vX.Y.Z (baseline v6.1.1) — N changes
+- Superpowers: vX.Y.Z (baseline v6.2.0) — N changes
 - Beads: vX.Y.Z (baseline v1.1.0) — N new features
 - New skills: N (action: copy/skip for each)
 - Changed skills: N (action: merge/conflict/skip for each)

@@ -245,13 +245,17 @@ Mode selection is automatic. The orchestrator checks after every batch or sequen
 
 Use the least powerful model that can handle each role to conserve cost and increase speed.
 
-**Always specify the model explicitly when dispatching a subagent.** An omitted model inherits your session's model — often the most expensive — which silently defeats this section. For review tasks, scale the model to the diff's size, complexity, and risk: a small mechanical diff does not need the most capable model; a subtle concurrency change does.
+**Always specify the model explicitly when dispatching a subagent.** An omitted model inherits your session's model — often the most expensive — which silently defeats this section.
 
 **Mechanical implementation tasks** (isolated functions, clear specs, 1-2 files): use a fast, cheap model. Most implementation tasks are mechanical when the plan is well-specified.
 
 **Integration and judgment tasks** (multi-file coordination, pattern matching, debugging): use a standard model.
 
-**Architecture, design, and review tasks**: use the most capable available model.
+**Architecture and design tasks**: use the most capable available model.
+
+**Review tasks (task review, re-review, final review) default to the most capable tier** — that default is not a cost target to negotiate down. The one narrow exception: reviewing a genuinely small, mechanical diff (1-2 files, low complexity and risk, no design judgment) may use the standard tier — the scaling is by diff size, never by convenience or to cut cost (Production-Grade Doctrine).
+
+**Fix-loop escalation:** when a fix round's re-review still leaves findings open, escalate the next round's implementer to a more capable tier before you simply run another round at the same tier — an extra round costs more turns than a tier bump costs tokens.
 
 **Task complexity signals:**
 - Touches 1-2 files with a complete spec → cheap model
@@ -413,70 +417,31 @@ Conversation memory does not survive compaction, and a controller that loses its
 bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
 ```
 
-## Advantages
-
-**vs. Manual execution:**
-- Subagents follow TDD naturally
-- Fresh context per task (no confusion)
-- Parallel-safe (subagents don't interfere)
-- Subagent can ask questions (before AND during work)
-
-**vs. Executing Plans:**
-- Same session (no handoff)
-- Continuous progress (no waiting)
-- Review checkpoints automatic
-
-**Efficiency gains:**
-- Task brief and review diffs handed as files (see File Handoffs) — large text stays out of the controller's context
-- Controller curates exactly what context is needed
-- Subagent gets complete information upfront
-- Questions surfaced before work begins (not after)
-
-**Quality gates:**
-- Self-review catches issues before handoff
-- Single read-only task review: spec compliance and code quality in one pass
-- Review loops ensure fixes actually work
-- Spec compliance prevents over/under-building
-- Code quality ensures implementation is well-built
-
-**Cost:**
-- More subagent invocations (implementer + 1 task reviewer per task)
-- Controller does more prep work (extracting all tasks upfront)
-- Review loops add iterations
-- But catches issues early (cheaper than debugging later)
-
 ## Red Flags
 
-**Never:**
-- Start implementation on main/master branch without explicit user consent
-- Skip the task review (it returns both spec-compliance and code-quality verdicts)
-- Proceed with unfixed issues
-- Dispatch parallel subagents WITHOUT per-task worktree isolation (each subagent MUST have its own `bd worktree`)
-- Dispatch more than 5 parallel subagents in a single batch (resource exhaustion)
-- Use Claude's `isolation: "worktree"` parameter instead of `bd worktree` (bypasses beads DB sharing)
-- Make subagent navigate the raw multi-task plan file (give it a focused, self-contained task brief instead — `scripts/task-brief` writes one, see File Handoffs)
-- Skip scene-setting context (subagent needs to understand where task fits)
-- Ignore subagent questions (answer before letting them proceed)
-- Accept "close enough" on spec compliance (task reviewer found issues = not done)
-- Skip review loops (reviewer found issues = implementer fixes = review again)
-- Let implementer self-review replace the task review (both are needed)
-- Move to next task while the review has open issues
-- **Coach a reviewer to suppress findings** — never instruct a reviewer to ignore or not flag an issue, or pre-rate a finding's severity. If your reviewer prompt contains "do not flag", "don't treat X as a defect", "at most Minor", or "the plan chose", stop: you are pre-judging. Let the reviewer raise it and adjudicate in the review loop.
-- Discard or defer a failed task to quietly descope a required deliverable, or let Model-Selection cost-minimization accept weaker correctness/security review — surface the trade-off, never take it silently (Production-Grade Doctrine)
-
-**If subagent asks questions:**
-- Answer clearly and completely
-- Provide additional context if needed
-- Don't rush them into implementation
-
-**If reviewer finds issues:**
-- A fresh implementer fixes them, then a scoped re-review checks those findings
-- "Just one more fix round, it's nearly there" is the rationalization — the loop is capped at five rounds. At the cap, file the findings and surface them (`references/breaker-trip.md`)
-- Don't skip the re-review
-
-**If subagent fails task:**
-- Dispatch fix subagent with specific instructions
-- Don't try to fix manually (context pollution)
+| Rationalization | Reality |
+|---|---|
+| "It's a small change, I'll just start on main" | Never start implementation on main/master branch without your human partner's explicit consent — no exception for size. |
+| "The task review is basically a formality here" | Never skip the task review, and never accept a report missing either verdict — spec-compliance AND code-quality are both required. |
+| "Good enough, I'll move on" | Never proceed with unfixed issues. |
+| "Parallel subagents on different files won't collide" | Every parallel subagent MUST have its own `bd worktree` — never dispatch parallel subagents without per-task worktree isolation. |
+| "A few extra subagents this batch won't hurt" | Never dispatch more than 5 parallel subagents in a single batch (resource exhaustion). |
+| "Claude's built-in `isolation: \"worktree\"` is the same thing" | It bypasses beads DB sharing — `bd worktree` is not optional isolation, it's the only isolation this skill recognizes. **Never** substitute Claude's `isolation: "worktree"` parameter for it. |
+| "The subagent can just read the plan file itself" | Never make a subagent navigate the raw multi-task plan file — give it a focused, self-contained task brief instead (`scripts/task-brief` writes one, see File Handoffs). |
+| "It'll figure out where the task fits" | Never skip scene-setting context — the subagent needs to understand where its task fits. |
+| "Ignore subagent questions, keep it moving" | Answer clearly and completely, provide additional context if needed, and don't rush the subagent into implementation. |
+| "Close enough on spec compliance" / "Accept 'close enough' on spec compliance" | Reviewer found spec issues = not done. Fix it, or run out the five-round cap and let the breaker take over (`references/breaker-trip.md`) — those are the only exits. |
+| "Skip review loops (reviewer found issues = implementer fixes = review again)" / "The fix was small, skip the re-review" / "Don't skip the re-review" | Unreviewed fixes are how regressions land. Every fix round ends with a scoped re-review — no exception for a small diff. |
+| "Let implementer self-review replace the task review" | Both are needed — self-review never substitutes for the task review. |
+| "One more task while this review sits open won't hurt" | Never move to the next task while the review has open issues. |
+| "Coach a reviewer to suppress findings" | Never instruct a reviewer to ignore or not flag an issue, or pre-rate a finding's severity. If your reviewer prompt contains "do not flag", "don't treat X as a defect", "at most Minor", or "the plan chose", stop: you are pre-judging. Let the reviewer raise it and adjudicate in the review loop. |
+| "I'll fix it myself, dispatching is overhead" / "Don't try to fix manually (context pollution)" | Controller fixes pollute your context and skip review. Dispatch a fresh implementer through the fix loop with the specific findings instead — never resume, never fix it yourself. |
+| "One more round will converge" / "Just one more fix round, it's nearly there" | Past the cap, rounds don't converge — the loop is capped at five rounds. At the cap, file the findings and surface them to the user (`references/breaker-trip.md`). |
+| "The reviewer will just find something new anyway" | A scoped re-review verifies only the named findings in the fix diff; it cannot wander. New findings on code the fix diff didn't touch aren't this round's job — track them separately, they don't extend the loop. |
+| "This finding is obviously wrong, I'll drop it" | Never self-adjudicate a finding. At the round cap, file every open finding as a bead and surface both dispositions to the user — silent discards are forbidden. |
+| "Reviews slow the loop down" | The loop without reviews is just unverified churn — reviews are the loop's brakes and steering. |
+| "Recording progress in beads is overhead" | Beads is what survives compaction. Controllers that lose their place have re-dispatched entire completed task sequences — record each task's commit range in `bd close --reason` as you go. |
+| "Discard or defer a failed task to quietly descope a required deliverable" / "let Model-Selection cost-minimization accept weaker correctness/security review" | Surface the trade-off, never take it silently (Production-Grade Doctrine). |
 
 ## Integration
 
