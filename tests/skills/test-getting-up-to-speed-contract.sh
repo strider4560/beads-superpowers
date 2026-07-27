@@ -40,6 +40,24 @@ else
   echo "PASS: orient.sh never invokes --claim"
 fi
 
+# --- Structural: the close-out step must precede the synthesis step, so the emitted
+# summary is the last thing in the agent's response. This is an ordering property of
+# the shipped file (heading line numbers), not a prose pin: reordering the sections
+# fails it regardless of how either heading is worded. Rationale: bookkeeping reports
+# (memory prune, handoff archive) emitted after the summary push it out of view and
+# force the user to scroll back every session.
+close_ln=$(grep -n '^### 4 — Close' "$SKILL" | head -1 | cut -d: -f1)
+synth_ln=$(grep -n '^### 5 — Synthesize' "$SKILL" | head -1 | cut -d: -f1)
+if [ -z "$close_ln" ] || [ -z "$synth_ln" ]; then
+  echo "FAIL: could not locate both the Close (step 4) and Synthesize (step 5) headings in $SKILL"
+  fail=1
+elif [ "$close_ln" -lt "$synth_ln" ]; then
+  echo "PASS: Close (step 4) precedes Synthesize (step 5) — summary is emitted last"
+else
+  echo "FAIL: Synthesize precedes Close — the summary would not be the last thing emitted"
+  fail=1
+fi
+
 # --- Behavioral: Step-4 handoff-freshness classifier (a real fenced ```bash block in
 # SKILL.md — not orient.sh, which emits raw data only and never a verdict). Extracted
 # with an awk range like test-finishing-branch-cleanup.sh's extract_block, adapted to

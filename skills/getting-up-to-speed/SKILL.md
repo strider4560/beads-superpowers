@@ -20,8 +20,10 @@ Copy this checklist into your working response and tick as you go:
 - [ ] 1 Gathered (orient.sh + handoff)
 - [ ] 2 Explored (path by scale)
 - [ ] 3 Drilled (top beads)
-- [ ] 4 Summary emitted through the gate
-- [ ] 5 Closed (capture → prune → archive)
+- [ ] 4 Closed (capture → prune → archive)
+- [ ] 5 Summary emitted through the gate — LAST
+
+**Ordering rule:** every tool call and every bookkeeping report happens *before* the summary. The summary block is the final thing in your response, every time — the user must never scroll back past close-out chatter to reach it.
 
 ### 1 — Gather (at most 2 tool calls)
 
@@ -38,7 +40,7 @@ Pick the path from `tracked=`:
 
 - **< 40 (Light):** top-level `find`, `git log --oneline -15` + `git status -sb` + top 5 tags, `Read` README.
 - **40–150 (Medium, default):** Light + `Read` any of package.json/pyproject.toml/Cargo.toml/go.mod, CHANGELOG/CLAUDE.md/AGENTS.md, project manifests; `find` on skills/agents/docs/hooks/tests/src/lib that exist.
-- **> 150 (Heavy):** dispatch via the `dispatching-parallel-agents` skill — @researcher (CLAUDE/README/CHANGELOG → architecture, <300 words) + @explore (layout + file counts, <200 words) in one message; then read 1–3 files they flag.
+- **> 150 (Heavy):** dispatch two read-only `Subagent (general-purpose)` surveys in one message via the `dispatching-parallel-agents` skill — one reads CLAUDE.md/README/CHANGELOG and returns the architecture in <300 words; the other maps directory layout and per-directory file counts in <200 words. Both briefs are inline — state the scope, the word cap, and "report findings only, change nothing". Then read the 1–3 files they flag. If subagents are unavailable, run the Medium path instead and say so.
 
 Done when: every planned read of the chosen path has returned.
 
@@ -48,7 +50,19 @@ Done when: every planned read of the chosen path has returned.
 
 Done when: 3 beads drilled (or step skipped with reason).
 
-### 4 — Synthesize through the gate
+### 4 — Close (before the summary, never after)
+
+1. Capture durable, evidence-backed insights: `bd remember "<kind>: <insight>"`. Stale Phase-1 memory → `bd forget <id>`.
+2. Prune continuation pointers to one: keep the memory paired with the doc read; forget the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
+3. Archive the consumed doc (only if one was read; AFTER the prune):
+   `mkdir -p .internal/handoff/archive && mv -f "<doc>" .internal/handoff/archive/`
+   Report "Archived consumed handoff `<name>` → `archive/`." — or on failure "⚠️ could not archive (<reason>); left in inbox" and continue (it self-heals next session). This mv is the skill's only local mutation.
+
+Report all three as a **single short line** immediately before the summary — never as a trailing section. Skipping any of the three is fine; say which and why on that same line.
+
+Done when: all three are reported (or explicitly skipped) and nothing further will be written after the summary.
+
+### 5 — Synthesize through the gate (the last thing you write)
 
 Compute the cross-checks yourself (never delegated):
 
@@ -112,18 +126,9 @@ If you want to start it, the fitting skill is **<skill>** — but I'll wait for 
 3. Unfillable sections use edge-cases degraded language — never invented.
 4. Continuity + freshness checks ran (or are marked skipped/unavailable); the "Welcome back" line is suppressed unless fresh.
 5. The checklist is fully ticked (or items marked skipped with reason).
+6. Step 4 is already done and reported — no tool call, no bookkeeping, and no commentary follows the terminal contract.
 
-Done when: all five pass and the summary is emitted ending on the terminal contract.
-
-### 5 — Close
-
-1. Capture durable, evidence-backed insights: `bd remember "<kind>: <insight>"`. Stale Phase-1 memory → `bd forget <id>`.
-2. Prune continuation pointers to one: keep the memory paired with the doc read; forget the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
-3. Archive the consumed doc (only if one was read; AFTER the prune):
-   `mkdir -p .internal/handoff/archive && mv -f "<doc>" .internal/handoff/archive/`
-   Report "Archived consumed handoff `<name>` → `archive/`." — or on failure "⚠️ could not archive (<reason>); left in inbox" and continue (it self-heals next session). This mv is the skill's only local mutation.
-
-Done when: all three reported (or explicitly skipped).
+Done when: all six pass and the summary is emitted ending on the terminal contract.
 
 ## Terminal contract
 

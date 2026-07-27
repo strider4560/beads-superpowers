@@ -145,7 +145,7 @@ Return: Summary of what you found and what you fixed.
 
 **Invoked by:**
 - **subagent-driven-development** — parallel batch mode dispatches independent plan tasks concurrently, each in its own worktree. Uses this skill's dispatch pattern. See SDD Integration below.
-- **getting-up-to-speed** — heavy path (150+ tracked files) dispatches @researcher + @explore in parallel via this pattern.
+- **getting-up-to-speed** — heavy path (150+ tracked files) dispatches two read-only survey subagents in parallel via this pattern.
 
 **Invokes:** None — this is a dispatch pattern skill, not a pipeline skill.
 
