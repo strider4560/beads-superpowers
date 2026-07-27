@@ -16,7 +16,7 @@
 
 ---
 
-一款适用于 Claude Code、Codex、OpenCode 及另外 6 款 AI 编程智能体的插件，让你的智能体在编写代码前先写测试、有条不紊地调试而非盲目猜测，并记住昨天做了什么。可组合技能强制执行这些实践；基于 Dolt 的问题追踪器在会话间保持上下文。
+一款适用于 Claude Code、Codex、OpenCode 及另外 7 款 AI 编程智能体的插件，让你的智能体在编写代码前先写测试、有条不紊地调试而非盲目猜测，并记住昨天做了什么。可组合技能强制执行这些实践；基于 Dolt 的问题追踪器在会话间保持上下文。
 
 ## 快速开始
 
@@ -36,7 +36,7 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 
 开启新的 Claude Code 会话，输入 "where are we"——智能体将加载你的 `bd` 上下文，从上次中断处继续。
 
-使用其他智能体？跳转至 [Codex CLI](#codex-cli)、[OpenCode](#opencode)、[Cursor](#cursor)、[GitHub Copilot CLI](#github-copilot-cli)、[Kimi Code](#kimi-code)、[Antigravity](#antigravity)、[Factory Droid](#factory-droid) 或 [Pi](#pi) 的安装说明。
+使用其他智能体？跳转至 [Codex CLI](#codex-cli)、[OpenCode](#opencode)、[Cursor](#cursor)、[Gemini CLI](#gemini-cli)、[GitHub Copilot CLI](#github-copilot-cli)、[Kimi Code](#kimi-code)、[Antigravity](#antigravity)、[Factory Droid](#factory-droid) 或 [Pi](#pi) 的安装说明。
 
 ## 基本工作流
 
@@ -196,6 +196,12 @@ codex_hooks = true
 ```
 
 在 Cursor 智能体内运行此命令。通过 Marketplace UI 更新。
+
+### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/DollarDill/beads-superpowers
+```
 
 ### GitHub Copilot CLI
 
