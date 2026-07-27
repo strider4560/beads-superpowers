@@ -11,7 +11,7 @@ Load plan, review critically, execute all tasks, report when complete.
 
 **Announce at start:** "I'm using the executing-plans skill to implement this plan."
 
-**Note:** Tell your human partner that this system works much better with access to subagents (Claude Code, Codex, Copilot CLI, and Gemini CLI all qualify; see the per-platform tool refs in `../using-superpowers/references/`). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
+**Note:** Tell your human partner that this system works much better with access to subagents (Claude Code, Codex, Copilot CLI, and Gemini CLI all qualify). If subagents are available, use beads-superpowers:subagent-driven-development instead of this skill.
 
 ## The Process
 

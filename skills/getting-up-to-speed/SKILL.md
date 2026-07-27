@@ -21,9 +21,9 @@ Copy this checklist into your working response and tick as you go:
 - [ ] 2 Explored (path by scale)
 - [ ] 3 Drilled (top beads)
 - [ ] 4 Closed (capture → prune → archive)
-- [ ] 5 Summary emitted through the gate — LAST
+- [ ] 5 Summary emitted through the gate
 
-**Ordering rule:** every tool call and every bookkeeping report happens *before* the summary. The summary block is the final thing in your response, every time — the user must never scroll back past close-out chatter to reach it.
+**Summary-last.** Every tool call and every bookkeeping line lands before the summary; the summary block ends your response, where the user's eye already is.
 
 ### 1 — Gather (at most 2 tool calls)
 
@@ -50,7 +50,7 @@ Done when: every planned read of the chosen path has returned.
 
 Done when: 3 beads drilled (or step skipped with reason).
 
-### 4 — Close (before the summary, never after)
+### 4 — Close
 
 1. Capture durable, evidence-backed insights: `bd remember "<kind>: <insight>"`. Stale Phase-1 memory → `bd forget <id>`.
 2. Prune continuation pointers to one: keep the memory paired with the doc read; forget the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
@@ -58,11 +58,11 @@ Done when: 3 beads drilled (or step skipped with reason).
    `mkdir -p .internal/handoff/archive && mv -f "<doc>" .internal/handoff/archive/`
    Report "Archived consumed handoff `<name>` → `archive/`." — or on failure "⚠️ could not archive (<reason>); left in inbox" and continue (it self-heals next session). This mv is the skill's only local mutation.
 
-Report all three as a **single short line** immediately before the summary — never as a trailing section. Skipping any of the three is fine; say which and why on that same line.
+Report all three on a **single short line**, then move to step 5. Skipping any of the three is fine; say which and why on that same line.
 
-Done when: all three are reported (or explicitly skipped) and nothing further will be written after the summary.
+Done when: all three are reported (or explicitly skipped).
 
-### 5 — Synthesize through the gate (the last thing you write)
+### 5 — Synthesize through the gate
 
 Compute the cross-checks yourself (never delegated):
 
@@ -73,13 +73,14 @@ Compute the cross-checks yourself (never delegated):
   ```bash
   DOC="<path>"; HEAD=$(git rev-parse HEAD)
   DOC_SHA=$(grep -m1 -oE '@ *[`*]*[0-9a-f]{7,40}' "$DOC" | grep -oE '[0-9a-f]{7,40}' | head -1)
-  case "$HEAD" in "$DOC_SHA"*) echo fresh ;; *)
-    if [ -n "$DOC_SHA" ] && git merge-base --is-ancestor "$DOC_SHA" HEAD 2>/dev/null; then echo possibly-stale
-    else
-      DOC_MTIME=$(stat -c %Y "$DOC" 2>/dev/null || stat -f %m "$DOC")
-      [ -n "$DOC_MTIME" ] && [ "$DOC_MTIME" -lt "$(git log -1 --format=%ct)" ] && echo possibly-stale || echo unavailable
-    fi ;;
-  esac
+  # An empty DOC_SHA must never reach the fresh arm: "$DOC_SHA"* would be a bare
+  # wildcard matching any HEAD, which is why the -n guard leads every sha test.
+  if [ -n "$DOC_SHA" ] && [ "${HEAD#"$DOC_SHA"}" != "$HEAD" ]; then echo fresh
+  elif [ -n "$DOC_SHA" ] && git merge-base --is-ancestor "$DOC_SHA" HEAD 2>/dev/null; then echo possibly-stale
+  else
+    DOC_MTIME=$(stat -c %Y "$DOC" 2>/dev/null || stat -f %m "$DOC")
+    [ -n "$DOC_MTIME" ] && [ "$DOC_MTIME" -lt "$(git log -1 --format=%ct)" ] && echo possibly-stale || echo unavailable
+  fi
   ```
 
   The verdict is advisory-only; sha absent / no git → `unavailable`; no doc → "none found".
@@ -126,7 +127,7 @@ If you want to start it, the fitting skill is **<skill>** — but I'll wait for 
 3. Unfillable sections use edge-cases degraded language — never invented.
 4. Continuity + freshness checks ran (or are marked skipped/unavailable); the "Welcome back" line is suppressed unless fresh.
 5. The checklist is fully ticked (or items marked skipped with reason).
-6. Step 4 is already done and reported — no tool call, no bookkeeping, and no commentary follows the terminal contract.
+6. **Summary-last** holds: step 4 is reported, and the terminal contract is the final line you write.
 
 Done when: all six pass and the summary is emitted ending on the terminal contract.
 

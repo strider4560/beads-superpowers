@@ -113,16 +113,30 @@ else
     echo "FAIL: expected possibly-stale, got '$OUT'"; fail=1
   fi
 
-  # NOTE: the snippet's no-sha mtime-fallback branch is NOT exercised here. Verifying
-  # it surfaced a real defect (out of scope to fix — this task owns tests/ only, not
-  # skills/): when DOC_SHA is empty, `case "$HEAD" in "$DOC_SHA"*)` degenerates to a
-  # bare `*` glob that always matches, so the classifier reports "fresh" instead of
-  # the documented "unavailable"/mtime-fallback "possibly-stale" for a doc with no
-  # `@ <sha>` token — reproduced live: `DOC_SHA=""; HEAD=x; case "$HEAD" in
-  # "$DOC_SHA"*) echo fresh;; *) echo other;; esac` prints "fresh". Reported to the
-  # controller for a separate fix bead; asserting the documented behavior here would
-  # make this suite red for a pre-existing bug outside this task's scope, and
-  # asserting the buggy behavior would enshrine it as correct.
+  # --- The no-sha mtime-fallback branch. A doc carrying no `@ <sha>` token leaves
+  # DOC_SHA empty; the classifier must fall through to the mtime comparison, never
+  # report "fresh". Regression pins for beads-superpowers-jy7xw, where
+  # `case "$HEAD" in "$DOC_SHA"*)` degenerated to a bare `*` glob on an empty
+  # DOC_SHA and matched every HEAD, making the whole fallback chain dead code. ---
+
+  # no sha + doc older than the last commit -> possibly-stale (mtime fallback fires)
+  printf '# H\n- branch with no sha token\n' > "$FIXDIR/nosha-old.md"
+  touch -d '2001-01-01 00:00:00' "$FIXDIR/nosha-old.md" 2>/dev/null || touch -t 200101010000 "$FIXDIR/nosha-old.md"
+  OUT="$(cd "$FIXDIR" && run_freshness "$FIXDIR/nosha-old.md")"
+  if [ "$OUT" = "possibly-stale" ]; then
+    echo "PASS: no-sha doc older than HEAD reports possibly-stale (not a false 'fresh')"
+  else
+    echo "FAIL: expected possibly-stale for a no-sha doc older than HEAD, got '$OUT'"; fail=1
+  fi
+
+  # no sha + doc newer than the last commit -> unavailable (no verdict is derivable)
+  printf '# H\n- branch with no sha token\n' > "$FIXDIR/nosha-new.md"
+  OUT="$(cd "$FIXDIR" && run_freshness "$FIXDIR/nosha-new.md")"
+  if [ "$OUT" = "unavailable" ]; then
+    echo "PASS: no-sha doc newer than HEAD reports unavailable (not a false 'fresh')"
+  else
+    echo "FAIL: expected unavailable for a no-sha doc newer than HEAD, got '$OUT'"; fail=1
+  fi
 fi
 
 # --- CHANGE-DETECTOR — retained until cc-eval covers the terminal-contract output
