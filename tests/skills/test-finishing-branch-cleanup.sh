@@ -147,6 +147,20 @@ else
   assert_contains "$OPT1" 'MAIN_ROOT' "Option 1 leaves the worktree for the main repo root"
 fi
 
+echo "Test: neither menu advertises discard (vctf4.13)"
+MENUS="$(awk '/^#+ Step 4/,/^#+ Step 5/' "$SKILL")"
+if printf '%s' "$MENUS" | grep -qiE 'discard (this )?work|Discard\b'; then
+  fail "a completion menu still offers discard next to merge"
+else
+  pass "no menu advertises discard"
+fi
+
+echo "Test: discard ritual survives as explicit-request-only (vctf4.13)"
+assert_contains "$(cat "$SKILL")" "Type 'discard' to confirm." "typed-confirmation ritual retained"
+
+echo "Test: detached-HEAD PR path has a working push (vctf4.14)"
+assert_contains "$(cat "$SKILL")" 'HEAD:refs/heads/' "explicit refspec push for detached HEAD"
+
 echo ""
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES test(s) failed"
