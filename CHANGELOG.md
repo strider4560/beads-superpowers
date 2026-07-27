@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Superpowers upstream baseline moves to v6.2.0.
 - The completion menu no longer offers to discard finished, passing work — discarding is now an explicit-request-only path, with the same typed confirmation it always had.
 - Gemini CLI is supported again, bringing the harness count to ten.
+- Pull request creation no longer assumes `gh` specifically — the guidance now says "your forge's CLI," with `gh` and `glab` kept as examples.
+- `dispatching-parallel-agents` swaps its Claude-specific `Task(...)` code block for fanning out subagents for a template any harness can follow, plus the rule that makes it work: multiple dispatch calls in the same response run in parallel, one call per response runs them one at a time.
+- `receiving-code-review` replaces an in-joke signal phrase ("Strange things are afoot at the Circle K") for pushing back out loud with a plain instruction — name the tension, then raise it with your partner — and relabels a "CLAUDE.md violation" as an "instruction-file violation," so the wording holds on harnesses that don't use that filename.
 - `test-driven-development`'s testing companion doc is now a positive catalog of how to write good tests, replacing the old list of anti-patterns to avoid.
 - Some skill contract tests now execute the actual script or prompt block they check instead of only searching its text for expected phrases, so a real behavior regression fails the test even when the surrounding wording is untouched.
 
@@ -38,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - The test-pollution bisection script no longer reports "all tests clean" when it matched no test files at all — its own documented search pattern was silently matching nothing, so every pollution hunt came back falsely clean.
 - Finishing a branch now actually removes the worktree it created. The cleanup step was calling a `bd` flag that doesn't exist, so it silently did nothing every time, and the branch delete that followed it failed because the worktree was still there.
+- Session start now works on Windows. The hook that loads skills and beads context at the start of every session was launching under `cmd.exe` there, which can't run it, so nothing loaded; it now specifies `bash` as its shell explicitly.
+- Finishing a branch from a detached HEAD and choosing to open a pull request no longer fails at the push — the instructions previously pushed a branch name that doesn't exist yet in that state; they now push with an explicit branch reference instead.
+- The reference to the code-reviewer template in `requesting-code-review` is now an actual link instead of a bare path — one occurrence pointed at the wrong relative location entirely, so following it by hand led nowhere.
 
 ## [0.15.0] - 2026-07-19
 
