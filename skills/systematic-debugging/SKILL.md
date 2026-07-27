@@ -188,6 +188,7 @@ You MUST complete each phase before proceeding to the next.
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
+   - Before claiming the fix works, run the `beads-superpowers:verification-before-completion` skill — evidence before claims.
 
 4. **If Fix Doesn't Work**
    - STOP

@@ -16,10 +16,11 @@ Load plan, review critically, execute all tasks, report when complete.
 ## The Process
 
 ### Step 1: Load and Review Plan
-1. Read plan file
-2. Review critically - identify any questions or concerns about the plan
-3. If concerns: Raise them with your human partner before starting
-4. If no concerns: Create epic bead and child beads for each task, then proceed
+1. Ensure an isolated workspace first — use the beads-superpowers:using-git-worktrees skill.
+2. Read plan file
+3. Review critically - identify any questions or concerns about the plan
+4. If concerns: Raise them with your human partner before starting
+5. If no concerns: Create epic bead and child beads for each task, then proceed
 
    Create the epic, then import the child tasks as JSONL:
 
