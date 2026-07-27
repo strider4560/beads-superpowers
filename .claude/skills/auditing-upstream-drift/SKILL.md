@@ -59,6 +59,7 @@ These shared skills intentionally differ from upstream superpowers. When Phase 5
 | **subagent-driven-development** (severity) | severity preserved at the breaker; security findings block the epic and are never parkable | findings flattened into one disposition list | the reviewer's own security floor says a rationale never downgrades a regression |
 | **subagent-driven-development** (re-review) | PASS requires the reviewer's verdict AND a green full suite | reviewer's verdict alone | a fix-diff reviewer structurally cannot see out-of-diff regressions |
 | **subagent-driven-development** (fix context) | fix round carries only the latest report section | full prior report | full history is quadratic across rounds and re-anchors fresh eyes on failed approaches |
+| **test-driven-development** `writing-good-tests.md` | fork retains two classes of source-text assertion: **absence-of-defect pins** (fail only if a named defect returns) and **security-floor pins** (credential prefixes the handoff skill must redact) | upstream's Warning Signs forbid all source-text assertions | our shipped artifacts *are* prose that instructs agents, and no eval-harness consumes them yet; deleting the redaction pins would be an automatic Reject under the audit rubric's security floor. Adopt the six rules and the traps; keep these two classes. Mark SKIP, not Conflict |
 
 When a CHANGED skill from Phase 5 matches a row here, mark it **SKIP (deliberate divergence)** in the report — not drift.
 
