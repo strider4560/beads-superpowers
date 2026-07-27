@@ -1,6 +1,6 @@
 {
   "name": "beads-superpowers",
-  "description": "Core skills library: TDD, debugging, collaboration patterns, and proven techniques",
+  "description": "Superpowers skills + Beads issue tracking for Gemini CLI. Composable skills + persistent task memory.",
   "version": "0.15.0",
   "contextFileName": "GEMINI.md"
 }
