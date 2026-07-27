@@ -40,12 +40,20 @@ echo "$output" | grep -q "beads-context\|bd prime\|Beads Workflow" && echo "PASS
 
 **Check 1.5 — .claude/settings.json points to plugin hook (not bare bd prime):**
 ```bash
-cat .claude/settings.json | grep -q "hooks/session-start" && echo "PASS" || echo "FAIL: settings.json still uses bare bd prime, not plugin hook"
+if [ ! -f .claude/settings.json ]; then
+  echo "SKIP 1.5: .claude/settings.json absent (gitignored by design, .gitignore:25)"
+else
+  cat .claude/settings.json | grep -q "hooks/session-start" && echo "PASS" || echo "FAIL: settings.json still uses bare bd prime, not plugin hook"
+fi
 ```
 
 **Check 1.6 — Duplicate hook detection:**
 ```bash
-cat .claude/settings.json | grep -q '"bd prime"' && echo "WARNING: bd setup claude hooks still installed — run bd setup claude --remove" || echo "PASS: no duplicate hooks"
+if [ ! -f .claude/settings.json ]; then
+  echo "SKIP 1.6: .claude/settings.json absent (gitignored by design, .gitignore:25)"
+else
+  cat .claude/settings.json | grep -q '"bd prime"' && echo "WARNING: bd setup claude hooks still installed — run bd setup claude --remove" || echo "PASS: no duplicate hooks"
+fi
 ```
 
 **Check 1.7 — Skills count:**
@@ -139,9 +147,8 @@ echo "Beads command references in skills: $count (minimum: 30)"
 
 **Check 3.7 — Reviewer prompt must NOT reference beads:**
 ```bash
-# Orchestrator-only design: the reviewer subagent does not touch beads.
-# (implementer-prompt.md is the documented EXCEPTION — it IS beads-aware by
-#  design: it claims and closes its own task bead. Do not add it here.)
+# Orchestrator-only design: subagents (implementer and reviewer alike) do not
+# touch beads. Only the controller owns the bead lifecycle.
 for f in skills/subagent-driven-development/task-reviewer-prompt.md; do
     count=$(grep -cE "bd create|bd close|bd update|bd ready" "$f" 2>/dev/null) || count=0
     [ "$count" -eq 0 ] && echo "PASS: $(basename $f) clean" || echo "FAIL: $(basename $f) has $count bd references"
