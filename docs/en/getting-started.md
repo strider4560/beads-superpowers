@@ -46,6 +46,7 @@ Config validated; not E2E-tested by us. Use with that in mind.
 | CLI | Install | Update | Notes |
 |-----|---------|--------|-------|
 | Cursor | `/add-plugin beads-superpowers` (in Cursor Agent) | Marketplace UI | config validated by us; not E2E-tested |
+| Gemini CLI | `gemini extensions install https://github.com/DollarDill/beads-superpowers` | - | config validated by us; not E2E-tested |
 | GitHub Copilot CLI | `copilot plugin marketplace add DollarDill/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | rides the Claude-plugin fallback (skills + session-start via the shared `hooks/hooks.json`), the same mechanism upstream ships; requires Copilot CLI v1.0.11+ |
 | Kimi Code | `/plugins install https://github.com/DollarDill/beads-superpowers` (run `/new` after) | - | |
 | Antigravity | `agy plugin install https://github.com/DollarDill/beads-superpowers` | - | reuses the Claude plugin manifest - the same mechanism upstream verified; not E2E-tested by us |

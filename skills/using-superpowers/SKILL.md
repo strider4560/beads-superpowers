@@ -74,6 +74,7 @@ If your harness appears here, read its reference file for special instructions:
 - Copilot CLI: `references/copilot-tools.md`
 - Pi: `references/pi-tools.md`
 - Antigravity: `references/antigravity-tools.md`
+- Gemini: `references/gemini-tools.md`
 
 ## Asking the User
 

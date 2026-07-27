@@ -49,6 +49,7 @@ npm install -g @beads/bd    # any platform
 | CLI | 安装 | 更新 | 备注 |
 |-----|---------|--------|-------|
 | Cursor | `/add-plugin beads-superpowers`（在 Cursor Agent 中） | 市场 UI | 配置已由我们验证；未经端到端测试 |
+| Gemini CLI | `gemini extensions install https://github.com/DollarDill/beads-superpowers` | — | 配置已由我们验证；未经端到端测试 |
 | GitHub Copilot CLI | `copilot plugin marketplace add DollarDill/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | 使用 Claude 插件回退（技能 + 通过共享 `hooks/hooks.json` 的 session-start），与上游相同的机制；需要 Copilot CLI v1.0.11+ |
 | Kimi Code | `/plugins install https://github.com/DollarDill/beads-superpowers`（之后运行 `/new`） | — | |
 | Antigravity | `agy plugin install https://github.com/DollarDill/beads-superpowers` | — | 复用 Claude 插件清单——与上游已验证的相同机制；未经我们端到端测试 |
