@@ -25,7 +25,7 @@ This is the quality gate for the beads-superpowers plugin. It verifies everythin
 
 | Source | Repository | Our Baseline | What We Track |
 |--------|-----------|-------------|---------------|
-| **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.1.1 | Skills content, new skills, hook structure, plugin manifest |
+| **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | Skills content, new skills, hook structure, plugin manifest |
 | **Beads** | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.0 | CLI commands, new features, bd prime format, deprecations |
 
 ## Known Deliberate Divergences
@@ -125,7 +125,7 @@ git clone --depth 1 https://github.com/obra/superpowers.git /tmp/superpowers-ups
 **Check 5.1 — Version gap:**
 ```bash
 upstream_ver=$(grep '"version"' /tmp/superpowers-upstream/package.json | grep -o '[0-9.]*')
-echo "Upstream: v$upstream_ver | Our baseline: v6.1.1"
+echo "Upstream: v$upstream_ver | Our baseline: v6.2.0"
 ```
 
 **Check 5.2 — New skills in upstream:**
@@ -324,7 +324,7 @@ Write the report to `.internal/audits/YYYY-MM-DD-upstream-drift.md`:
 - Skill chain: PASS/FAIL
 
 ## Upstream Drift
-- Superpowers: vX.Y.Z (baseline v6.1.1) — N changes
+- Superpowers: vX.Y.Z (baseline v6.2.0) — N changes
 - Beads: vX.Y.Z (baseline v1.1.0) — N new features
 - New skills: N (action: copy/skip for each)
 - Changed skills: N (action: merge/conflict/skip for each)
