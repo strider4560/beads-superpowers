@@ -155,5 +155,5 @@ graph TD
 
 ## 来源
 
-- [obra/superpowers](https://github.com/obra/superpowers) v6.1.1 — 适用于 AI 智能体的可组合技能（MIT）
+- [obra/superpowers](https://github.com/obra/superpowers) v6.2.0 — 适用于 AI 智能体的可组合技能（MIT）
 - [gastownhall/beads](https://github.com/gastownhall/beads) v1.1.0 — 适用于 AI 智能体的持久化问题追踪器（MIT）
