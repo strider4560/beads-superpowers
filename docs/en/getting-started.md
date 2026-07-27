@@ -150,7 +150,7 @@ bd dolt push    # test the connection
 
 A brand-new empty remote needs an initial commit before that first push succeeds - create it with a README, then add the remote and push.
 
-Dolt history retains deleted rows, so a remote that matches your code repo makes that full history public too. A dedicated private repo keeps issue data auth-gated while your code stays public. bd releases after v1.1.0 enforce this with a collision guard: `bd dolt remote add` refuses a URL matching your git origin unless you pass `--allow-git-origin`. Same-repo sync is still available behind that flag - it's an explicit opt-in, not the default.
+Dolt history retains deleted rows, so a remote that matches your code repo makes that full history public too. A dedicated private repo keeps issue data auth-gated while your code stays public. Nothing stops you pointing bd at your code repo today - bd has a collision guard that refuses a URL matching your git origin unless you pass `--allow-git-origin`, but it is not in any released version yet (checked through v1.1.2). Treat the separate remote as your own discipline, and expect the guard on a future upgrade.
 
 Without a remote, beads still works entirely locally.
 
@@ -266,4 +266,4 @@ Or reinstall. Note: `claude plugin update` has a known [cache bug](https://githu
 
 **Stale reminder hook after updating from ≤0.8.2** - Earlier versions registered a per-prompt `superpowers-reminder.sh` hook that no longer ships. Re-run the scripted installer (`install.sh`) - it detects the stale `UserPromptSubmit` entry and removes it automatically. If `python3` isn't available, it prints the settings-file entry to remove by hand.
 
-**`bd dolt push` fails** - You need a beads remote configured first: `bd dolt remote add origin <url>` (use a dedicated beads remote, not your code repo's URL - bd releases after v1.1.0 refuse a URL matching git origin unless you pass `--allow-git-origin`). If you don't need remote sync, the failure is harmless - beads works fine locally.
+**`bd dolt push` fails** - You need a beads remote configured first: `bd dolt remote add origin <url>`. Use a dedicated beads remote, not your code repo's URL - and note that no released bd stops you from getting this wrong yet, so check it yourself. If you don't need remote sync, the failure is harmless - beads works fine locally.

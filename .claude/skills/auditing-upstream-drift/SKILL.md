@@ -26,7 +26,7 @@ This is the quality gate for the beads-superpowers plugin. It verifies everythin
 | Source | Repository | Our Baseline | What We Track |
 |--------|-----------|-------------|---------------|
 | **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | Skills content, new skills, hook structure, plugin manifest |
-| **Beads** | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.0 | CLI commands, new features, bd prime format, deprecations |
+| **Beads** | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.2 | CLI commands, new features, bd prime format, deprecations |
 
 ## Known Deliberate Divergences
 

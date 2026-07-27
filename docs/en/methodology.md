@@ -153,4 +153,4 @@ Why the plugin is built this way, not just how it runs, lives on [Philosophy](ph
 ## Sources
 
 - [obra/superpowers](https://github.com/obra/superpowers) v6.2.0 — composable skills for AI agents (MIT)
-- [gastownhall/beads](https://github.com/gastownhall/beads) v1.1.0 — Persistent issue tracker for AI agents (MIT)
+- [gastownhall/beads](https://github.com/gastownhall/beads) v1.1.2 — Persistent issue tracker for AI agents (MIT)

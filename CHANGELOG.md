@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-27
+
 ### Added
 
 - Implementation now starts from an approved spec or plan. Before the first edit the agent states the file it is working from — `Working from: <path>` — or says there isn't one and brainstorms first. A task from an approved plan, a finished root-cause investigation, and typo/comment/rename work all satisfy it, so it stays quiet on trivial changes. This rule previously lived only in an optional orchestrator file, which meant a default install did not actually have it.
@@ -24,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `subagent-driven-development`: the SDD workspace is now scoped per plan (`.internal/sdd/<plan-basename>/`), so two plans in one working tree cannot share brief filenames. `review-package` takes the plan file as its first argument.
 - `subagent-driven-development`: fix rounds dispatch a fresh implementer rather than resuming, and a re-review PASS now requires the full test suite to be green.
 - The installer end-to-end test suite (`just docker`) now runs under **Podman** as well as Docker — it auto-detects whichever is installed (Docker first), or you can force one with `CONTAINER_RUNTIME=podman just docker`. Contributors on Podman-only machines can now run the full installer E2E.
-- Superpowers upstream baseline moves to v6.2.0.
+- Upstream baselines advance: skill content now tracks superpowers **v6.2.0**, beads integration **v1.1.2**. The beads audit found no CLI surface change to adopt — v1.1.1 was never published, and v1.1.2 is a storage-layer hotfix. If `bd migrate` on v1.1.0 ever aborted with `invalid hash length` and left the database unopenable, upgrading to v1.1.2 lets the migration finish.
 - The SessionStart hook now also declares `bash` as its shell explicitly, matching upstream v6.2.0. Windows sessions on this fork already loaded correctly through `hooks/run-hook.cmd`'s cmd.exe-to-bash polyglot wrapper — the explicit declaration is added parity and a second line of defense, not a fix for a prior failure.
 - The completion menu no longer offers to discard finished, passing work — discarding is now an explicit-request-only path, with the same typed confirmation it always had.
 - Gemini CLI is supported again, bringing the harness count to ten.
@@ -44,6 +46,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Finishing a branch now actually removes the worktree it created. The cleanup step was calling a `bd` flag that doesn't exist, so it silently did nothing every time, and the branch delete that followed it failed because the worktree was still there.
 - Finishing a branch from a detached HEAD and choosing to open a pull request no longer fails at the push — the push now branches on whether HEAD is detached, using an explicit `HEAD:refs/heads/<branch>` refspec in that case instead of a branch name that doesn't exist yet.
 - The reference to the code-reviewer template in `requesting-code-review` is now an actual link instead of a bare path — one occurrence pointed at the wrong relative location entirely, so following it by hand led nowhere.
+- `getting-up-to-speed` no longer claims a stale handoff document is current. When a handoff carried no commit sha, the freshness check reported "fresh" for any repo state — the comparison collapsed into a wildcard that matched everything, which also made the three fallback checks below it unreachable. You now get "possibly stale" or "unavailable", whichever the evidence supports.
+- Orientation ends with the summary. The memory-prune and handoff-archive bookkeeping used to print after it, pushing the part you actually read off the top of the screen.
+- The brainstorming visual companion documents how to launch its server on Gemini CLI. Every other supported harness had a launch recipe; Gemini users had to infer one.
+- Documentation no longer tells you that bd refuses a beads remote matching your git origin. That collision guard is real but unreleased — no published bd version has it, so the docs now say to check the remote yourself and expect the guard on a future upgrade. Affected the setup guide and troubleshooting in both English and Chinese.
 
 ## [0.15.0] - 2026-07-19
 
