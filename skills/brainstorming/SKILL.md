@@ -158,7 +158,7 @@ After writing the spec document, look at it with fresh eyes:
 1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
 2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
 3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
-4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit. The spec's next readers are writing-plans and, transitively, subagents who cannot ask you what you meant — so also scan requirements (not rationale prose) for machine-reader hazards: synonym rotation (one name per entity, used every time), vague quality words ("robust", "properly" — name the observable behavior instead), and multi-clause requirement sentences (split them; one requirement per sentence). Full rules: `../subagent-driven-development/references/ste-authoring.md`.
 
 Fix any issues inline. No need to re-review — just fix and move on.
 

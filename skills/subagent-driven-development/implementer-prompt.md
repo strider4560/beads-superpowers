@@ -17,7 +17,10 @@ Agent tool (subagent_type: "general-purpose"):
 
     ## Context
 
-    [Scene-setting: where this fits, dependencies, architectural context]
+    [Scene-setting: where this fits, dependencies, architectural context.
+    Controller: author this block under references/ste-authoring.md — active voice,
+    one instruction per sentence, the plan's exact names for every entity. The
+    implementer acts on these words with no follow-up round.]
 
     ## Before You Begin
 
@@ -186,6 +189,13 @@ Agent tool (subagent_type: "general-purpose"):
     lives in the report file): the **Status**, commits created (short SHA +
     subject), a one-line test summary, your concerns if any, and the **report
     file path**.
+
+    Write the report and summary for a machine reader: short active sentences,
+    one fact per sentence, the task brief's exact names for files and functions.
+    State test results as observations ("8/8 passed", "test_foo failed with
+    KeyError"), never as impressions ("tests look good"). Keep your real
+    uncertainty — "may", "did not verify" — the controller acts on your exact
+    words, and a hedge you drop becomes a claim you made.
 
     Use DONE_WITH_CONCERNS if you completed the work but have doubts about correctness.
     Use BLOCKED if you cannot complete the task. Use NEEDS_CONTEXT if you need

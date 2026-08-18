@@ -46,7 +46,9 @@ model silently inherits the session's most expensive one]
     - **PASS** — every listed finding is resolved AND `[SUITE_STATUS]` above says
       `green`. Both conditions. A resolved-looking diff with an unrun or failing
       suite is not a PASS — say so rather than assuming someone else checked.
-    - **FINDINGS REMAIN** — list which, and what is still missing.
+    - **FINDINGS REMAIN** — list which, and what is still missing. One sentence
+      per finding, active voice, with file:line — the next fix round's fresh
+      implementer parses your exact words with no chance to ask.
 
     **Security floor:** any security regression — a weakened, removed, or
     bypassed security control (auth, validation, sanitization, secrets,

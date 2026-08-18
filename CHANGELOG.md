@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **STE authoring rules for machine-parsed text** (fork addition). A condensed Simplified Technical English rule set — adapted from [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) (MIT), itself encoding ASD-STE100 Issue 9 — now governs every string one agent writes for another agent to parse: bead descriptions and acceptance criteria (`writing-plans`), scene-setting context, implementer reports, review findings, close reasons, and `bd remember` insights (`subagent-driven-development`), handoff docs (`session-handoff`), and spec requirement lines (`brainstorming`). Canonical reference: `skills/subagent-driven-development/references/ste-authoring.md`. Rationale: a fresh subagent reads its brief cold; a sentence with two readings costs a fix round, and synonym rotation across parallel briefs makes independent implementers diverge on shared names.
+
 ## [0.16.0] - 2026-07-27
 
 ### Added

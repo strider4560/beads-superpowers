@@ -315,6 +315,22 @@ Hand task text and review diffs to subagents as **files**, not pasted context �
 - The reviewer is **read-only**: it must not mutate the working tree, the index, HEAD, or branch state.
 - The workspace is resolved **per plan, per working tree** (`scripts/sdd-workspace <plan-file>`). Two plans in one tree never share brief filenames, and in Parallel Batch Mode each `bd worktree` gets its own tree.
 
+## Authoring Text for Machine Readers (STE)
+
+Every string you author in this workflow is parsed by an agent that cannot ask what
+you meant: bead descriptions (`bd create`), scene-setting context in implementer
+prompts, answers to subagent questions, review-finding relays, close reasons, and
+`bd remember` insights. Write them under the Simplified Technical English rules in
+`references/ste-authoring.md` — short active sentences, one instruction per sentence,
+one name per concept, hedges preserved.
+
+The two failure modes this prevents are expensive here: a misread task brief costs a
+full fix round, and synonym rotation across parallel task briefs makes independent
+implementers diverge on shared names (a divergence no worktree isolates). Run the
+reference's six-item scan checklist before `bd create` and before every dispatch.
+Close reasons and memories get the same treatment — they are re-parsed after
+compaction by an agent with no other context.
+
 ## Prompt Templates
 
 Dispatch via the `Agent` tool:
@@ -429,6 +445,7 @@ bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / patt
 | "Claude's built-in `isolation: \"worktree\"` is the same thing" | It bypasses beads DB sharing — `bd worktree` is not optional isolation, it's the only isolation this skill recognizes. **Never** substitute Claude's `isolation: "worktree"` parameter for it. |
 | "The subagent can just read the plan file itself" | Never make a subagent navigate the raw multi-task plan file — give it a focused, self-contained task brief instead (`scripts/task-brief` writes one, see File Handoffs). |
 | "It'll figure out where the task fits" | Never skip scene-setting context — the subagent needs to understand where its task fits. |
+| "It's prose for an LLM, it'll figure out what I meant" | A subagent parses your text with no follow-up round. Ambiguous bead text costs fix rounds — author it under `references/ste-authoring.md` (STE rules: one instruction per sentence, one name per concept). |
 | "Ignore subagent questions, keep it moving" | Answer clearly and completely, provide additional context if needed, and don't rush the subagent into implementation. |
 | "Close enough on spec compliance" / "Accept 'close enough' on spec compliance" | Reviewer found spec issues = not done. Fix it, or run out the five-round cap and let the breaker take over (`references/breaker-trip.md`) — those are the only exits. |
 | "Skip review loops (reviewer found issues = implementer fixes = review again)" / "The fix was small, skip the re-review" / "Don't skip the re-review" | Unreviewed fixes are how regressions land. Every fix round ends with a scoped re-review — no exception for a small diff. |

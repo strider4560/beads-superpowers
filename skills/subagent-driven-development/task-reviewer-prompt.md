@@ -120,6 +120,15 @@ Subagent (general-purpose):
     file:line, or a check you ran — no preamble, no process narration,
     no closing summary.
 
+    Phrase each finding for a machine reader: one finding per sentence,
+    active voice, the plan's exact names for files and functions. Your
+    words are re-parsed twice with no chance to clarify — by the
+    controller for dispatch, and by a fresh fix-round implementer who was
+    not at this review. State what you observed, not an impression
+    ("`parse()` swallows the IOError at config.py:41", never "error
+    handling seems off"). Keep genuine uncertainty as ⚠️ — never promote
+    "may be unused" to "is unused".
+
     ## Calibration
 
     Categorize issues by actual severity. Not everything is Critical.

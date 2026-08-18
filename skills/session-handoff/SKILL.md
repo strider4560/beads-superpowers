@@ -34,6 +34,12 @@ tailor Work In Progress / Loose Threads / Suggested Skills.
 2. **Synthesize** into the bundled template (`handoff-template.md`). **Reference
    artifacts by path — never paste their bodies** (commits, ADRs, specs, plans, diffs).
    Duplicating bloats the doc and goes stale.
+   **Write for the machine reader:** the consumer is a fresh agent with no way to ask
+   what you meant. Short active sentences, one fact per line, one name per artifact
+   used consistently, no pronouns whose referent lives in this dead session ("the fix
+   we discussed"). "Exact next action" is an instruction: imperative, one action, ≤20
+   words. Keep honest hedges ("push may have failed") — never promote them to facts.
+   (Full rules: `../subagent-driven-development/references/ste-authoring.md`.)
    Done when: every section maps to a captured fact, referenced by path.
 3. **Write the doc** — Default: `.internal/handoff/YYYY-MM-DD[-HHMMSS]-<topic>-handoff.md`
    (`-HHMMSS` only if a same-day handoff exists).

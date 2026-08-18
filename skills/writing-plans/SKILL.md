@@ -59,6 +59,40 @@ In beads terms, a right-sized task is one bead (`bd create -t task --parent <epi
 - "Run the tests and make sure they pass" - step
 - "Commit" - step
 
+## Write for a Machine Reader (STE Rules)
+
+Your plan's reader is a fresh subagent with no way to ask what you meant. Task text is
+extracted verbatim into a brief (`scripts/task-brief`) and read cold; acceptance
+criteria are copied verbatim into beads and re-read by reviewers and post-compaction
+controllers. Every ambiguous sentence you write becomes some implementer's coin flip —
+and a wrong flip costs a full fix round.
+
+Apply these Simplified Technical English rules (adapted from ASD-STE100, the
+controlled language aerospace uses to stop technicians misreading manuals) to all task
+text, steps, Interfaces blocks, and acceptance criteria:
+
+- **One name per concept, plan-wide.** The most important rule. If Task 2's "Produces"
+  says `parse_config()`, Task 4's "Consumes" says `parse_config()` — never "the config
+  loader". Parallel implementers see only their own task; consistent names are the only
+  thing keeping their outputs compatible.
+- **One instruction per sentence, ≤20 words, imperative, active voice.** "Run the test.
+  Record the output." — not "The test should be run and its output recorded."
+- **Acceptance criteria name observable outcomes.** "The command prints one progress
+  line per 100 items" — not "progress reporting works correctly". A reviewer cannot
+  verify "correctly", "properly", "robust", or "clean".
+- **No phrasal verbs, no semicolons, no 4+-word noun stacks, no ellipsis.** "Start the
+  server", not "spin up the server". Keep the subject and article even when it reads
+  longer: "the files that are not committed", not "files not committed".
+- **Keep hedges and exact values.** "May", "at most", version floors, and counts are
+  content — copy them verbatim from the spec, never round or promote them.
+
+Before saving the plan, scan every task for: synonym rotation, vague quality words,
+run-on sentences, and criteria a reviewer could not test. The full rule set with a
+per-surface checklist lives in
+`../subagent-driven-development/references/ste-authoring.md`. Do not flatten
+rationale prose ("Architecture", why-notes) into this style — strict rules apply to
+text an agent must act on.
+
 ## Plan Document Header
 
 **Every plan MUST start with this header:**
