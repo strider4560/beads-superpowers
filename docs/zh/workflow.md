@@ -14,7 +14,7 @@ description: 一个精简的编排器对每个请求进行分类，并将其路�
 
 beads-superpowers 技能如何编排开发生命周期。`yegge` 编排器对每个请求进行分类，并将其路由到负责每个步骤的技能；对于非简单工作，它执行以下完整流程，让每个技能执行自己的门控。它是一个路由器，而非状态机——没有任何规则是靠不可执行的"不可跳过某步骤"约束来保证的。关于此流程为何如此设计，参见 [philosophy.md](philosophy.md)。
 
-想使用此工作流？获取 [example-workflow/](https://github.com/DollarDill/beads-superpowers/tree/main/example-workflow) 目录——它包含 [yegge.md](https://github.com/DollarDill/beads-superpowers/blob/main/example-workflow/agents/yegge.md) 编排器智能体。编排器是可选附加组件——通过 `install.sh --with-yegge` 全局安装（默认不安装），或手动将 `agents/yegge.md` 复制到你的项目中。
+想使用此工作流？获取 [example-workflow/](https://github.com/strider4560/beads-superpowers/tree/main/example-workflow) 目录——它包含 [yegge.md](https://github.com/strider4560/beads-superpowers/blob/main/example-workflow/agents/yegge.md) 编排器智能体。编排器是可选附加组件——通过 `install.sh --with-yegge` 全局安装（默认不安装），或手动将 `agents/yegge.md` 复制到你的项目中。
 
 ## 流程
 

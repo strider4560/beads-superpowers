@@ -5,7 +5,7 @@ description: Use when checking if beads-superpowers is outdated, before a plugin
 
 # Auditing Upstream Drift
 
-> **Maintainer-only skill for the [beads-superpowers](https://github.com/DollarDill/beads-superpowers) repository — not distributed.**
+> **Maintainer-only skill for the [beads-superpowers](https://github.com/strider4560/beads-superpowers) repository — not distributed.**
 > Before doing anything else: if the current repo is not beads-superpowers (no `.claude-plugin/plugin.json` whose `name` is `beads-superpowers`), say so and STOP — this skill audits that repo against its upstreams and is useless anywhere else.
 
 This is the quality gate for the beads-superpowers plugin. It verifies everything — upstream staleness, test pass rates, documentation accuracy, plugin manifest validity, hook functionality, content integrity, and beads integration completeness.
@@ -252,7 +252,7 @@ done
 
 **Check 7.5 — SETUP-GUIDE install commands use correct names:**
 ```bash
-grep -q "DollarDill/beads-superpowers" .internal/SETUP-GUIDE.md && echo "PASS: correct marketplace repo" || echo "FAIL"
+grep -q "strider4560/beads-superpowers" .internal/SETUP-GUIDE.md && echo "PASS: correct marketplace repo" || echo "FAIL"
 grep -q "beads-superpowers@beads-superpowers-marketplace" .internal/SETUP-GUIDE.md && echo "PASS: correct install command" || echo "FAIL"
 ```
 

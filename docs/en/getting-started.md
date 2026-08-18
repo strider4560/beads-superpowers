@@ -46,12 +46,12 @@ Config validated; not E2E-tested by us. Use with that in mind.
 | CLI | Install | Update | Notes |
 |-----|---------|--------|-------|
 | Cursor | `/add-plugin beads-superpowers` (in Cursor Agent) | Marketplace UI | config validated by us; not E2E-tested |
-| Gemini CLI | `gemini extensions install https://github.com/DollarDill/beads-superpowers` | - | config validated by us; not E2E-tested |
-| GitHub Copilot CLI | `copilot plugin marketplace add DollarDill/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | rides the Claude-plugin fallback (skills + session-start via the shared `hooks/hooks.json`), the same mechanism upstream ships; requires Copilot CLI v1.0.11+ |
-| Kimi Code | `/plugins install https://github.com/DollarDill/beads-superpowers` (run `/new` after) | - | |
-| Antigravity | `agy plugin install https://github.com/DollarDill/beads-superpowers` | - | reuses the Claude plugin manifest - the same mechanism upstream verified; not E2E-tested by us |
-| Factory Droid | `droid plugin marketplace add https://github.com/DollarDill/beads-superpowers` then `droid plugin install beads-superpowers@beads-superpowers-marketplace` | - | reuses the Claude plugin manifest - the same mechanism upstream verified; not E2E-tested by us |
-| Pi | `pi install git:github.com/DollarDill/beads-superpowers` | - | config validated by us; not E2E-tested |
+| Gemini CLI | `gemini extensions install https://github.com/strider4560/beads-superpowers` | - | config validated by us; not E2E-tested |
+| GitHub Copilot CLI | `copilot plugin marketplace add strider4560/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | rides the Claude-plugin fallback (skills + session-start via the shared `hooks/hooks.json`), the same mechanism upstream ships; requires Copilot CLI v1.0.11+ |
+| Kimi Code | `/plugins install https://github.com/strider4560/beads-superpowers` (run `/new` after) | - | |
+| Antigravity | `agy plugin install https://github.com/strider4560/beads-superpowers` | - | reuses the Claude plugin manifest - the same mechanism upstream verified; not E2E-tested by us |
+| Factory Droid | `droid plugin marketplace add https://github.com/strider4560/beads-superpowers` then `droid plugin install beads-superpowers@beads-superpowers-marketplace` | - | reuses the Claude plugin manifest - the same mechanism upstream verified; not E2E-tested by us |
+| Pi | `pi install git:github.com/strider4560/beads-superpowers` | - | config validated by us; not E2E-tested |
 
 ## Install the plugin
 
@@ -60,16 +60,16 @@ Config validated; not E2E-tested by us. Use with that in mind.
 ### Claude Code
 
 ```bash
-claude plugin marketplace add DollarDill/beads-superpowers
+claude plugin marketplace add strider4560/beads-superpowers
 claude plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
-Or as slash commands inside a Claude Code session: `/plugin marketplace add DollarDill/beads-superpowers` then `/plugin install beads-superpowers@beads-superpowers-marketplace`.
+Or as slash commands inside a Claude Code session: `/plugin marketplace add strider4560/beads-superpowers` then `/plugin install beads-superpowers@beads-superpowers-marketplace`.
 
 ### Codex CLI
 
 ```bash
-codex plugin marketplace add DollarDill/beads-superpowers
+codex plugin marketplace add strider4560/beads-superpowers
 codex plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
@@ -88,18 +88,18 @@ Add to the `plugin` array in your `opencode.json` (global or project-level):
 
 ```json
 {
-  "plugin": ["beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git"]
+  "plugin": ["beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git"]
 }
 ```
 
-Restart OpenCode. Skills auto-register and the session bootstrap + beads context inject automatically - no other steps. Details, version pinning, migration from pre-0.12 installer copies, and troubleshooting: [.opencode/INSTALL.md](https://github.com/DollarDill/beads-superpowers/blob/main/.opencode/INSTALL.md).
+Restart OpenCode. Skills auto-register and the session bootstrap + beads context inject automatically - no other steps. Details, version pinning, migration from pre-0.12 installer copies, and troubleshooting: [.opencode/INSTALL.md](https://github.com/strider4560/beads-superpowers/blob/main/.opencode/INSTALL.md).
 
 ### Scripted install (`curl | bash`)
 
 The curl installer also works for Claude Code and Codex when you need more than a plain plugin install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 ```
 
 The installer auto-detects which CLIs are on your system and installs skills and hooks for each:
@@ -122,7 +122,7 @@ Supports `--yes` (skip prompts), `--version X.Y.Z`, `--with-yegge`, `--dry-run`,
 ### npx (Vercel Skills CLI)
 
 ```bash
-npx skills add DollarDill/beads-superpowers -a claude-code -g --copy -y
+npx skills add strider4560/beads-superpowers -a claude-code -g --copy -y
 # Use -a codex to also install for Codex CLI.
 ```
 
@@ -181,16 +181,16 @@ copilot plugin update beads-superpowers
 **Scripted / npx:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 # or
-npx skills add DollarDill/beads-superpowers -g --copy -y
+npx skills add strider4560/beads-superpowers -g --copy -y
 ```
 
 Re-running the installer or `npx skills add` overwrites the existing installation. No `bd init` needed - your existing `.beads/` database is untouched.
 
 **OpenCode:**
 
-Restart OpenCode to pick up the latest commit from the git plugin spec. Some OpenCode/Bun versions cache the resolved git dependency - clear OpenCode's package cache or reinstall the plugin if updates don't appear. To pin a specific version, append a `#vX.Y.Z` ref to the plugin spec. Details: [.opencode/INSTALL.md](https://github.com/DollarDill/beads-superpowers/blob/main/.opencode/INSTALL.md).
+Restart OpenCode to pick up the latest commit from the git plugin spec. Some OpenCode/Bun versions cache the resolved git dependency - clear OpenCode's package cache or reinstall the plugin if updates don't appear. To pin a specific version, append a `#vX.Y.Z` ref to the plugin spec. Details: [.opencode/INSTALL.md](https://github.com/strider4560/beads-superpowers/blob/main/.opencode/INSTALL.md).
 
 ## Verify it works
 

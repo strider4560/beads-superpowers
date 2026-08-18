@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # beads-superpowers installer (scripted / advanced install)
-# https://github.com/DollarDill/beads-superpowers
+# https://github.com/strider4560/beads-superpowers
 #
 # Preferred install for Claude Code / Codex: use the native plugin system.
 # For OpenCode: git-install via opencode.json — see .opencode/INSTALL.md.
@@ -8,7 +8,7 @@
 # optional yegge.md agent install (--with-yegge), version pinning (--version), or CI automation.
 #
 # Scripted usage:
-#   curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 #   curl -fsSL <url> | bash -s -- --yes            # CI / non-interactive
 #   curl -fsSL <url> | bash -s -- --version 0.4.0  # Pin version
 #   curl -fsSL <url> | bash -s -- --dry-run         # Preview
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-REPO="DollarDill/beads-superpowers"
+REPO="strider4560/beads-superpowers"
 FALLBACK_VERSION="0.5.3"
 SKILLS_DIR="${BEADS_SUPERPOWERS_SKILLS_DIR:-$HOME/.claude/skills}"
 HOOKS_DIR="$HOME/.claude/hooks"
@@ -198,8 +198,8 @@ usage() {
 beads-superpowers — scripted / advanced installer
 
 Preferred install for Tier-1 CLIs:
-  Claude Code:  claude plugin marketplace add DollarDill/beads-superpowers
-  Codex:        codex plugin marketplace add DollarDill/beads-superpowers
+  Claude Code:  claude plugin marketplace add strider4560/beads-superpowers
+  Codex:        codex plugin marketplace add strider4560/beads-superpowers
   OpenCode:     see .opencode/INSTALL.md (git plugin spec)
 
 Use this script when you need:
@@ -523,7 +523,7 @@ try_plugin_install() {
 
   if [ "$HAS_CLAUDE" = 1 ]; then
     info "Tier 1: Trying Claude Code plugin install..."
-    if claude plugin marketplace add DollarDill/beads-superpowers 2>/dev/null && \
+    if claude plugin marketplace add strider4560/beads-superpowers 2>/dev/null && \
        claude plugin install beads-superpowers@beads-superpowers-marketplace 2>/dev/null; then
       installed=true
       success "Claude Code: plugin installed via marketplace"
@@ -534,7 +534,7 @@ try_plugin_install() {
 
   if [ "$HAS_CODEX" = 1 ]; then
     info "Tier 1: Trying Codex plugin install..."
-    if codex plugin marketplace add DollarDill/beads-superpowers 2>/dev/null && \
+    if codex plugin marketplace add strider4560/beads-superpowers 2>/dev/null && \
        codex plugin install beads-superpowers@beads-superpowers-marketplace 2>/dev/null; then
       installed=true
       success "Codex: plugin installed via marketplace"
@@ -563,7 +563,7 @@ try_npx_install() {
   [ "$HAS_CODEX" = 1 ] && agents="$agents -a codex"
 
   # shellcheck disable=SC2086  # word splitting intentional: $agents expands to multiple -a flags
-  if npx skills add DollarDill/beads-superpowers $agents -g --copy -y 2>/dev/null; then
+  if npx skills add strider4560/beads-superpowers $agents -g --copy -y 2>/dev/null; then
     success "Skills installed via npx"
 
     # npx doesn't install hooks — do it ourselves
@@ -646,12 +646,12 @@ all_methods_failed() {
   echo "Manual installation options:"
   echo
   echo "  Plugin (Claude Code):"
-  echo "    claude plugin marketplace add DollarDill/beads-superpowers"
+  echo "    claude plugin marketplace add strider4560/beads-superpowers"
   echo "    claude plugin install beads-superpowers@beads-superpowers-marketplace"
   echo
   if command -v npx >/dev/null 2>&1; then
     echo "  npx:"
-    echo "    npx skills add DollarDill/beads-superpowers -a claude-code -g --copy"
+    echo "    npx skills add strider4560/beads-superpowers -a claude-code -g --copy"
     echo
   fi
   echo "  Git:"
@@ -958,13 +958,13 @@ print_next_steps() {
     echo "    Install via the git plugin spec in opencode.json — see .opencode/INSTALL.md."
   fi
   echo
-  if [ "$HAS_COPILOT" = 1 ]; then info "Copilot CLI detected — native install: copilot plugin marketplace add DollarDill/beads-superpowers && copilot plugin install beads-superpowers@beads-superpowers-marketplace"; fi
+  if [ "$HAS_COPILOT" = 1 ]; then info "Copilot CLI detected — native install: copilot plugin marketplace add strider4560/beads-superpowers && copilot plugin install beads-superpowers@beads-superpowers-marketplace"; fi
   if [ "$HAS_CURSOR" = 1 ]; then info "Cursor detected — native install: /add-plugin beads-superpowers (in Cursor Agent)"; fi
-  if [ "$HAS_DROID" = 1 ]; then info "Factory Droid detected — native: droid plugin marketplace add https://github.com/DollarDill/beads-superpowers && droid plugin install beads-superpowers@beads-superpowers-marketplace"; fi
-  if [ "$HAS_AGY" = 1 ]; then info "Antigravity detected — native install: agy plugin install https://github.com/DollarDill/beads-superpowers"; fi
-  if [ "$HAS_KIMI" = 1 ]; then info "Kimi Code detected — native install: /plugins install https://github.com/DollarDill/beads-superpowers"; fi
-  if [ "$HAS_PI" = 1 ]; then info "Pi detected — native install: pi install git:github.com/DollarDill/beads-superpowers"; fi
-  if [ "$HAS_GEMINI" = 1 ]; then info "Gemini CLI detected — native install: gemini extensions install https://github.com/DollarDill/beads-superpowers"; fi
+  if [ "$HAS_DROID" = 1 ]; then info "Factory Droid detected — native: droid plugin marketplace add https://github.com/strider4560/beads-superpowers && droid plugin install beads-superpowers@beads-superpowers-marketplace"; fi
+  if [ "$HAS_AGY" = 1 ]; then info "Antigravity detected — native install: agy plugin install https://github.com/strider4560/beads-superpowers"; fi
+  if [ "$HAS_KIMI" = 1 ]; then info "Kimi Code detected — native install: /plugins install https://github.com/strider4560/beads-superpowers"; fi
+  if [ "$HAS_PI" = 1 ]; then info "Pi detected — native install: pi install git:github.com/strider4560/beads-superpowers"; fi
+  if [ "$HAS_GEMINI" = 1 ]; then info "Gemini CLI detected — native install: gemini extensions install https://github.com/strider4560/beads-superpowers"; fi
 }
 
 # --- Uninstall ---

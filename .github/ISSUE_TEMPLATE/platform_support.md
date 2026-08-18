@@ -15,7 +15,7 @@ labels: ["harness-parity", "needs-triage"]
 
 ## What you tried
 
-<!-- Commands run and what happened — e.g. did `npx skills add DollarDill/beads-superpowers -g --copy -y` work for skills-only? -->
+<!-- Commands run and what happened — e.g. did `npx skills add strider4560/beads-superpowers -g --copy -y` work for skills-only? -->
 
 ## Session-start context
 

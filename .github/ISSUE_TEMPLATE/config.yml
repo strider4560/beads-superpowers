@@ -1,10 +1,10 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & Help
-    url: https://github.com/DollarDill/beads-superpowers/discussions
+    url: https://github.com/strider4560/beads-superpowers/discussions
     about: For usage questions, ideas, and general discussion, use Discussions instead of opening an issue.
   - name: Read the documentation first
-    url: https://github.com/DollarDill/beads-superpowers#readme
+    url: https://github.com/strider4560/beads-superpowers#readme
     about: The README, METHODOLOGY, and SETUP-GUIDE answer most questions.
   - name: Upstream Superpowers
     url: https://github.com/obra/superpowers

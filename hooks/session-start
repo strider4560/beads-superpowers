@@ -303,7 +303,7 @@ fi
 
 # bd-absent hint (non-fatal, one line to stderr)
 if ! command -v bd >/dev/null 2>&1; then
-  printf '%s\n' "beads not found — install bd to enable persistent task memory: https://github.com/DollarDill/beads-superpowers#prerequisites" >&2
+  printf '%s\n' "beads not found — install bd to enable persistent task memory: https://github.com/strider4560/beads-superpowers#prerequisites" >&2
 fi
 
 # upstream-superpowers coexistence collision warning (best-effort, non-fatal)

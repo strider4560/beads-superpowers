@@ -11,7 +11,7 @@ Add beads-superpowers to the `plugin` array in your `opencode.json` (global or p
 
 ```json
 {
-  "plugin": ["beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git"]
+  "plugin": ["beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git"]
 }
 ```
 
@@ -63,7 +63,7 @@ tag):
 
 ```json
 {
-  "plugin": ["beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git#vX.Y.Z"]
+  "plugin": ["beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git#vX.Y.Z"]
 }
 ```
 
@@ -84,7 +84,7 @@ the plugin, try installing with system npm and pointing OpenCode at the local
 package:
 
 ```powershell
-npm install beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git --prefix "$HOME\.config\opencode"
+npm install beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git --prefix "$HOME\.config\opencode"
 ```
 
 Then use the installed package path in `opencode.json`:
@@ -107,5 +107,5 @@ tracks ALL tasks with the bd (beads) CLI, not the todo tools.
 
 ## Getting Help
 
-- Report issues: <https://github.com/DollarDill/beads-superpowers/issues>
-- Full documentation: <https://github.com/DollarDill/beads-superpowers>
+- Report issues: <https://github.com/strider4560/beads-superpowers/issues>
+- Full documentation: <https://github.com/strider4560/beads-superpowers>

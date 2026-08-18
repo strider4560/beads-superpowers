@@ -47,7 +47,7 @@ just docker     # installer E2E (requires docker or podman, slow)
 
 ## Questions
 
-Open a thread in [Discussions](https://github.com/DollarDill/beads-superpowers/discussions) or email <dillon@algocents.com>.
+Open a thread in [Discussions](https://github.com/strider4560/beads-superpowers/discussions) or email <dillon@algocents.com>.
 
 ## Security
 

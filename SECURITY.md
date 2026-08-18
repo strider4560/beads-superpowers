@@ -17,7 +17,7 @@ issues, discussions, or pull requests.**
 
 Instead, use GitHub's private vulnerability reporting:
 
-1. Navigate to the [Security tab](https://github.com/DollarDill/beads-superpowers/security)
+1. Navigate to the [Security tab](https://github.com/strider4560/beads-superpowers/security)
 2. Click **Report a vulnerability**
 3. Fill in the advisory form with as much detail as you can provide
 

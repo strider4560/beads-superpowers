@@ -8,8 +8,8 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://github.com/DollarDill/beads-superpowers/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DollarDill/beads-superpowers?color=4f46e5"></a>
-  <a href="https://github.com/DollarDill/beads-superpowers/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DollarDill/beads-superpowers?style=social"></a>
+  <a href="https://github.com/strider4560/beads-superpowers/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/strider4560/beads-superpowers?color=4f46e5"></a>
+  <a href="https://github.com/strider4560/beads-superpowers/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/strider4560/beads-superpowers?style=social"></a>
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
   <a href="https://algocents.com/beads-superpowers/"><img alt="Docs" src="https://img.shields.io/badge/docs-algocents.com-0ea5e9.svg"></a>
 </p>
@@ -25,10 +25,10 @@
 ```bash
 brew install beads                    # 1. Install bd (requires beads v1.1.0+)
 # From your shell:
-claude plugin marketplace add DollarDill/beads-superpowers
+claude plugin marketplace add strider4560/beads-superpowers
 claude plugin install beads-superpowers@beads-superpowers-marketplace
 # Or, inside a Claude Code session:
-# /plugin marketplace add DollarDill/beads-superpowers
+# /plugin marketplace add strider4560/beads-superpowers
 # /plugin install beads-superpowers@beads-superpowers-marketplace
 # Then in your project directory:
 bd init                               # 2. Bootstrap the Dolt database for this project
@@ -155,16 +155,16 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 ### Claude Code
 
 ```bash
-claude plugin marketplace add DollarDill/beads-superpowers
+claude plugin marketplace add strider4560/beads-superpowers
 claude plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
-或在 Claude Code 会话内通过斜杠命令执行：`/plugin marketplace add DollarDill/beads-superpowers`，然后 `/plugin install beads-superpowers@beads-superpowers-marketplace`。
+或在 Claude Code 会话内通过斜杠命令执行：`/plugin marketplace add strider4560/beads-superpowers`，然后 `/plugin install beads-superpowers@beads-superpowers-marketplace`。
 
 ### Codex CLI
 
 ```bash
-codex plugin marketplace add DollarDill/beads-superpowers
+codex plugin marketplace add strider4560/beads-superpowers
 codex plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
@@ -183,7 +183,7 @@ codex_hooks = true
 
 ```json
 {
-  "plugin": ["beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git"]
+  "plugin": ["beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git"]
 }
 ```
 
@@ -200,13 +200,13 @@ codex_hooks = true
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/DollarDill/beads-superpowers
+gemini extensions install https://github.com/strider4560/beads-superpowers
 ```
 
 ### GitHub Copilot CLI
 
 ```bash
-copilot plugin marketplace add DollarDill/beads-superpowers
+copilot plugin marketplace add strider4560/beads-superpowers
 copilot plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
@@ -221,7 +221,7 @@ copilot plugin update beads-superpowers
 ### Kimi Code
 
 ```text
-/plugins install https://github.com/DollarDill/beads-superpowers
+/plugins install https://github.com/strider4560/beads-superpowers
 ```
 
 安装后运行 `/new` 以启动含插件的新会话。
@@ -229,7 +229,7 @@ copilot plugin update beads-superpowers
 ### Antigravity
 
 ```bash
-agy plugin install https://github.com/DollarDill/beads-superpowers
+agy plugin install https://github.com/strider4560/beads-superpowers
 ```
 
 注意：复用 Claude 插件清单——与上游验证的机制相同。
@@ -237,7 +237,7 @@ agy plugin install https://github.com/DollarDill/beads-superpowers
 ### Factory Droid
 
 ```bash
-droid plugin marketplace add https://github.com/DollarDill/beads-superpowers
+droid plugin marketplace add https://github.com/strider4560/beads-superpowers
 droid plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
@@ -246,7 +246,7 @@ droid plugin install beads-superpowers@beads-superpowers-marketplace
 ### Pi
 
 ```bash
-pi install git:github.com/DollarDill/beads-superpowers
+pi install git:github.com/strider4560/beads-superpowers
 ```
 
 ### npx（任意智能体）
@@ -254,13 +254,13 @@ pi install git:github.com/DollarDill/beads-superpowers
 仅安装技能——不包含钩子。技能激活依赖于你所用智能体自身的原生技能发现机制。
 
 ```bash
-npx skills add DollarDill/beads-superpowers -g --copy -y
+npx skills add strider4560/beads-superpowers -g --copy -y
 ```
 
 ### 替代方案：脚本安装（`curl | bash`）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 ```
 
 该脚本的作用不仅限于复制文件。当你需要以下任何功能时使用它：
@@ -277,7 +277,7 @@ curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/i
 
 ## 贡献
 
-欢迎贡献——参见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。PR 请提交至 **`dev`** 分支（`main` 为已发布分支）。想法与问题请前往 [Discussions](https://github.com/DollarDill/beads-superpowers/discussions)。
+欢迎贡献——参见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。PR 请提交至 **`dev`** 分支（`main` 为已发布分支）。想法与问题请前往 [Discussions](https://github.com/strider4560/beads-superpowers/discussions)。
 
 ## 基于
 
@@ -296,6 +296,6 @@ curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/i
 
 ## 社区
 
-- **想法与问题：** [GitHub Discussions](https://github.com/DollarDill/beads-superpowers/discussions) — 置顶帖是入口
-- **Bug：** [Issues](https://github.com/DollarDill/beads-superpowers/issues)
+- **想法与问题：** [GitHub Discussions](https://github.com/strider4560/beads-superpowers/discussions) — 置顶帖是入口
+- **Bug：** [Issues](https://github.com/strider4560/beads-superpowers/issues)
 - **联系方式：** <dillon@algocents.com>

@@ -49,12 +49,12 @@ npm install -g @beads/bd    # any platform
 | CLI | 安装 | 更新 | 备注 |
 |-----|---------|--------|-------|
 | Cursor | `/add-plugin beads-superpowers`（在 Cursor Agent 中） | 市场 UI | 配置已由我们验证；未经端到端测试 |
-| Gemini CLI | `gemini extensions install https://github.com/DollarDill/beads-superpowers` | — | 配置已由我们验证；未经端到端测试 |
-| GitHub Copilot CLI | `copilot plugin marketplace add DollarDill/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | 使用 Claude 插件回退（技能 + 通过共享 `hooks/hooks.json` 的 session-start），与上游相同的机制；需要 Copilot CLI v1.0.11+ |
-| Kimi Code | `/plugins install https://github.com/DollarDill/beads-superpowers`（之后运行 `/new`） | — | |
-| Antigravity | `agy plugin install https://github.com/DollarDill/beads-superpowers` | — | 复用 Claude 插件清单——与上游已验证的相同机制；未经我们端到端测试 |
-| Factory Droid | `droid plugin marketplace add https://github.com/DollarDill/beads-superpowers` then `droid plugin install beads-superpowers@beads-superpowers-marketplace` | — | 复用 Claude 插件清单——与上游已验证的相同机制；未经我们端到端测试 |
-| Pi | `pi install git:github.com/DollarDill/beads-superpowers` | — | 配置已由我们验证；未经端到端测试 |
+| Gemini CLI | `gemini extensions install https://github.com/strider4560/beads-superpowers` | — | 配置已由我们验证；未经端到端测试 |
+| GitHub Copilot CLI | `copilot plugin marketplace add strider4560/beads-superpowers` then `copilot plugin install beads-superpowers@beads-superpowers-marketplace` | `copilot plugin update beads-superpowers` | 使用 Claude 插件回退（技能 + 通过共享 `hooks/hooks.json` 的 session-start），与上游相同的机制；需要 Copilot CLI v1.0.11+ |
+| Kimi Code | `/plugins install https://github.com/strider4560/beads-superpowers`（之后运行 `/new`） | — | |
+| Antigravity | `agy plugin install https://github.com/strider4560/beads-superpowers` | — | 复用 Claude 插件清单——与上游已验证的相同机制；未经我们端到端测试 |
+| Factory Droid | `droid plugin marketplace add https://github.com/strider4560/beads-superpowers` then `droid plugin install beads-superpowers@beads-superpowers-marketplace` | — | 复用 Claude 插件清单——与上游已验证的相同机制；未经我们端到端测试 |
+| Pi | `pi install git:github.com/strider4560/beads-superpowers` | — | 配置已由我们验证；未经端到端测试 |
 
 ## 安装插件
 
@@ -63,16 +63,16 @@ npm install -g @beads/bd    # any platform
 ### Claude Code
 
 ```bash
-claude plugin marketplace add DollarDill/beads-superpowers
+claude plugin marketplace add strider4560/beads-superpowers
 claude plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
-或在 Claude Code 会话中使用斜杠命令：`/plugin marketplace add DollarDill/beads-superpowers`，然后 `/plugin install beads-superpowers@beads-superpowers-marketplace`。
+或在 Claude Code 会话中使用斜杠命令：`/plugin marketplace add strider4560/beads-superpowers`，然后 `/plugin install beads-superpowers@beads-superpowers-marketplace`。
 
 ### Codex CLI
 
 ```bash
-codex plugin marketplace add DollarDill/beads-superpowers
+codex plugin marketplace add strider4560/beads-superpowers
 codex plugin install beads-superpowers@beads-superpowers-marketplace
 ```
 
@@ -89,18 +89,18 @@ codex_hooks = true
 
 ```json
 {
-  "plugin": ["beads-superpowers@git+https://github.com/DollarDill/beads-superpowers.git"]
+  "plugin": ["beads-superpowers@git+https://github.com/strider4560/beads-superpowers.git"]
 }
 ```
 
-重启 OpenCode。技能会自动注册，会话引导 + beads 上下文也会自动注入——无需其他步骤。详情、版本固定、从 pre-0.12 安装程序副本迁移及故障排除，请参阅 [.opencode/INSTALL.md](https://github.com/DollarDill/beads-superpowers/blob/main/.opencode/INSTALL.md)。
+重启 OpenCode。技能会自动注册，会话引导 + beads 上下文也会自动注入——无需其他步骤。详情、版本固定、从 pre-0.12 安装程序副本迁移及故障排除，请参阅 [.opencode/INSTALL.md](https://github.com/strider4560/beads-superpowers/blob/main/.opencode/INSTALL.md)。
 
 ### 脚本安装（`curl | bash`）
 
 当您需要的不仅仅是普通插件安装时，curl 安装程序同样适用于 Claude Code 和 Codex：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 ```
 
 安装程序自动检测系统上的 CLI 并为每个 CLI 安装技能和钩子：
@@ -123,7 +123,7 @@ curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/i
 ### npx（Vercel Skills CLI）
 
 ```bash
-npx skills add DollarDill/beads-superpowers -a claude-code -g --copy -y
+npx skills add strider4560/beads-superpowers -a claude-code -g --copy -y
 # Use -a codex to also install for Codex CLI.
 ```
 
@@ -182,16 +182,16 @@ copilot plugin update beads-superpowers
 **脚本安装 / npx：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DollarDill/beads-superpowers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/install.sh | bash
 # or
-npx skills add DollarDill/beads-superpowers -g --copy -y
+npx skills add strider4560/beads-superpowers -g --copy -y
 ```
 
 重新运行安装程序或 `npx skills add` 将覆盖现有安装。无需重新运行 `bd init`——您现有的 `.beads/` 数据库不受影响。
 
 **OpenCode：**
 
-重启 OpenCode 以获取 git 插件规范中的最新提交。部分 OpenCode/Bun 版本会缓存已解析的 git 依赖——如果更新未生效，请清除 OpenCode 的包缓存或重新安装插件。要固定特定版本，请在插件规范后附加 `#vX.Y.Z` 引用。详情：[.opencode/INSTALL.md](https://github.com/DollarDill/beads-superpowers/blob/main/.opencode/INSTALL.md)。
+重启 OpenCode 以获取 git 插件规范中的最新提交。部分 OpenCode/Bun 版本会缓存已解析的 git 依赖——如果更新未生效，请清除 OpenCode 的包缓存或重新安装插件。要固定特定版本，请在插件规范后附加 `#vX.Y.Z` 引用。详情：[.opencode/INSTALL.md](https://github.com/strider4560/beads-superpowers/blob/main/.opencode/INSTALL.md)。
 
 ## 验证是否正常工作
 
