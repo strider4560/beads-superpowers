@@ -9,11 +9,34 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
 
+The `stress-test` skill is no longer part of this path — the review deliberation stage that follows the spec gate covers adversarial scrutiny. It stays available standalone, on demand, whenever a design or decision needs grilling outside the pipeline.
+
 <HARD-GATE>
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
 </HARD-GATE>
 
 **Production-Grade Doctrine** applies with full force here — trade-offs are *first chosen* in brainstorming: you MUST NOT simplify a design by quietly cutting a required behavior; surface every material trade-off and let the user decide. Never weaken, bypass, or remove a security control — a security regression is never acceptable.
+
+## Stage Entry
+
+Brainstorming runs on the planning tier. Confirm that before exploring the idea:
+
+```bash
+bash scripts/pipeline/tier-gate.sh --stage planning
+```
+
+Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Route on the exit code. "Stop on any nonzero" is wrong here:
+
+| Exit | Meaning | What this skill does |
+| --- | --- | --- |
+| 0 | The tier is verified. | Proceed. |
+| 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
+| 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
+| 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
+
+Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
+
+When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier>`. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
@@ -31,8 +54,8 @@ You MUST create the session bead + step children up front via `bd import`: first
 6. **Write design doc** — save to `.internal/specs/YYYY-MM-DD-<topic>-design.md` and commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Spec-review gate offers stress-test** — the spec-review gate (step 8) includes an "Approved + stress-test" option, offered every time; if selected, invoke `stress-test` before writing-plans
-10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+9. **Spec-review gate** — two options: Approved, or Needs changes (revise, then re-review)
+10. **Hand off to review deliberation** — invoke `planning-with-reviews` with the approved spec
 
 ## Process Flow
 
@@ -46,9 +69,7 @@ digraph brainstorming {
     "Write design doc" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
     "User reviews spec?" [shape=diamond];
-    "Stress-test selected\nat gate?" [shape=diamond];
-    "Invoke stress-test skill" [shape=box];
-    "Invoke writing-plans skill" [shape=doublecircle];
+    "Invoke planning-with-reviews" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
@@ -59,14 +80,11 @@ digraph brainstorming {
     "Write design doc" -> "Spec self-review\n(fix inline)";
     "Spec self-review\n(fix inline)" -> "User reviews spec?";
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Stress-test selected\nat gate?" [label="approved"];
-    "Stress-test selected\nat gate?" -> "Invoke stress-test skill" [label="selected"];
-    "Stress-test selected\nat gate?" -> "Invoke writing-plans skill" [label="skipped"];
-    "Invoke stress-test skill" -> "Invoke writing-plans skill";
+    "User reviews spec?" -> "Invoke planning-with-reviews" [label="approved"];
 }
 ```
 
-**The terminal state is writing-plans.** The only other skill brainstorming may invoke is **stress-test** (optional, between spec approval and writing-plans). Do NOT invoke frontend-design, mcp-builder, or any other implementation skill.
+**The terminal state is planning-with-reviews.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill.
 
 ## The Process
 
@@ -185,7 +203,7 @@ fi
 
 Then immediately ask via your structured question tool (content below; shape shown in Claude Code schema — adapt to your tool):
 
-<!-- Canonical 3-option stress-test gate — keep identical to writing-plans/SKILL.md -->
+<!-- Canonical 2-option review gate — keep identical to writing-plans/SKILL.md -->
 
 ```json
 {
@@ -193,8 +211,7 @@ Then immediately ask via your structured question tool (content below; shape sho
     "question": "Spec opened in your editor at `<path>`. Review it and let me know how to proceed.",
     "header": "Spec review",
     "options": [
-      {"label": "Approved + stress-test (Recommended)", "description": "Spec looks good — run an adversarial stress-test before writing the plan"},
-      {"label": "Approved", "description": "Spec looks good — skip stress-test and proceed to writing the implementation plan"},
+      {"label": "Approved", "description": "Spec looks good — hand it to planning-with-reviews for review deliberation"},
       {"label": "Needs changes", "description": "I want to revise the spec before proceeding"}
     ],
     "multiSelect": false
@@ -203,15 +220,13 @@ Then immediately ask via your structured question tool (content below; shape sho
 ```
 
 Route on the answer:
-- **Approved + stress-test** → invoke the `stress-test` skill with the spec path (`.internal/specs/YYYY-MM-DD-<topic>-design.md`) as the Mode-A artifact; when it completes, invoke `writing-plans`.
-- **Approved** → invoke `writing-plans` directly.
+- **Approved** → invoke great_cto's `planning-with-reviews` with the spec path (`.internal/specs/YYYY-MM-DD-<topic>-design.md`). That stage settles the spec against its reviewers and hands to `writing-plans`.
 - **Needs changes** → make the requested changes and re-run the spec review loop. Only proceed once approved.
 
-**Implementation:**
+**Handoff:**
 
-- The stress-test offer now lives in the spec-review gate above (the "Approved + stress-test" option) — there is no separate stress-test prompt.
-- Invoke the writing-plans skill to create a detailed implementation plan (after stress-test, if selected).
-- Do NOT invoke any other skill besides stress-test (offered at the gate) and writing-plans.
+- Invoke `planning-with-reviews` with the approved spec. It runs the reviewer fan-out, settles the spec, and hands to writing-plans for plan and bead-graph capture.
+- Do NOT invoke any other skill from here, and do not write the plan yourself.
 - Pass the brainstorming bead context forward: the epic bead created during plan execution should reference the brainstorming session bead via `bd dep add <epic-id> <brainstorming-bead-id> --type discovered-from`
 
 ## Visual Companion
@@ -249,5 +264,4 @@ If they agree to the companion, read the detailed guide before proceeding:
 ## Integration
 
 **Invokes:**
-- **stress-test** *(optional)* — offered at the spec-review gate every time (the "Approved + stress-test" option), before writing-plans.
-- **writing-plans** — terminal state. The only implementation skill brainstorming invokes.
+- **planning-with-reviews** — terminal state (great_cto). It settles the spec and hands to writing-plans; brainstorming invokes nothing else.
