@@ -20,6 +20,18 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Save plans to:** `.internal/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
 
+## Stage Entry
+
+Planning runs on the planning tier. Confirm that before reading the spec:
+
+```bash
+bash scripts/pipeline/tier-gate.sh --stage planning
+```
+
+Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Any nonzero exit stops this skill: report the gate's message to the user and go no further. Exit 4 is a visible SKIP for a harness that does not expose the session model, and a SKIP is not a pass, so it stops the skill too.
+
+When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier>`. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
+
 ## Knowledge Check
 
 Before proposing any design, query the knowledge store: `mex graph scope "<task summary>"` — then **read the routed pages, not just the envelope**: routed hits are pointers, not knowledge. Open every `.mex/` page that plausibly bears on this work in full (pages are distilled by design; reading them whole is sanctioned spend). 0 relevant pages does not mean none exist — re-angle the scope query once (different nouns, the component name instead of the feature name) before concluding none. Emit `mex retrieval: N pages routed, K read` (or `mex retrieval: none`) plus a one-line disposition per read page — folded in (what it changed) or ruled out (why). The check is complete when every plausibly-relevant page is dispositioned. If `.mex/context/decisions.md` or a `docs/decisions/` ADR already covers this, surface it rather than re-litigating. Where the code graph covers the project's language (JS/TS/Python verified; Rust upstream-claimed, unconfirmed), run `mex impact <symbol|file>` before modifying code that a grounded page cites and fold the affected pages into the check; on uncovered languages, pages/router/retrieval remain the working surface.
@@ -171,9 +183,7 @@ git commit -m "feat: add specific feature"
 ```
 ````
 
-**Beads integration:** When executing this plan, the executing skill creates an epic bead for the plan and a child task bead for each Task N. The `- [ ]` checkboxes remain in the markdown for human readability, but task-level tracking uses beads (`bd create`, `bd update --claim`, `bd close --reason`). Dependencies between tasks should be declared with `bd dep add`.
-
-**Atomic creation:** the executing skill creates the epic + tasks via `bd import` (JSONL) — `bd create` the epic, then `bd import -` the tasks (each with a `parent-child` dep to the epic and rich fields), then `bd batch` any inter-task `blocks` ordering. Not a sequential create-loop. The exact kernel lives in the executing skill (subagent-driven-development / executing-plans).
+**Beads integration:** This skill creates the bead graph — an epic bead for the plan and a child task bead for each Task N — and executing skills consume it. **Capture to Beads** below holds the commands. The `- [ ]` checkboxes remain in the markdown for human readability, but task-level tracking uses beads (`bd update --claim`, `bd close --reason`), and dependencies between tasks are wired at capture time.
 
 **Required bead-body sections:** `bd lint` (Self-Review step 0) requires `## Success Criteria` in the epic bead's description and `## Acceptance Criteria` in each task bead's description. Include them at creation time — embed them in each bead's `description` in the import JSONL (or use the `acceptance_criteria` field). The epic's Success Criteria derive from the plan's **Goal**; each task's copy from its **Acceptance Criteria** block.
 
@@ -249,8 +259,8 @@ Then immediately ask via your structured question tool (content below; shape sho
 ```
 
 Route on the answer:
-- **Approved + stress-test** → invoke the `stress-test` skill with the plan path (`.internal/plans/YYYY-MM-DD-<feature-name>.md`) as the Mode-A artifact; when it completes, proceed to **Execution Handoff**.
-- **Approved** → proceed to **Execution Handoff** directly.
+- **Approved + stress-test** → invoke the `stress-test` skill with the plan path (`.internal/plans/YYYY-MM-DD-<feature-name>.md`) as the Mode-A artifact; when it completes, proceed to **Capture to Beads**.
+- **Approved** → proceed to **Capture to Beads** directly.
 - **Needs changes** → make the requested changes and re-run the self-review. Only proceed once approved.
 
 > When filing a bead for discovered/follow-up work, stamp it per **Agent-Filed Bead Discipline** (`verification-before-completion`).
@@ -275,9 +285,107 @@ After the work is settled, present the Capture gate — mandatory every time; Sk
 
 Route on the answer. **Record the decision / Both** → this writes an ADR, so first confirm it clears the bar (hard-to-reverse AND surprising-without-context AND genuine trade-off); if it doesn't, say so and capture it via `mex log --type decision` alone (the lighter record) — unless the user confirms they want the full ADR. Write the ADR (`docs/decisions/ADR-NNNN-<kebab>.md`, sections Context/Decision/Rationale/Consequences, update `docs/decisions/INDEX.md`), then run `mex log --type decision "<one-line summary> — see docs/decisions/ADR-NNNN-<kebab>.md"` (run the secret/PII scan on the summary first). A superseding ADR's log line must read `supersedes ADR-NNNN`, and `mex-curator` updates `.mex/context/decisions.md` so the stale entry points forward. **Remember the lesson / Both** → append to `.mex/lessons.md` per the capture contract. **Skip** → nothing.
 
+## Capture to Beads
+
+The bead graph is the plan of record. This skill creates it; executing skills consume it. Create it once, after the user approves the plan — beads are durable and synced, so a graph built from a plan the user then rejects has to be purged.
+
+Read `bd create --help`, `bd import --help`, and `bd batch --help` on first use this session, and round-trip one existing bead with `bd export <id>` to confirm the import field names. **Never** guess bd syntax here: a misspelled field imports quietly, and the failure surfaces later as a lint violation with no trace back to the typo.
+
+**1. The initiative epic.** One epic bead, labeled `initiative`, whose body carries the plan's Goal as `## Success Criteria` plus pointers to the settled spec and to the mex declarations:
+
+```bash
+bd create "Initiative: <plan name>" -t epic -p 1 -l initiative -d "<the plan's Goal>
+
+Spec: .internal/specs/<YYYY-MM-DD-topic>.md
+Declarations: .mex/context/initiatives.md
+
+## Success Criteria
+- <measurable outcome from the Goal>"
+```
+
+Note the initiative id — every later step needs it. Labels inherit to children by default; leave that alone. The graph lint checks the `initiative` label on this bead only.
+
+**2. The epics, then the tasks.** Two import streams, in that order. A task's `parent-child` dependency names its epic's id, and the epic ids are assigned by the import that creates the epics.
+
+```bash
+# Epics — parent-child to the initiative; metadata.reviewers holds roster names.
+cat <<'EOF' | bd import -
+{"title":"Epic 1: <name>","issue_type":"epic","priority":2,"description":"<objective>\n\n## Success Criteria\n- <outcome>","metadata":{"reviewers":["architect","security-officer"]},"dependencies":[{"depends_on_id":"<initiative-id>","type":"parent-child"}]}
+EOF
+
+bd list --parent <initiative-id> --json | jq -r '.[].id'   # → the epic ids
+
+# Tasks — parent-child to their epic, acceptance criteria copied verbatim.
+cat <<'EOF' | bd import -
+{"title":"Task 1: <name>","issue_type":"task","priority":2,"description":"<summary>\n\n## Acceptance Criteria\n- <observable outcome>","metadata":{"implementation_agent":"senior-dev","required_skills":["test-driven-development"],"tier":"implementation"},"dependencies":[{"depends_on_id":"<epic-id>","type":"parent-child"}]}
+EOF
+```
+
+Omit `id` on every line — it is auto-assigned, and a supplied colliding id overwrites that bead. Confirm each import prints no `Skipped dependency`: a dependency to a missing target is skipped, not rolled back.
+
+Three metadata values come from great_cto, and the graph lint rejects anything else:
+
+| Field | Source of the value |
+| --- | --- |
+| `reviewers` (epics) | `REVIEW_AGENTS` in `$HOME/.agents/great_cto/scripts/agent-roster.mjs` |
+| `implementation_agent` (tasks) | `IMPLEMENTATION_AGENTS` in the same file |
+| `tier` (tasks) | a tier name from `$HOME/.agents/great_cto/shared/tier-map.json` |
+
+`required_skills` (tasks) lists the skills the implementer loads before touching code — `test-driven-development` at minimum. Read the two great_cto files and copy the names out of them. **Never** invent an agent name or a tier name.
+
+**3. Task ordering.** `parent-child` rides the import; `blocks` does not, because sibling ids do not exist while their own file is being read. Collect the ids per epic, then wire the ordering in one batch:
+
+```bash
+bd list --parent <epic-id> --json | jq -r '.[].id'
+printf 'dep add <task-2-id> <task-1-id> blocks\n' | bd batch
+```
+
+Then run the Self-Review step 0 commands against the graph you just created. `bd lint` is the per-bead check; the Capture Complete Gate below is the whole-graph check.
+
+## Capture to mex
+
+The beads say what to build. `.mex/` says why, and both exist before this skill finishes.
+
+**Scan first.** `.mex/` is committed and travels with the repo, so in a public repo these declarations are public. Scan every line before writing it and drop credentials, tokens, keys, PII, client names, and verbatim sensitive requirements. A durable that names an unmitigated risk, a security gap, or an unreleased plan belongs in `.mex/private/` (gitignored), **never** on a tracked page.
+
+**Three decisions.** One line each for the finalized requirements, the design, and the plan rationale. Every line ends with the spec path and the initiative bead id:
+
+```bash
+mex log --type decision "requirements: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
+mex log --type decision "design: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
+mex log --type decision "plan rationale: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
+```
+
+`--type decision` is required: a bare `mex log` records kind `note`, and a note is not a decision. If a `mex` call fails, surface the exact command and its output and stop. **Never** hand-write the entry into a page instead — that leaves a store that looks current and is not.
+
+**One distilled block.** Append this initiative's section to `.mex/context/initiatives.md`, creating the file if it is absent: a heading naming the initiative id and the plan, then the requirements summary, the design summary, and the rationale, two or three sentences each. Pointers and rationale only — the prose spec and the review artifacts stay in `.internal/`.
+
+The appended block is capped at 2.5 KB (2560 bytes). Write it to a file, measure it, and append only once it fits:
+
+```bash
+wc -c /tmp/initiative-block.md          # must be <= 2560
+cat /tmp/initiative-block.md >> .mex/context/initiatives.md
+```
+
+If it does not fit, cut summary prose. **Never** cut the spec path or the bead ids — they are what a later session follows back.
+
+## Capture Complete Gate
+
+The plan is not captured until the graph lint passes:
+
+```bash
+bd list --all -n 0 --json > /tmp/state.json && node scripts/pipeline/graph-lint.mjs --initiative <initiative-id> --state /tmp/state.json
+```
+
+Exit 0 is the only pass. On exit 1 the lint prints one line per violation, each naming the bead id and the field, so fix those beads and run it again.
+
+Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M MUST match the counts you just captured. Every lint check is quantified over the initiative's children, so an initiative with none passes them all — an import that silently landed nothing reads as a clean graph, and the counts are what catch it.
+
 ## Execution Handoff
 
-After the plan is approved, **use your structured question tool** to offer the execution choice:
+**Initiative work hands off through the graph, not through this session.** The plan is captured and the lint is green, so execution belongs to a separate implementation session running great_cto's `implementing-epics` against the initiative. Report the initiative id, the epic and task counts, and the spec path, then ask the user to start that session. **Never** carry on into implementation here — a planning-tier session that implements is the tier wall failing open.
+
+**Non-initiative work** — a plan small enough that you captured no initiative epic — still executes in this session. Use your structured question tool to offer the execution choice:
 
 ```json
 {
