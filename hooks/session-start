@@ -312,4 +312,46 @@ if grep -Eq '"superpowers@(claude-plugins-official|superpowers-marketplace)"' "$
   printf '%s\n' "warning: obra/superpowers appears installed alongside beads-superpowers — skill names collide; use one or the other" >&2
 fi
 
+# great_cto pipeline surface: advisory line + session state file (best-effort, non-fatal).
+# The line reports BUNDLE-ROOT PRESENCE ONLY — it is not the arming condition.
+# Arming is stricter: the session state file consumed by scripts/pipeline/tier-gate.sh
+# is written only when the bundle root AND the tier-map both exist, so an unarmed
+# machine — or a pre-rework great_cto that ships no tier-map — never has a project
+# armed underneath it. A machine with the root but no tier-map prints "present" and
+# stays unarmed.
+_bsp_bundle_root="$HOME/.agents/great_cto"
+if [ -d "$_bsp_bundle_root" ]; then
+  printf '%s\n' "great_cto bundle root: present" >&2
+else
+  printf '%s\n' "great_cto bundle root: MISSING (pipeline gates will fail closed)" >&2
+fi
+if [ -d "$_bsp_bundle_root" ] && [ -f "$_bsp_bundle_root/shared/tier-map.json" ] && command -v jq >/dev/null 2>&1; then
+  # `.model` is a bare top-level string in the SessionStart payload and is documented
+  # as sometimes absent (after /clear, or when a session is restored through
+  # conversation recovery); $CLAUDE_EFFORT is unset whenever the model has no effort
+  # parameter. Both absences are normal states, not errors — they land as JSON null
+  # and the gate falls back (spike: .internal/research/2026-08-19-harness-detection-spike.md).
+  # CLAUDE_CODE_SUBAGENT_MODEL is deliberately NOT read: it is a user-set input
+  # override, not a report of the live model.
+  # jq parses the stdin ALREADY captured above (one reader, one pipe) — the hook still
+  # shells out to neither bd nor mex. No jq means no state file: the gate then demands
+  # a user-run --assert, which is the fail-closed direction.
+  _bsp_model=$(printf '%s' "$bsp_stdin" | jq -r '.model // empty | select(type == "string")' 2>/dev/null) || _bsp_model=""
+  if mkdir -p .internal/pipeline 2>/dev/null; then
+    # Written through a temp file: the gate refuses a session.json that is not valid
+    # JSON, so a half-written one would cost the session its tier.
+    # Brace-grouped so the group's 2>/dev/null is in place BEFORE the inner `>` is
+    # attempted: an existing-but-unwritable .internal/pipeline/ makes the redirect
+    # itself fail, and bash reports that on the group's stderr, not the command's.
+    { jq -n --arg model "$_bsp_model" --arg effort "${CLAUDE_EFFORT:-}" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{model_id: (if $model == "" then null else $model end),
+          effort:   (if $effort == "" then null else $effort end),
+          source: "hook",
+          timestamp: $ts}' > ".internal/pipeline/session.json.$$" \
+        && mv -f ".internal/pipeline/session.json.$$" .internal/pipeline/session.json; } 2>/dev/null || true
+    rm -f ".internal/pipeline/session.json.$$" 2>/dev/null || true
+  fi
+fi
+
 exit 0
