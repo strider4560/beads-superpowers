@@ -18,13 +18,23 @@
 # must read the installed version to decide; a version probe carries no routing,
 # ranking, or retrieval, so it cannot drift from the composer. Every other mex
 # subcommand stays banned everywhere in install.sh (bead beads-superpowers-wuu).
+# The exemption is scoped to the '$(mex ' pattern ONLY, and it deletes just that
+# probe substring before matching — never a whole line. A line carrying both the
+# probe and something forbidden (another mex subcommand, '$(bd prime',
+# 'salience', …) still fails on the forbidden part.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:-$ROOT/install.sh}"   # override for self-testing against a fixture
 rc=0
 # shellcheck disable=SC2016  # '$(bd prime' / '$(mex ' are literal forbidden patterns, not expansions
 for pat in 'salience' 'bd memories --json' '$(bd prime' '$(mex ' 'BSP_MEX_CEILING' 'BSP_ENVELOPE_BUDGET'; do
-  hits=$(grep -nF -- "$pat" "$TARGET" | grep -vF -- '$(mex --version' || true)
+  if [ "$pat" = '$(mex ' ]; then
+    # Blank out the exempt probe in place (line count and numbering preserved),
+    # then match: other forbidden text on the same line still hits.
+    hits=$(sed 's/\$(mex --version//g' "$TARGET" | grep -nF -- "$pat" || true)
+  else
+    hits=$(grep -nF -- "$pat" "$TARGET" || true)
+  fi
   if [ -n "$hits" ]; then
     echo "install-hook-fork: FAIL — forbidden pattern '$pat' in ${TARGET##*/}:"
     echo "$hits"

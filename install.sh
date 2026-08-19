@@ -265,22 +265,27 @@ parse_flags() {
 # --- Phase 1: Checks ---
 # Dotted numeric version compare: is $1 >= $2? Three fields, integer per field
 # (2.10.0 > 2.9.0). Any pre-release suffix is dropped; missing fields read as 0.
+# Each field is forced base-10 (10#) so a zero-padded field like 08 is not read
+# as octal. Minor/patch must stay under 1000 for the weights to order correctly
+# — true of every version this installer compares (node, mex).
 # Callers must pass sanitized versions (see sanitize_version) — plain bash only.
 version_ge() {
   local a1 a2 a3 b1 b2 b3 a b
   IFS=. read -r a1 a2 a3 <<< "${1%%-*}"
   IFS=. read -r b1 b2 b3 <<< "${2%%-*}"
-  a=$(( ${a1:-0} * 1000000 + ${a2:-0} * 1000 + ${a3:-0} ))
-  b=$(( ${b1:-0} * 1000000 + ${b2:-0} * 1000 + ${b3:-0} ))
+  a=$(( 10#${a1:-0} * 1000000 + 10#${a2:-0} * 1000 + 10#${a3:-0} ))
+  b=$(( 10#${b1:-0} * 1000000 + 10#${b2:-0} * 1000 + 10#${b3:-0} ))
   [ "$a" -ge "$b" ]
 }
 
 # Echo $1 as a bare dotted-numeric version, or nothing if it is not one.
-# Strips a leading "v" (node prints "v22.5.0"; mex prints a bare "0.7.1").
+# Strips a leading "v" (node prints "v22.5.0"; mex prints a bare "0.7.1") and any
+# pre-release/build suffix, so a nightly like v22.5.0-nightly123 reads as 22.5.0.
 sanitize_version() {
   local v="${1%%$'\n'*}"
   v="${v#v}"
   v="${v//[[:space:]]/}"
+  v="${v%%-*}"
   case "$v" in
     ''|*[!0-9.]*) return 0 ;;
     *) printf '%s' "$v" ;;
@@ -807,9 +812,6 @@ do_install() {
     cleanup_legacy_skills
   fi
 
-  # Hard dependency — aborts the install if it cannot be satisfied
-  ensure_mex
-
   # Write version file with tier info
   mkdir -p "$(dirname "$VERSION_FILE")"
   echo "${VERSION}:${INSTALL_TIER}" > "$VERSION_FILE"
@@ -1081,10 +1083,12 @@ print_next_steps() {
   echo
   if [ "$MEX_INSTALLED" = true ]; then
     info "mex: mex-agent@$MEX_PIN installed (durable knowledge)"
-  elif [ -n "$MEX_VERSION" ] && version_ge "$MEX_VERSION" "$MEX_PIN"; then
+  elif [ -z "$MEX_VERSION" ]; then
+    warn "mex: existing install (version unreadable) could not be compared against the pin $MEX_PIN — upgrade with: npm install -g mex-agent@$MEX_PIN"
+  elif version_ge "$MEX_VERSION" "$MEX_PIN"; then
     info "mex: using existing $MEX_VERSION (pin $MEX_PIN)"
   else
-    warn "mex: existing install ${MEX_VERSION:-(version unreadable)} is below the pin $MEX_PIN — upgrade with: npm install -g mex-agent@$MEX_PIN"
+    warn "mex: existing install $MEX_VERSION is below the pin $MEX_PIN — upgrade with: npm install -g mex-agent@$MEX_PIN"
   fi
   if [ "$HAS_COPILOT" = 1 ]; then info "Copilot CLI detected — native install: copilot plugin marketplace add strider4560/beads-superpowers && copilot plugin install beads-superpowers@beads-superpowers-marketplace"; fi
   if [ "$HAS_CURSOR" = 1 ]; then info "Cursor detected — native install: /add-plugin beads-superpowers (in Cursor Agent)"; fi
@@ -1365,6 +1369,11 @@ main() {
     print_dry_run
     exit 0
   fi
+
+  # Hard dependency — aborts if it cannot be satisfied. Runs BEFORE
+  # detect_existing_install (which exits 0 when the target version is already
+  # installed) so re-running the installer repairs a vanished mex.
+  ensure_mex
 
   detect_existing_install
 
