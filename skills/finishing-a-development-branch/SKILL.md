@@ -289,7 +289,7 @@ Evidence: <file:line / failing test / repro | none>"
 
 Drop the `[spec]` prefix when the item is Confirmed (evidence cited).
 
-**3.5. Offer mex curation (conditional) — before the push.** If this session produced curation-worthy volume — roughly **3+ new durables captured into `.mex/`** — OFFER (do not auto-run) a distillation pass now, so the curated pages ride the `git push` below — or if the session-start context showed the hot-page truncation marker (`.mex/lessons.md` over its 2 KB cap), offer the pass regardless of this session's capture count. Ask via your structured question tool:
+**4. Offer mex curation (conditional) — before the push.** If this session produced curation-worthy volume — roughly **3+ new durables captured into `.mex/`** — OFFER (do not auto-run) a distillation pass now, so the curated pages ride the `git push` below — or if the session-start context showed the hot-page truncation marker (`.mex/lessons.md` over its 2 KB cap), offer the pass regardless of this session's capture count. Ask via your structured question tool:
 
 ```json
 {
@@ -308,22 +308,22 @@ Drop the `[spec]` prefix when the item is Confirmed (evidence cited).
 If selected, invoke `Skill(beads-superpowers:mex-curator)` (it proposes a reviewed edit list; you approve before any write). Below the ~3-durable threshold, stay silent — do NOT prompt every close (offer fatigue retired a similar over-firing hook). Applies to ALL session closes, branch and non-branch.
 
 ```bash
-# 4. Verify the knowledge store
+# 5. Verify the knowledge store
 mex check    # gate on the EXIT CODE — warnings at exit 0 are the stock baseline, not a failure
 ```
 
 **Non-zero exit:** make **one** `mex sync` attempt, scoped to the pages this session's work touched, then run `mex check` a **second** time and gate on *that* exit code. `mex sync`'s own exit code is never the evidence — it exits 0 having repaired nothing when errors are present and stdin is closed. If the second check is still non-zero, or the drift is broader than this session's pages, do not sweep the repo: file one bead — `bd create "chore: mex sync backlog — <pages>" -t chore`, stamped per Agent-Filed Bead Discipline — and land anyway, stating the dirty state and the bead id out loud in the close summary. A dirty store that is disclosed is fine; a dirty store that is not is a false green. If a `mex` command errors, surface the error and stop the knowledge step — never improvise a workaround.
 
 ```bash
-# 5. Push beads to Dolt remote
+# 6. Push beads to Dolt remote
 bd dolt push
 
-# 6. Push code to git remote
+# 7. Push code to git remote
 git pull --ff-only && git push
 # If --ff-only fails, the remote actually moved: rebase ONLY if local history is linear;
 # a local merge commit means merge deliberately (rebase flattens it and orphans recorded SHAs).
 
-# 7. Verify clean state
+# 8. Verify clean state
 git status    # MUST show "up to date with origin"
 ```
 

@@ -124,6 +124,7 @@ else
 fi
 shape_sandbox_teardown
 
+# (mutations 5-10 covered the retired kb guards; removed 2026-08 (mex migration))
 # Mutation 11: check-zh-docs.sh's completeness assertion (Task 8) — every
 # docs/*.md page must be registered as the EN member of a pair, else it
 # silently escapes zh-parity checking. Rig mirrors Mutation 1 (copy real
@@ -205,14 +206,14 @@ else
 fi
 rm -rf "$SB13"
 
-# Mutation 14: CB-4 memory-convention line — a NON-signature clause reworded at one site
+# Mutation 14: CB-C capture-contract line — a NON-signature clause reworded at one site
 # must fail RED (proves assert_line_identical catches full-line drift, not just the signature
 # slice). Same fixture-isolation as Mutation 13; the real tree is never touched.
 SB14=$(mktemp -d)
 if ! (cd "$REPO_ROOT" && git ls-files -z skills .claude/skills hooks CLAUDE.md scripts/check-convention-sync.sh | xargs -0 -I{} cp --parents {} "$SB14"/); then
   echo "SELFTEST FAIL: mutation-14 setup copy failed (rig broken, not a caught mutation)"; rc=1
 else
-  # Reword the non-signature 'near-duplicate' tail of the CB-4 line at ONE site.
+  # Reword the non-signature 'near-duplicate' tail of the CB-C line at ONE site.
   sed 's/adding a near-duplicate/adding a duplicate/' \
     "$SB14/skills/test-driven-development/SKILL.md" > "$SB14/skills/test-driven-development/SKILL.md.tmp" \
     && mv -f "$SB14/skills/test-driven-development/SKILL.md.tmp" "$SB14/skills/test-driven-development/SKILL.md"
@@ -221,10 +222,10 @@ else
   if cmp -s "$SB14/skills/test-driven-development/SKILL.md" "$REPO_ROOT/skills/test-driven-development/SKILL.md"; then
     echo "SELFTEST FAIL: mutation-14 changed nothing (stale fixture, not a caught mutation)"; rc=1
   fi
-  expect_red "convention-sync: CB-4 non-signature clause reworded at one site" \
+  expect_red "convention-sync: CB-C non-signature clause reworded at one site" \
     bash "$SB14/scripts/check-convention-sync.sh"
   cp -f "$REPO_ROOT/skills/test-driven-development/SKILL.md" "$SB14/skills/test-driven-development/SKILL.md"
-  expect_green "convention-sync: CB-4 unmutated copy (control)" \
+  expect_green "convention-sync: CB-C unmutated copy (control)" \
     bash "$SB14/scripts/check-convention-sync.sh"
 fi
 rm -rf "$SB14"
@@ -323,6 +324,10 @@ rm -rf "$SB18"
 
 # Mutation 19: the mex consent line deleted from install.sh — the user is no longer
 # told which mex the install depends on, so assert_mex_advertised must fail RED.
+# The consent line is state-aware (found / below_pin / unreadable / missing), and every
+# arm states the pin, so deleting one arm's text would leave the others advertising it.
+# Deleting every line that mentions the `mex_consent` variable removes the whole
+# advertisement (the arms plus the echo) and nothing else, leaving an empty `case`.
 # Same rig as Mutation 1 (mutated copy as install source, real checkout as the
 # skills yardstick), running the REAL assert-claude.sh. Setup failures are rig
 # breakage, NOT a caught mutation.
@@ -333,7 +338,7 @@ if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks"
 elif ! { mkdir -p "$MUT19/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT19/tests/install-shape"; }; then
   echo "SELFTEST FAIL: mutation-19 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
 else
-  grep -v 'Installs mex-agent@' "$MUT19/install.sh" > "$MUT19/install.sh.tmp" \
+  grep -v 'mex_consent' "$MUT19/install.sh" > "$MUT19/install.sh.tmp" \
     && mv -f "$MUT19/install.sh.tmp" "$MUT19/install.sh"
   if cmp -s "$MUT19/install.sh" "$REPO_ROOT/install.sh"; then
     echo "SELFTEST FAIL: mutation-19 changed nothing (stale consent-line text, not a caught mutation)"; rc=1

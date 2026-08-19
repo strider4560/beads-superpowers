@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # SessionStart hook for beads-superpowers plugin
-# This hook subsumes both superpowers skill injection AND beads context (bd prime).
-# If bd prime is already registered as a hook elsewhere (e.g. bd setup claude),
-# we skip our bd prime call to avoid duplicate context injection.
+# This hook composes superpowers skill injection, a beads context pointer, and the
+# .mex/ durable-knowledge section. It NEVER shells out to `bd prime` — it emits a
+# static pointer to the bd command surface instead. If an external `bd prime` hook is
+# already registered (e.g. bd setup claude), that hook owns injection outright and this
+# one emits the bootstrap only — no bd pointer, no mex section — to avoid duplication.
 
 set -euo pipefail
 
@@ -169,7 +171,7 @@ if [ -d "$legacy_skills_dir" ]; then
 fi
 
 # Detect if bd prime is already registered as a hook elsewhere (e.g. bd setup claude).
-# Check project and global settings files — if found, skip our bd prime call.
+# Check project and global settings files — if found, skip our injected block.
 bd_prime_already_hooked=0
 for settings_file in \
     ".claude/settings.json" \

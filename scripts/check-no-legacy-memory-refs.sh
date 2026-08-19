@@ -14,7 +14,10 @@ fail=0
 pattern='bd remember|bd memories|bd forget|bd recall|-l kb\b|--label kb'
 ALLOW_FILE='skills/project-init/SKILL.md'
 ALLOW_HEADING='## Migrating from knowledge-beads'
-roots=(skills/ .claude/skills/ example-workflow/ .opencode/ hooks/session-start)
+# install.sh and .pi/ are in scope too: the installer's npx-fallback tier writes hook
+# text of its own, and the Pi harness ships its own instruction surface — either could
+# resurrect a retired command without any skills/ file changing.
+roots=(skills/ .claude/skills/ example-workflow/ .opencode/ hooks/session-start install.sh .pi/)
 for r in "${roots[@]}"; do
   [ -e "$r" ] || { echo "FAIL: scan root missing: $r"; exit 1; }
 done

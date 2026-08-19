@@ -3,7 +3,7 @@
 # check-convention-sync.sh — keep the cross-cutting convention blocks in sync across every
 # site that carries them. Free-form duplication rots (bd-6814 ADR-strip missed skills/; the
 # TodoWrite gate drifted across 4 sites). Two tiers:
-#   * Canonical BLOCKS — CB-3 (Capture gate) and CB-4 (memory convention) must be
+#   * Canonical BLOCKS — CB-3 (Capture gate) and CB-C (capture contract) must be
 #     BYTE-IDENTICAL at every site: enforced by extract-and-diff (assert_block_identical /
 #     assert_line_identical), backstopped by an ASCII signature-presence grep.
 #   * Per-site FRAGMENT (CB-R read-depth) and KERNELS — only a fixed sentence / per-skill line
@@ -46,6 +46,7 @@ CB4_SITES=(
   skills/document-release/SKILL.md
   skills/write-documentation/SKILL.md
   skills/verification-before-completion/SKILL.md
+  skills/mex-curator/SKILL.md
 )
 # CB-5 (Reviewer security floor): the task-reviewer's security-floor paragraph is
 # duplicated verbatim into the re-review prompt (scoped re-review after a fix round)
@@ -109,7 +110,7 @@ check_block() {
 }
 
 # assert_line_identical <label> <sig> <site>...
-# Single-line canonical blocks (CB-4): the WHOLE signature-containing line must be
+# Single-line canonical blocks (CB-C): the WHOLE signature-containing line must be
 # byte-identical across sites. grep -F locates the line; diff pins the full line.
 # The first present-and-unique site is the reference (handles a missing site #1).
 assert_line_identical() {
@@ -215,8 +216,8 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 check_block "CB-3 Capture gate"    "$CB3_SIG" "${CB3_SITES[@]}"
-check_block "CB-4 memory convention" "$CB4_SIG" "${CB4_SITES[@]}"
-assert_line_identical "CB-4 memory convention (byte-identity)" "$CB4_SIG" "${CB4_SITES[@]}"
+check_block "CB-C capture contract" "$CB4_SIG" "${CB4_SITES[@]}"
+assert_line_identical "CB-C capture contract (byte-identity)" "$CB4_SIG" "${CB4_SITES[@]}"
 assert_block_identical "CB-3 Capture gate (byte-identity)" "$CB3_ANCHOR" '^```$' "${CB3_SITES[@]}"
 check_block "CB-R read-depth fragment" "$CBR_SIG" "${CBR_SITES[@]}"
 check_block "CB-5 Reviewer security floor" "$CB5_SIG" "${CB5_SITES[@]}"

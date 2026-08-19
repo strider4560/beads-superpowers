@@ -5,6 +5,11 @@
 # .mex/ or the user's ~/.mex/telemetry-id. A future mex that regresses any of the 5
 # pinned behaviors below must fail THIS test rather than silently break the skills.
 #
+# DISCLOSURE: this suite runs the REAL mex binary, and mex 0.7.1 has telemetry ON by
+# default — every invocation here reports a machine id, the OS, and the Node/mex
+# versions over the network. Redirecting HOME only relocates the persisted
+# telemetry-id file; it does not stop the phone-home.
+#
 # Every expectation here comes from the verified observation note
 # .internal/research/2026-08-mex-cli-surface.md (mex-agent@0.7.1, node:22). Section
 # references below point at the transcript that pins each assertion.

@@ -47,7 +47,7 @@ KNOWN_SKILLS=(
 # Skills shipped by past releases but no longer distributed (ADR-0044).
 # Removed on upgrade/uninstall ONLY — never on fresh install (evidence gate:
 # we only delete from roots a prior beads-superpowers install owned).
-LEGACY_SKILLS=(auditing-upstream-drift writing-skills tracking-with-beads)
+LEGACY_SKILLS=(auditing-upstream-drift writing-skills tracking-with-beads memory-curator)
 
 KNOWN_AGENTS=(yegge)
 
@@ -419,7 +419,16 @@ print_consent() {
   [ "$HAS_NPX" = 1 ] && echo "  2. npx skills add"
   echo "  3. Direct download (tarball / git clone)"
   echo
-  echo "  Installs mex-agent@$MEX_PIN globally via npm (durable-knowledge dependency)"
+  # State-aware, but the pinned coordinate is stated in EVERY state — consent must
+  # name what the install depends on even when nothing will be installed.
+  local mex_consent
+  case "$MEX_STATE" in
+    found)          mex_consent="mex-agent@$MEX_PIN requirement already satisfied (found $MEX_VERSION) — npm is not touched" ;;
+    below_pin)      mex_consent="mex-agent@$MEX_PIN requirement NOT satisfied (found $MEX_VERSION) — not upgraded automatically; upgrade yourself: npm install -g mex-agent@$MEX_PIN" ;;
+    unreadable)     mex_consent="mex-agent@$MEX_PIN requirement unverified (installed mex version unreadable) — compare and upgrade yourself: npm install -g mex-agent@$MEX_PIN" ;;
+    *)              mex_consent="Installs mex-agent@$MEX_PIN globally via npm (durable-knowledge dependency)" ;;
+  esac
+  echo "  $mex_consent"
   echo
   if [ "$HAS_CODEX" = 1 ]; then
     echo "  Codex CLI detected — skills will also be installed to ~/.codex/skills/"
@@ -806,7 +815,10 @@ check_mex() {
   fi
 
   MEX_STATE="missing_ok_node"
-  info "mex: not installed — mex-agent@$MEX_PIN will be installed via npm once you confirm below"
+  # Worded to hold in both downstream paths: this run may go on to consent and install,
+  # or detect_existing_install may abort first (already-installed repair path, which
+  # never reaches a confirm prompt).
+  info "mex: not installed — mex-agent@$MEX_PIN is required; this installer installs it via npm when the install proceeds"
 }
 
 # The npm mutation. Runs only after consent, from do_install.
