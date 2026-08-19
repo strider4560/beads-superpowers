@@ -31,8 +31,11 @@ CB3_SITES=(
   skills/stress-test/SKILL.md
   skills/systematic-debugging/SKILL.md
 )
+# skills/executing-plans/SKILL.md is deliberately absent: it is a deprecated pointer
+# with no capture stage, and CB-C is the capture contract. Listing it would force the
+# stub to carry a contract it never executes. Scope change, not a weakening — the block
+# stays byte-identical at every remaining site.
 CB4_SITES=(
-  skills/executing-plans/SKILL.md
   skills/test-driven-development/SKILL.md
   .claude/skills/auditing-upstream-drift/SKILL.md
   skills/project-init/SKILL.md
@@ -85,13 +88,15 @@ KERNEL_MAP=(
   'skills/research-driven-development/SKILL.md|bd update <id> --claim'
   'skills/project-init/SKILL.md|Iron Law: NEVER Run'
   '.claude/skills/auditing-upstream-drift/SKILL.md|NO PLUGIN RELEASE WITHOUT A FULL AUDIT FIRST'
-  'skills/executing-plans/SKILL.md|the consent gate binds even when this skill is not loaded'
+  # executing-plans is a deprecated pointer with no autonomous take-next flow and no
+  # bead creation, so its two former kernels (the --claim consent boundary and the
+  # `bd import -` creation line) are not pinned here. The --claim boundary is NOT lost:
+  # it is stated verbatim, kernel substring intact, in subagent-driven-development below.
   'skills/subagent-driven-development/SKILL.md|the consent gate binds even when this skill is not loaded'
   'skills/using-git-worktrees/SKILL.md|the consent gate binds even when this skill is not loaded'
   'skills/finishing-a-development-branch/SKILL.md|Work is NOT complete until'
   'skills/finishing-a-development-branch/SKILL.md|This will permanently delete:'
   'skills/using-git-worktrees/SKILL.md|A skipped, dismissed, or auto-resolved answer is not consent'
-  'skills/executing-plans/SKILL.md|bd import -'
   'skills/finishing-a-development-branch/SKILL.md|document-release must have run on this branch'
   'skills/test-driven-development/SKILL.md|state the file you are working from'
 )

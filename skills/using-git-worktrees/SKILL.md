@@ -252,6 +252,5 @@ Ready to implement auth feature
 
 **Required by:**
 - **subagent-driven-development** — must create worktree before delegating to implementer subagents.
-- **executing-plans** — workspace isolation before starting plan execution.
 
 **Pairs with:** **subagent-driven-development** — parallel batch mode creates multiple worktrees (one per task) for concurrent subagent execution.

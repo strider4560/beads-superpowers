@@ -2,10 +2,12 @@
 # Verify the agent-filed bead discipline convention is present where required.
 set -euo pipefail
 CANON="skills/verification-before-completion/SKILL.md"
+# skills/executing-plans/SKILL.md is deliberately absent: it is a deprecated pointer
+# with no blocker-filing stage, so it files no beads to stamp. Same reasoning as its
+# removal from CB4_SITES in check-convention-sync.sh.
 REQUIRED=(
   "skills/verification-before-completion/SKILL.md"
   "skills/finishing-a-development-branch/SKILL.md"
-  "skills/executing-plans/SKILL.md"
   "skills/subagent-driven-development/SKILL.md"
   "skills/requesting-code-review/code-reviewer.md"
   "skills/brainstorming/SKILL.md"

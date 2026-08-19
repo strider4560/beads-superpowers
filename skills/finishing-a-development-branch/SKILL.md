@@ -374,7 +374,6 @@ git status    # MUST show "up to date with origin"
 
 **Called by:**
 - **subagent-driven-development** — terminal state after all tasks pass review.
-- **executing-plans** — terminal state after all tasks complete.
 
 **Pairs with:**
 - **document-release** — invoked by Step 3.5 (Docs-Audit Gate) before merge/PR options.

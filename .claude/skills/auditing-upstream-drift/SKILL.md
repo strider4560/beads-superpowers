@@ -92,15 +92,16 @@ echo "=== Progressive Skill Chain ==="
 # brainstorming → writing-plans (terminal state)
 grep -q "writing-plans" skills/brainstorming/SKILL.md && echo "PASS: brainstorming → writing-plans" || echo "FAIL"
 
-# writing-plans → subagent-driven-development OR executing-plans
+# writing-plans → great_cto implementing-epics (the default handoff) AND
+# writing-plans → subagent-driven-development (the user-directed in-session path)
+grep -q "implementing-epics" skills/writing-plans/SKILL.md && echo "PASS: writing-plans → implementing-epics" || echo "FAIL"
 grep -q "subagent-driven-development" skills/writing-plans/SKILL.md && echo "PASS: writing-plans → subagent-driven-dev" || echo "FAIL"
-grep -q "executing-plans" skills/writing-plans/SKILL.md && echo "PASS: writing-plans → executing-plans" || echo "FAIL"
 
 # subagent-driven-development → finishing-a-development-branch
 grep -q "finishing-a-development-branch" skills/subagent-driven-development/SKILL.md && echo "PASS: subagent-driven-dev → finishing" || echo "FAIL"
 
-# executing-plans → finishing-a-development-branch
-grep -q "finishing-a-development-branch" skills/executing-plans/SKILL.md && echo "PASS: executing-plans → finishing" || echo "FAIL"
+# executing-plans is DEPRECATED: its stub must route to the task engine, not execute a plan
+grep -q "subagent-driven-development" skills/executing-plans/SKILL.md && echo "PASS: executing-plans (deprecated) → subagent-driven-dev" || echo "FAIL"
 
 # finishing-a-development-branch has Land the Plane
 grep -q "Land the Plane" skills/finishing-a-development-branch/SKILL.md && echo "PASS: finishing has Land the Plane" || echo "FAIL"

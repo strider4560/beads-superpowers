@@ -398,35 +398,11 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 **Every plan this skill produces is initiative work.** Capture to Beads is mandatory and has already run, so an initiative epic exists and you hold its id. Hand off, then stop.
 
-**The one exception, and the test for it.** Once you have presented the plan and the handoff, the user may direct you to execute it here instead. Only a direction given then, against the handoff, opens the in-session path; a standing instruction from the top of the session, such as "plan this and then build it", was given before the plan existed and is not one. The test is a single question: after seeing the handoff, did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, ask which in-session method they want:
+**The one exception, and the test for it.** Once you have presented the plan and the handoff, the user may direct you to execute it here instead. Only a direction given then, against the handoff, opens the in-session path; a standing instruction from the top of the session, such as "plan this and then build it", was given before the plan existed and is not one. The test is a single question: after seeing the handoff, did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, in-session execution runs through the same task engine the pipeline uses — there is no second method to choose between:
 
-```json
-{
-  "questions": [{
-    "question": "Plan complete and saved. How would you like to execute it?",
-    "header": "Execution",
-    "options": [
-      {
-        "label": "Subagent-Driven (Recommended)",
-        "description": "Fresh subagent per task with a single task review between tasks — fast iteration, high quality"
-      },
-      {
-        "label": "Inline Execution",
-        "description": "Execute tasks in this session using executing-plans — batch execution with checkpoints"
-      }
-    ],
-    "multiSelect": false
-  }]
-}
-```
-
-**If Subagent-Driven chosen:**
 - **REQUIRED SUB-SKILL:** Use beads-superpowers:subagent-driven-development
-- Fresh subagent per task + single task review (spec + quality verdicts)
-
-**If Inline Execution chosen:**
-- **REQUIRED SUB-SKILL:** Use beads-superpowers:executing-plans
-- Batch execution with checkpoints for review
+- It works in **task groups** formed from the task beads you just captured: one implementer subagent and one review per group, and it never closes a bead.
+- On this path you are its caller. You form the groups under its two constraints, create each group's worktree, merge the branch when you accept the verdicts, and close each task bead yourself.
 
 ## Integration
 
@@ -435,7 +411,6 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 **Hands off to:** **great_cto `implementing-epics`** — the default for every plan. A separate implementation session consumes the captured bead graph.
 
 **Invokes:**
-- **subagent-driven-development** — in-session execution, only when the user directs it (see Execution Handoff).
-- **executing-plans** — in-session execution, only when the user directs it.
+- **subagent-driven-development** — the task engine for in-session execution, only when the user directs it (see Execution Handoff).
 
 **Pairs with:** **stress-test** — available standalone, on demand; it is no longer offered at the plan-review gate.

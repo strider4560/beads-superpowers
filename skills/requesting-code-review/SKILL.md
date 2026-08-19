@@ -77,7 +77,6 @@ You: [Fix progress indicators]
 
 **Used by:**
 - **subagent-driven-development** — review after EACH task; catch issues before they compound; fix before moving to next task
-- **executing-plans** — review after each task or at natural checkpoints
 - **Ad-hoc review** — before merge or when stuck
 
 **Pairs with:**
