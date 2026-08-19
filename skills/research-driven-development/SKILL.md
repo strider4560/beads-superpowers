@@ -163,10 +163,10 @@ Distilling is part of this step, not a separate one — it happens the moment th
 
 **Write authority is yours alone.** Only the orchestrating agent writes to `.mex/` or runs `mex log`. Researcher subagents return *recommended* page edits and decision lines in their reports — review each one, then apply it yourself.
 
-**Secret/PII scan first:** scan the distillate before writing. Never write a secret, token, key, or PII into a `.mex/` page — tracked pages are public in a public repo and ride git history, which outlives a later edit. Durables that name an unmitigated risk, security gap, compliance exposure, or unreleased plan go to `.mex/private/` (gitignored), never to a tracked page.
+**Secret/PII scan first:** scan the distillate before writing. A secret, token, key, or credential value, or PII, is never written into ANY store — not a tracked `.mex/` page, not `.mex/private/`, not a `mex log` line, not the research document. `.mex/private/` is gitignored, not a vault: it is NOT where secrets go. If the distillate carries one, flag it for removal and stop that entry — write the surrounding conclusion only after the secret is out, referring to the credential by name and location, never by value. Tracked pages are public in a public repo and ride git history, which outlives a later edit. Separately, and for sensitivity rather than secrets: durables that name an unmitigated risk, security gap, compliance exposure, or unreleased plan go to `.mex/private/` (gitignored), never to a tracked page.
 
-1. **Distill into the matching pages** — requirements the research settled into `.mex/requirements.md`, design rationale and architectural conclusions into `.mex/architecture.md`, repo conventions into `.mex/conventions.md`, reusable patterns into `.mex/patterns/<name>.md`, compliance durables into `.mex/compliance.md`. Update an existing entry in place rather than adding a near-duplicate. Each entry must be actionable on its own — a reader acts on it without opening the document.
-2. **Log every load-bearing conclusion** — `mex log --type decision "<one-line conclusion> (see <docpath>)"`. Bare `mex log` records kind `note`, not a decision; the decision prose page is `.mex/context/decisions.md`.
+1. **Distill into the matching pages** — requirements the research settled into `.mex/requirements.md`, design rationale and architectural conclusions into `.mex/architecture.md`, repo conventions into `.mex/conventions.md`, reusable patterns into `.mex/patterns/<name>.md`, compliance durables into `.mex/compliance.md`. Update an existing entry in place rather than adding a near-duplicate. Each entry must be actionable on its own — a reader acts on it without opening the document. **Never cite an `.internal/` path from a `.mex/` page:** `.mex/` is tracked and shared, `.internal/research/` is gitignored scratch that no other clone has, so such a pointer is dead on arrival for every other reader. State the conclusion in full instead.
+2. **Log every load-bearing conclusion** — `mex log --type decision "<one-line conclusion>"`. The line must stand alone: no `.internal/` path in it either, for the same reason. Bare `mex log` records kind `note`, not a decision; the decision prose page is `.mex/context/decisions.md`.
 
 ### Quality Checklist
 
@@ -239,8 +239,8 @@ User asks: "How does Dolt handle merge conflicts?"
 5a. Secret/PII scan the distillate, then distill into .mex/ and log the conclusion:
     → append to .mex/architecture.md: "Dolt merges SQL tables cell-level (3-way), so conflicts are
       detected per cell and there are no textual conflict markers; this repo exercises the merge path
-      via bd dolt pull/push. Full write-up: .internal/research/2026-05-01-dolt-merge-conflict-handling.md"
-    mex log --type decision "Dolt uses cell-level 3-way merge on SQL tables (no textual conflict markers) (see .internal/research/2026-05-01-dolt-merge-conflict-handling.md)"
+      via bd dolt pull/push."          # no .internal/ pointer — the full write-up is local-only
+    mex log --type decision "Dolt uses cell-level 3-way merge on SQL tables (no textual conflict markers)"
 6. bd close <id> --reason "Research complete: Dolt uses cell-level merge on SQL tables"
 ```
 
