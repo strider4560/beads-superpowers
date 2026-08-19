@@ -48,7 +48,7 @@ description: 快速参考 bd 命令速查表、技能路由表、常见问题故
 | `mex log --type decision "<conclusion>"` | 记录一条决策。裸的 `mex log` 记录的类别是 `note`，那不是决策 |
 | `mex check` | 校验知识库。以退出码为准：退出码为 0 时的告警属于出厂基线（全新脚手架得分 79/100） |
 | `mex sync` | 检查失败后的修复——之后要再跑一次 `mex check`，因为即便什么都没修好，`sync` 也会以 0 退出 |
-| `mex timeline` | 按时间倒序回读决策日志（`.mex/events/decisions.jsonl`） |
+| `mex timeline` | 按时间倒序回读事件日志（`.mex/events/decisions.jsonl`，其中记录所有事件类型，不止决策） |
 
 有三个文件值得记住名字：`.mex/lessons.md` 是每次会话开始时被注入的热页面，硬上限 2048 字节；`.mex/lessons-archive.md` 存放被降级的经验，仍可被路由但不再被注入；`.mex/private/` 存放敏感类内容并被 gitignore，因此永远不会同步到另一台机器。
 

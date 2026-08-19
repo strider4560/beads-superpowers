@@ -233,7 +233,7 @@ sequenceDiagram
   Note over Agent: Agent is now skill-aware
 ```
 
-OpenCode 使用自己的 JavaScript 插件（`.opencode/plugins/beads-superpowers.js`），而非 `hooks/hooks.json`，包含三个进程内钩子：`config` 钩子自动注册技能，`experimental.chat.messages.transform` 钩子在每次会话中仅首次将相同的引导内容注入首条用户消息，`experimental.session.compacting` 钩子在上下文窗口压缩后重新注入 beads 上下文。
+OpenCode 使用自己的 JavaScript 插件（`.opencode/plugins/beads-superpowers.js`），而非 `hooks/hooks.json`，包含三个进程内钩子：`config` 钩子自动注册技能，`experimental.chat.messages.transform` 钩子在每次会话中仅首次将相同的引导内容注入首条用户消息，`experimental.session.compacting` 钩子在上下文窗口压缩后重新运行同一个组合器，因此 beads 上下文与持久知识区块（路由行加热页面）都会被重新注入。
 
 关于该上下文背后的规则——注入预算、2 KB 热页面上限，以及哪些内容改为按需路由而非注入——请参阅[记忆与会话](memory.md)。
 

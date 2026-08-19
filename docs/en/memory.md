@@ -177,6 +177,6 @@ Earlier versions of this plugin kept durable knowledge in beads, as deferred kno
 
 ## Running without the knowledge layer
 
-The skills in this plugin are plain instructions, and they still load without `bd` or `mex` installed. What you lose is this page. Nothing is injected at session start beyond the skills bootstrap, there is no store to route against, and each session starts as cold as the first one.
+The skills in this plugin are plain instructions, and they still load without `bd` or `mex` installed. What you lose is this page. Beyond the skills bootstrap, the only thing injected at session start is the one-line notice that no `.mex/` store was found; there is nothing to route against, and each session starts as cold as the first one.
 
 The skills do not paper over that. Every `mex` call in them is load-bearing: when one errors, the agent surfaces the exact command and its output and stops the knowledge step, rather than hand-writing a stand-in that would leave a store looking current when it is not.

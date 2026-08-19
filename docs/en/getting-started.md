@@ -232,7 +232,7 @@ sequenceDiagram
   Note over Agent: Agent is now skill-aware
 ```
 
-OpenCode uses its own JavaScript plugin (`.opencode/plugins/beads-superpowers.js`) instead of `hooks/hooks.json`, with three in-process hooks: a `config` hook auto-registers the skills, an `experimental.chat.messages.transform` hook injects the same bootstrap into the first user message once per session, and an `experimental.session.compacting` hook re-injects beads context after the context window compacts.
+OpenCode uses its own JavaScript plugin (`.opencode/plugins/beads-superpowers.js`) instead of `hooks/hooks.json`, with three in-process hooks: a `config` hook auto-registers the skills, an `experimental.chat.messages.transform` hook injects the same bootstrap into the first user message once per session, and an `experimental.session.compacting` hook re-runs the same composer after the context window compacts, so the beads context and the durable-knowledge block (router line plus hot page) are both re-injected.
 
 For the rules behind that context - the injection budget, the 2 KB hot-page cap, and what gets routed on demand instead of injected - see [Memory & Sessions](memory.md).
 

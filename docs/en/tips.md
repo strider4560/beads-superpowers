@@ -46,7 +46,7 @@ Durable knowledge lives in a repo-local `.mex/` store, never in beads. `bd` trac
 | `mex log --type decision "<conclusion>"` | Record a decision. Bare `mex log` records kind `note` instead, which is not a decision |
 | `mex check` | Validate the store. Gate on the exit code: warnings at exit 0 are the stock baseline (a fresh scaffold scores 79/100) |
 | `mex sync` | Repair after a failed check - then run `mex check` again, because `sync` exits 0 even when it repaired nothing |
-| `mex timeline` | Read the decision log back, newest first (`.mex/events/decisions.jsonl`) |
+| `mex timeline` | Read the event log back, newest first (`.mex/events/decisions.jsonl`, which holds every event kind, not just decisions) |
 
 Three files worth knowing by name: `.mex/lessons.md` is the hot page injected at every session start, hard-capped at 2048 bytes; `.mex/lessons-archive.md` holds demoted lessons, still routed but no longer injected; `.mex/private/` holds the sensitive class and is gitignored, so it never syncs to another machine.
 

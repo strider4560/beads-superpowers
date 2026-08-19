@@ -30,7 +30,7 @@ Work state is only half of what a session needs to keep, so the plugin splits th
 
 ### The gap
 
-Superpowers enforced good process but forgot everything between sessions. Beads remembered everything but imposed no process on how work should be done. beads-superpowers connects the two: every process step in every skill creates, updates, or closes a persistent bead, so following the right process and maintaining persistent memory are the same action.
+Superpowers enforced good process but forgot everything between sessions. Beads remembered everything but imposed no process on how work should be done. beads-superpowers connects the two: every process step in every skill creates, updates, or closes a persistent bead, and every durable conclusion it reaches is distilled into the `.mex/` knowledge store - so following the right process, tracking the work, and keeping what was learned are one action.
 
 ## How it works
 

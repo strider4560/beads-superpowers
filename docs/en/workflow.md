@@ -86,7 +86,7 @@ The orchestrator then verifies each load-bearing claim against the verbatim quot
 
 ### Decision capture
 
-When a choice is hard to reverse, surprising without its context, and a real trade-off, the agent offers to record an ADR in `docs/decisions/` - context, decision, consequences, alternatives considered. The agent leans toward offering whenever a decision plausibly fits these marks; only routine clarifications and scope calls fall outside. It turns an implicit decision into an explicit record a later reader can trace. The same capture gate reappears after stress-test and after writing-plans - wherever a design settles, not just here.
+Every settled decision is logged: `mex log --type decision "<one-line decision>"` runs unconditionally, and that log line is what makes the decision - and any ADR written for it - retrievable later. The full ADR in `docs/decisions/` - context, decision, consequences, alternatives considered - is added on top only when the ADR bar is met: the choice is hard to reverse, surprising without its context, and a real trade-off. The agent leans toward offering the ADR whenever a decision plausibly fits these marks; only routine clarifications and scope calls fall outside. It turns an implicit decision into an explicit record a later reader can trace. The same capture gate reappears after stress-test and after writing-plans - wherever a design settles, not just here.
 
 ### Stress-test (spec gate)
 
