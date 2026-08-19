@@ -430,7 +430,7 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 ## Integration
 
-**Called by:** **brainstorming** — this is brainstorming's terminal state. After design approval, brainstorming invokes writing-plans.
+**Called by:** **great_cto `planning-with-reviews`** — brainstorming's terminal state. It settles the spec against its reviewers, then hands to writing-plans.
 
 **Hands off to:** **great_cto `implementing-epics`** — the default for every plan. A separate implementation session consumes the captured bead graph.
 
