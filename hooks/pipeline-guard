@@ -35,6 +35,9 @@ deny() { echo "pipeline-guard: $1" >&2; exit 2; }
 # Purely lexical — no realpath, no stat. The file a Write creates does not exist
 # yet, so there is nothing on disk to canonicalize, and symlink resolution would
 # answer a different question than the one asked.
+# Residual, accepted: a PRE-EXISTING symlink into the state directory defeats
+# Rule D's Write/Edit half — .internal/specs -> .internal/pipeline makes a write
+# to .internal/specs/tier-assert normalize to itself and Rule D does not fire.
 # Prints the path relative to $PWD when it is inside the project, otherwise the
 # cleaned absolute path — which matches no allow-list prefix, so outside-the-
 # project writes stay denied on the planning tier.
@@ -131,17 +134,27 @@ while IFS= read -r tier; do
 done <<< "$tiers"
 
 # --- Rule A: only a planning-tier session mutates the plan graph ------------
-# The option is matched in all three spellings bd accepts — `-t epic`, `-tepic`
-# and `--type epic` — because a guard that catches one of them advertises a
-# control it does not have. (This widens the plan's literal `-t[[:space:]]+epic`;
-# the deviation is disclosed in the task report.)
+# The type flag is matched in eight spellings, all of which reach bd as
+# `--type epic`: `-t epic`, `-tepic`, `--type epic`, `--type=epic`, `-t=epic`,
+# `--type "epic"`, `-t 'epic'` and `--type='epic'`. bd is Cobra/pflag-based, so
+# it takes the `=`-joined forms (`bd create --help` documents `--type=event`
+# itself), and the shell strips the quotes before bd sees the value. Hence the
+# separator class `[[:space:]='"]*` between the flag and its value.
+# This is best-effort, NOT a parse of bd's flag grammar: a regex over a shell
+# command string cannot be one. Uncovered, and known to be: any spelling where
+# the literal `epic` is not adjacent to the flag — a variable or substitution
+# (`--type=$T`, `-t "$(echo epic)"`), a value split across quoting
+# (`-t ep'ic'`), or the flag and value arriving through a helper script.
+# (This widens the plan's literal `-t[[:space:]]+epic`; the deviation is
+# disclosed in the task report.)
 # These stay substring matches over a command string, so they over-deny: a `bd
 # create -t task` whose description quotes "-t epic", or a `git log --grep="bd
 # import"`, is denied off the planning tier. That is the safe direction for a
 # plan-graph mutation guard — do not anchor the patterns to make a false positive
 # pass.
+epic_flag_re='bd[[:space:]]+create[[:space:]].*(-t|--type)[[:space:]='"'"'"]*epic'
 if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ]; then
-  if [[ "$cmd" =~ bd[[:space:]]+create[[:space:]].*(-t|--type)[[:space:]]*epic ]] ||
+  if [[ "$cmd" =~ $epic_flag_re ]] ||
      [[ "$cmd" =~ bd[[:space:]]+import ]]; then
     [ "$has_tier" -eq 1 ] &&
       deny "only a planning-tier session mutates the plan graph (Rule A)"

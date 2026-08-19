@@ -75,9 +75,19 @@ check() { # <name> <want-exit> [<ere-pattern on stderr>] — one PASS/FAIL line
 p_epic='{"tool_name":"Bash","tool_input":{"command":"bd create -t epic \"X\""}}'
 p_epic_longopt='{"tool_name":"Bash","tool_input":{"command":"bd create --type epic \"X\""}}'
 p_epic_glued='{"tool_name":"Bash","tool_input":{"command":"bd create -tepic \"X\""}}'
+# `=`-joined and quoted spellings. bd is Cobra/pflag-based, so `--type=epic` and
+# `-t=epic` are accepted, and `bd create --help` documents the `=` form itself.
+# The shell strips the quotes in `--type "epic"`, `-t 'epic'` and `--type='epic'`
+# before bd sees the value, so all five create an epic exactly like `-t epic`.
+p_epic_eq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type=epic \"X\""}}'
+p_epic_eq_short='{"tool_name":"Bash","tool_input":{"command":"bd create -t=epic \"X\""}}'
+p_epic_dq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type \"epic\" \"X\""}}'
+p_epic_sq_short='{"tool_name":"Bash","tool_input":{"command":"bd create -t '"'"'epic'"'"' X"}}'
+p_epic_eq_sq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type='"'"'epic'"'"' \"X\""}}'
 p_import='{"tool_name":"Bash","tool_input":{"command":"bd import issues.jsonl"}}'
 p_task='{"tool_name":"Bash","tool_input":{"command":"bd create -t task \"X\""}}'
 p_task_longopt='{"tool_name":"Bash","tool_input":{"command":"bd create --type task \"X\""}}'
+p_task_eq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type=task \"X\""}}'
 p_src='{"tool_name":"Write","tool_input":{"file_path":"src/x.js","content":"x"}}'
 p_src_edit='{"tool_name":"Edit","tool_input":{"file_path":"src/x.js","old_string":"a","new_string":"b"}}'
 p_src_via_docs='{"tool_name":"Write","tool_input":{"file_path":"docs/../src/x.js","content":"x"}}'
@@ -164,11 +174,32 @@ check "ruleA-long-option-type-epic-denied" 2 'Rule A'
 run "$c_orch" "$h_full" "$p_epic_glued"
 check "ruleA-glued-option-tepic-denied" 2 'Rule A'
 
+# The `=`-joined and quoted spellings. Each of these reaches bd as `--type epic`
+# and mutates the plan graph; each exits 0 against a pattern that only admits
+# whitespace between the flag and its value.
+run "$c_orch" "$h_full" "$p_epic_eq_long"
+check "ruleA-equals-joined-long-option-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_eq_short"
+check "ruleA-equals-joined-short-option-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_dq_long"
+check "ruleA-double-quoted-value-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_sq_short"
+check "ruleA-single-quoted-value-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_eq_sq_long"
+check "ruleA-equals-joined-single-quoted-value-denied" 2 'Rule A'
+
 run "$c_orch" "$h_full" "$p_task"
 check "ruleA-task-allowed" 0
 
 run "$c_orch" "$h_full" "$p_task_longopt"
 check "ruleA-long-option-type-task-allowed" 0
+
+run "$c_orch" "$h_full" "$p_task_eq_long"
+check "ruleA-equals-joined-long-option-task-allowed" 0
 
 # Rule A is scoped to non-planning tiers: the planning session is the one that
 # is supposed to be creating epics.
@@ -307,6 +338,8 @@ check "ruleD-newline-in-path-does-not-truncate-the-state-dir-check" 2 'Rule D'
 PATH_OVERRIDE="$nojq"
 unarmed_bad=0
 for p in "$p_epic" "$p_epic_longopt" "$p_epic_glued" "$p_import" "$p_task" \
+         "$p_epic_eq_long" "$p_epic_eq_short" "$p_epic_dq_long" \
+         "$p_epic_sq_short" "$p_epic_eq_sq_long" "$p_task_eq_long" \
          "$p_src" "$p_src_edit" "$p_src_via_docs" "$p_internal" "$p_mex" \
          "$p_docs" "$p_assert" "$p_assert_pty" "$p_state_assert" \
          "$p_state_session" "$p_state_dotdot" "$p_state_dblslash" \
