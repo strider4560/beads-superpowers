@@ -100,7 +100,9 @@ p_import_global_dir='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db 
 # markdown/graph JSON)", and `bd create --graph plan.json` was run against the
 # installed bd v1.1.2: it created an epic plus a parent-child edge with no type
 # flag anywhere in the command string, because the type lives in the JSON file.
-# `-f` / `--file` are the same shape.
+# `--file` is the same shape. The short form `-f` is deliberately NOT a bulk
+# flag — as a bare short flag it would deny any bd command carrying `-f` on any
+# subcommand, and `bd create -f plan.md` was never verified to create an epic.
 p_bulk_graph='{"tool_name":"Bash","tool_input":{"command":"bd create --graph g.json"}}'
 p_bulk_f='{"tool_name":"Bash","tool_input":{"command":"bd create -f plan.md"}}'
 p_bulk_file='{"tool_name":"Bash","tool_input":{"command":"bd create --file plan.md"}}'
@@ -246,7 +248,7 @@ run "$c_orch" "$h_full" "$p_bulk_graph"
 check "ruleA-bulk-graph-denied" 2 'Rule A'
 
 run "$c_orch" "$h_full" "$p_bulk_f"
-check "ruleA-bulk-short-file-flag-denied" 2 'Rule A'
+check "ruleA-bulk-short-file-flag-allowed" 0
 
 run "$c_orch" "$h_full" "$p_bulk_file"
 check "ruleA-bulk-long-file-flag-denied" 2 'Rule A'

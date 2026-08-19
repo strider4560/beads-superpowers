@@ -159,10 +159,18 @@ done <<< "$tiers"
 # "Create a new issue (or batch from markdown/graph JSON)", and
 # `bd create --graph plan.json` was run against the installed bd v1.1.2: it
 # created an epic plus a parent-child edge with NO type flag anywhere in the
-# command string, because the type lives in the JSON file. `-f` and `--file` are
-# the same shape. `-f` is a bare short flag, so any bd command carrying it is
-# denied off the planning tier whether or not it creates anything — a cost taken
-# deliberately, on the same reasoning as the epic-flag clause below.
+# command string, because the type lives in the JSON file. `--file` is the long
+# form of the same flag and is listed too: unambiguous, and cheap.
+# The short form `-f` is deliberately NOT listed. As a bare short flag it would
+# deny any bd command string carrying `-f` before a space or `=`, on any
+# subcommand — `bd list | grep -f pats`, `bd show x && cp -f a b`, a subcommand
+# using `-f` for format or force. Unlike the epic-flag clause below, those false
+# positives are not confined to plan-graph vocabulary. And the path it would
+# cover is unproven: `bd create -f plan.md` was NOT verified to create an epic
+# against bd v1.1.2 (the markdown parser produced tasks in two metadata
+# syntaxes), where `--graph` was. Dropping an unproven path to remove a broad
+# false-positive class is what D20 licenses: Rule A is best-effort
+# defence-in-depth, not a boundary, and the tier wall does not rest on it.
 #
 # Rule A is best-effort defence-in-depth. It is NOT a boundary, and a regex over
 # a shell command string cannot be one. What actually enforces the tier wall:
@@ -174,10 +182,11 @@ done <<< "$tiers"
 # still have to accept.
 # What Rule A does not cover is an OPEN set. It includes, but is not limited to:
 # a quoted or expanded command name (`"bd"`, `$BD`, `$(which bd)`); a type value
-# from expansion or split quoting (`--type=$T`, `-t ep'ic'`); `bd create-form`; a
-# helper script whose own command string never spells `bd`; and any path that
-# puts the type out-of-band in a file not named by the flags above. Do not read a
-# list of uncovered spellings anywhere in this file as complete.
+# from expansion or split quoting (`--type=$T`, `-t ep'ic'`); `bd create-form`;
+# `bd create -f plan.md` (short-form bulk file, dropped above); a helper script
+# whose own command string never spells `bd`; and any path that puts the type
+# out-of-band in a file not named by the flags above. Do not read a list of
+# uncovered spellings anywhere in this file as complete.
 # The cost is wider denial, taken deliberately: ANY bd command whose string
 # carries an epic-type flag is denied off the planning tier — `bd list -t epic`
 # included — as is a `bd create -t task` whose text quotes `--type epic`, or a
@@ -191,7 +200,7 @@ padded=" $cmd "
 bd_re='[^[:alnum:]_-]bd[[:space:]]'
 epic_flag_re='(-t|--type)[[:space:]='"'"'"]*epic'
 import_re='[^[:alnum:]_-]import[^[:alnum:]_-]'
-bulk_re='(--graph|--file|-f)[[:space:]=]'
+bulk_re='(--graph|--file)[[:space:]=]'
 if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ] && [[ "$padded" =~ $bd_re ]]; then
   if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]] ||
      [[ "$padded" =~ $bulk_re ]]; then
