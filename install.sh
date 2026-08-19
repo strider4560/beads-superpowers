@@ -822,13 +822,21 @@ else
   BEADS_CONTEXT="$MEX_SECTION"
 fi
 
+# JSON forbids raw C0 control bytes inside a string: one 0x0C or 0x1B pasted into
+# a lessons.md would make this whole hook's output unparseable. Mirrors the
+# canonical hook's escape_for_json (0x00 cannot reach here, 0x7F is legal raw).
 escape_json() {
-  local s="$1"
+  local s="$1" c ch
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
+  for c in 01 02 03 04 05 06 07 08 0b 0c 0e 0f \
+           10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f; do
+    printf -v ch "\\x$c"
+    s="${s//"$ch"/\\u00$c}"
+  done
   printf '%s' "$s"
 }
 

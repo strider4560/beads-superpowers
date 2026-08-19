@@ -66,6 +66,31 @@ if [ "$fail" = 0 ]; then
   echo "PASS: composed ${sz}B <= budget ${BUDGET}B under overflow fixture; floor margin $((BUDGET - CEILING - WRAP - PTR))B"
 fi
 
+# --- hard 10,000-CHAR threshold, measured on the real escaped string ---
+# BSP_ENVELOPE_BUDGET counts RAW bytes; Claude Code's out-of-line threshold counts
+# characters of the ESCAPED additionalContext, and escaping is expansive. Comparing
+# raw bytes to the budget cannot catch the budget being set too high, so this runs
+# the hook end-to-end in the Claude dialect against an escape-hostile fixture and
+# measures the escaped string itself. 10000 is the harness's hard number — do NOT
+# rewrite it in terms of a hook constant; that is the thing under test.
+mkdir -p "$TMP/hostile/.mex"
+printf 'router\n' > "$TMP/hostile/.mex/ROUTER.md"
+# every byte escapes to two: quotes, backslashes, newlines only. ~8KB, well over cap.
+hostile='""""\\\\'
+for _ in $(seq 1 900); do printf '%s\n' "$hostile"; done > "$TMP/hostile/.mex/lessons.md"
+cd "$TMP/hostile"
+hout=$(printf '{"session_id":"budget-c","source":"startup"}' \
+       | CLAUDE_PROJECT_DIR="$PWD" bash "$HOOK")
+hesc=$(printf '%s\n' "$hout" | sed -n 's/^ *"additionalContext": "\(.*\)"$/\1/p')
+if [ -z "$hesc" ]; then
+  echo "FAIL: could not extract additionalContext from Claude-dialect output"; fail=1
+elif [ "${#hesc}" -ge 10000 ]; then
+  echo "FAIL: escaped additionalContext is ${#hesc} chars (>= the hard 10000 threshold)"; fail=1
+else
+  echo "PASS: escaped additionalContext ${#hesc} chars < 10000 under the escape-hostile fixture"
+fi
+cd "$TMP/ws"
+
 # latency budget: full composition under 5s wall-clock
 t0=$(date +%s)
 printf '{"session_id":"budget-b","source":"startup"}' | bash "$HOOK" --emit-plain >/dev/null

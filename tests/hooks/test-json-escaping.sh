@@ -28,5 +28,36 @@ else
   fail=1
 fi
 
+# --- C0 control bytes in the mex hot page must not break the envelope ---
+# JSON forbids raw U+0000-U+001F inside a string. A pasted transcript in
+# .mex/lessons.md can carry 0x0C (form feed) or 0x1B (ESC); one of them reaching
+# the output unescaped costs the session ALL of its injected context.
+# Parser is real, not a regex: jq, else python3, else node, else visible SKIP.
+json_ok() {
+  if command -v jq >/dev/null 2>&1; then jq -e . >/dev/null 2>&1
+  elif command -v python3 >/dev/null 2>&1; then python3 -m json.tool >/dev/null 2>&1
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>JSON.parse(d))' >/dev/null 2>&1
+  else return 2; fi
+}
+ctl=$(mktemp -d)
+mkdir -p "$ctl/ws/.mex" "$ctl/home/.claude" "$ctl/run"
+printf 'router\n' > "$ctl/ws/.mex/ROUTER.md"
+printf 'lesson one\x0cform feed above\nlesson two\x1bescape above\n' > "$ctl/ws/.mex/lessons.md"
+ctl_out=$(cd "$ctl/ws" && printf '{"session_id":"ctl-a","source":"startup"}' \
+  | HOME="$ctl/home" XDG_RUNTIME_DIR="$ctl/run" bash "$tmp/hooks/session-start" 2>/dev/null)
+if printf '%s\n' "$ctl_out" | json_ok; then
+  echo "PASS: C0 control bytes (0x0C, 0x1B) in .mex/lessons.md — output still parses as JSON"
+else
+  rc=$?
+  if [ "$rc" = 2 ]; then
+    echo "SKIP: C0 control-byte case — no JSON parser available (jq, python3, node all absent)"
+  else
+    echo "FAIL: C0 control bytes in .mex/lessons.md make hook output unparseable"
+    fail=1
+  fi
+fi
+rm -rf "$ctl"
+
 rm -rf "$tmp"
 exit $fail

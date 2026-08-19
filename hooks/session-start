@@ -27,12 +27,20 @@ BSP_MEX_CEILING=2048
 # and is what makes a cap-compliant 2048B hot page fit WHOLE — the product
 # contract, asserted end-to-end in tests/hooks/test-composer-assembly.sh.
 BSP_ENVELOPE_BUDGET=9800
-# Reserved bytes around/inside the beads side that the mex ceiling does NOT
-# count: wrapper joins ("\n\n<beads-context>\n" … "\n</beads-context>" ≈ 37B)
-# plus the composer's fixed frame — section header + router line + truncation
-# marker (192B measured, held under 256B by the frame-overhead assertion in
-# tests/hooks/test-composer-selection.sh). 384 = 2x the measured frame, headroom
-# for JSON-escaping expansion; oversizing it comes straight out of the hot page.
+# The 10,000 threshold counts CHARACTERS OF THE ESCAPED STRING, and escaping is
+# expansive: a page dense in newlines/quotes/backslashes nearly doubles, and a
+# C0 control byte becomes 6 chars (\u00XX). BSP_ENVELOPE_BUDGET counts RAW bytes
+# and cannot see that, so the escaped string is measured for real at the boundary
+# and the hot page gives back the excess (see the correction pass below).
+# 9800 chars, same 200-char margin under the hard threshold.
+BSP_HARD_CHAR_CAP=9800
+# Reserved bytes on the beads side that the mex allowance does NOT count: the
+# wrapper joins ("\n\n<beads-context>\n" … "\n</beads-context>" ≈ 37B) plus plain
+# headroom for JSON-escaping expansion. It does NOT cover the composer's fixed
+# frame (header + router line + truncation marker, 192B measured) — that is
+# reserved separately as the 256B in the allowance arithmetic below, so counting
+# it here too would charge the hot page twice. Oversizing this constant comes
+# straight out of the hot page.
 # Enforced by the overflow fixture in tests/hooks/test-bootstrap-budget.sh.
 BSP_WRAP_OVERHEAD=384
 
@@ -131,8 +139,8 @@ fi
 
 # --- bd prime safety net: lean override where the composer owns injection ---
 if command -v bd >/dev/null 2>&1 && [ -d .beads ] && [ ! -e .beads/PRIME.md ] && [ ! -L .beads/PRIME.md ]; then
-    # Same class as the salience probe: `<output> | grep -q` under pipefail is
-    # SIGPIPE-prone — capture then match in bash (same ERE, no pipe).
+    # `<output> | grep -q` under pipefail is SIGPIPE-prone — capture the output,
+    # then match it in bash (same ERE, no pipe).
     bsp_cfg=$(bd config show 2>/dev/null) || bsp_cfg=""
     bsp_net_off='custom\.prime-safety-net[[:space:]]*=[[:space:]]*false'
     if ! [[ "$bsp_cfg" =~ $bsp_net_off ]]; then
@@ -178,13 +186,25 @@ done
 using_superpowers_content=$(cat "${PLUGIN_ROOT}/skills/using-superpowers/SKILL.md" 2>/dev/null) || using_superpowers_content="beads-superpowers: using-superpowers skill unreadable"
 
 # Escape string for JSON embedding using bash parameter substitution.
+# Applied EXACTLY ONCE, at the output boundary. Backslash first, then the
+# structural characters, then every remaining C0 control byte: JSON forbids raw
+# U+0000–U+001F inside a string, and a lessons.md carrying a pasted transcript
+# can easily hold 0x0C or 0x1B — one such byte would make the whole hook output
+# unparseable and silently cost the session ALL of its context.
+# 0x00 cannot reach here (command substitution drops NUL); 0x7F is legal raw.
 escape_for_json() {
-    local s="$1"
+    local s="$1" c ch
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
     s="${s//$'\t'/\\t}"
+    # The \n/\r/\t forms above are already emitted, so this list skips 09/0a/0d.
+    for c in 01 02 03 04 05 06 07 08 0b 0c 0e 0f \
+             10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f; do
+        printf -v ch "\\x$c"
+        s="${s//"$ch"/\\u00$c}"
+    done
     printf '%s' "$s"
 }
 
@@ -207,13 +227,35 @@ ${warning_message_raw}
 # knowledge is a .mex/ store, not a beads feature, so it composes with or without bd
 # and only its byte cost in the allowance changes. The whole block still yields to an
 # external `bd prime` hook, which owns injection outright (tests/hooks/test-bd-prime-dedup.sh).
-beads_context=""
+bsp_bootstrap_raw="$session_context_raw"
+
+# Rebuild session_context_raw from the bootstrap at a given mex ceiling.
+# A function because the escaped-length correction below re-runs it.
+# $1 = mex lessons byte ceiling.
+bsp_assemble() {
+    local section ctx
+    session_context_raw="$bsp_bootstrap_raw"
+    [ "$bd_prime_already_hooked" -eq 0 ] || return 0
+    section="$(bsp_compose_mex "$1")"
+    ctx="$section"
+    [ -n "$bsp_pointer" ] && ctx="${bsp_pointer}
+
+${section}"
+    session_context_raw="${session_context_raw}
+
+<beads-context>
+${ctx}
+</beads-context>"
+    return 0
+}
+
+bsp_pointer=""
+bsp_mex_ceiling=0
 if [ "$bd_prime_already_hooked" -eq 0 ]; then
-    bsp_pointer=""
     if command -v bd &>/dev/null; then
         bsp_pointer="$(bsp_bd_pointer)"
     fi
-    bsp_allowance=$(( BSP_ENVELOPE_BUDGET - $(printf '%s' "$session_context_raw" | wc -c) \
+    bsp_allowance=$(( BSP_ENVELOPE_BUDGET - $(printf '%s' "$bsp_bootstrap_raw" | wc -c) \
                       - $(printf '%s' "$bsp_pointer" | wc -c) - BSP_WRAP_OVERHEAD ))
     [ "$bsp_allowance" -lt 0 ] && bsp_allowance=0
     # Section budget = hot page + 256B for the header/router/marker frame (192B
@@ -222,24 +264,23 @@ if [ "$bd_prime_already_hooked" -eq 0 ]; then
     bsp_mex_budget=$(( bsp_allowance < BSP_MEX_CEILING + 256 ? bsp_allowance : BSP_MEX_CEILING + 256 ))
     bsp_mex_ceiling=$(( bsp_mex_budget - 256 ))
     [ "$bsp_mex_ceiling" -lt 0 ] && bsp_mex_ceiling=0
-    bsp_mex_section="$(bsp_compose_mex "$bsp_mex_ceiling")"
-    if [ -n "$bsp_pointer" ]; then
-        beads_context="${bsp_pointer}
-
-${bsp_mex_section}"
-    else
-        beads_context="$bsp_mex_section"
-    fi
 fi
+bsp_assemble "$bsp_mex_ceiling"
 
-# Append beads context if available
-if [ -n "$beads_context" ]; then
-    session_context_raw="${session_context_raw}
-
-<beads-context>
-${beads_context}
-</beads-context>"
-fi
+# Escaped-length correction: the arithmetic above counts RAW bytes, but the hard
+# 10,000-char threshold applies to the ESCAPED string. Measure the real escaped
+# string and hand the excess back out of the hot page.
+# Terminates: each raw byte dropped from the page removes at least one escaped
+# char, and the ceiling floors at 0; bounded at 3 passes regardless of input.
+# The +128 covers the truncation marker a fresh clip may newly append.
+for _ in 1 2 3; do
+    bsp_escaped="$(escape_for_json "$session_context_raw")"
+    bsp_over=$(( ${#bsp_escaped} - BSP_HARD_CHAR_CAP ))
+    if [ "$bsp_over" -le 0 ] || [ "$bsp_mex_ceiling" -eq 0 ]; then break; fi
+    bsp_mex_ceiling=$(( bsp_mex_ceiling - bsp_over - 128 ))
+    [ "$bsp_mex_ceiling" -lt 0 ] && bsp_mex_ceiling=0
+    bsp_assemble "$bsp_mex_ceiling"
+done
 
 # Output context injection.
 # --emit-plain: raw text, no JSON envelope (consumed by OpenCode plugin / install.sh shims).
