@@ -340,13 +340,16 @@ if [ -d "$_bsp_bundle_root" ] && [ -f "$_bsp_bundle_root/shared/tier-map.json" ]
   if mkdir -p .internal/pipeline 2>/dev/null; then
     # Written through a temp file: the gate refuses a session.json that is not valid
     # JSON, so a half-written one would cost the session its tier.
-    jq -n --arg model "$_bsp_model" --arg effort "${CLAUDE_EFFORT:-}" \
-          --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{model_id: (if $model == "" then null else $model end),
-        effort:   (if $effort == "" then null else $effort end),
-        source: "hook",
-        timestamp: $ts}' > ".internal/pipeline/session.json.$$" 2>/dev/null \
-      && mv -f ".internal/pipeline/session.json.$$" .internal/pipeline/session.json 2>/dev/null || true
+    # Brace-grouped so the group's 2>/dev/null is in place BEFORE the inner `>` is
+    # attempted: an existing-but-unwritable .internal/pipeline/ makes the redirect
+    # itself fail, and bash reports that on the group's stderr, not the command's.
+    { jq -n --arg model "$_bsp_model" --arg effort "${CLAUDE_EFFORT:-}" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{model_id: (if $model == "" then null else $model end),
+          effort:   (if $effort == "" then null else $effort end),
+          source: "hook",
+          timestamp: $ts}' > ".internal/pipeline/session.json.$$" \
+        && mv -f ".internal/pipeline/session.json.$$" .internal/pipeline/session.json; } 2>/dev/null || true
     rm -f ".internal/pipeline/session.json.$$" 2>/dev/null || true
   fi
 fi
