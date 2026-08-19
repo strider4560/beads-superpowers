@@ -5,6 +5,24 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 rc=0
+
+# Mutations that invoke install.sh (2 and 4) MUST run PATH-sandboxed: install.sh
+# treats mex as a hard dependency and, on a host with no mex and node >= 22.5.0,
+# runs a real `npm install -g mex-agent@<pin>` into the developer's global prefix.
+# A test suite must never mutate the host, so those mutations reuse the shape
+# suite's sandbox (shim dir with answering mex/node stubs + a logging npm that can
+# only ever fail, a sandbox HOME, and a PATH that excludes the user's real one).
+# lib.sh is import-only — sourcing defines variables and functions, runs nothing —
+# but it recomputes REPO_ROOT from SHAPE_REPO_ROOT, so the selftest's own value is
+# restored immediately after: mutations 1/19/20 point SHAPE_REPO_ROOT at mutated
+# copies and must keep resolving the REAL checkout here.
+# CAUTION: lib.sh's assert_* helpers report into its FAILS counter, which this
+# script never reads — a failure there would be invisible. Assertions below use
+# the expect_*/rc helpers instead; only the sandbox builders are reused.
+_SELFTEST_REPO_ROOT="$REPO_ROOT"
+# shellcheck source=tests/install-shape/lib.sh
+source "$HERE/lib.sh"
+REPO_ROOT="$_SELFTEST_REPO_ROOT"
 expect_red() {  # expect_red <label> <cmd>...
   local label="$1"; shift
   if "$@" > /dev/null 2>&1; then
@@ -19,6 +37,19 @@ expect_green() {  # expect_green <label> <cmd>... — the GREEN-control counterp
     echo "SELFTEST ok: '$label' correctly passes"
   else
     echo "SELFTEST FAIL: '$label' should have gone GREEN but failed"; rc=1
+  fi
+}
+# expect_npm_untouched <label> — the sandbox npm is a stub that logs its argv and
+# exits 1. These mutation scenarios run with mex already satisfied, so nothing may
+# ever reach npm: an empty-or-absent log is the proof the host was not mutated.
+# Deliberately rc-based rather than lib.sh's assert_npm_untouched, whose FAILS
+# counter this script does not read.
+expect_npm_untouched() {
+  local label="$1" log="$SANDBOX/npm-invocations.log"
+  if [ ! -s "$log" ]; then
+    echo "SELFTEST ok: '$label' never invoked npm (host untouched)"
+  else
+    echo "SELFTEST FAIL: '$label' invoked npm: $(tr '\n' ';' < "$log")"; rc=1
   fi
 }
 
@@ -41,23 +72,30 @@ rm -rf "$MUT1"
 
 # Mutation 2: SessionStart entry stripped from settings.json post-install -> claude JSON assertion fails.
 # Setup failures are rig breakage, NOT a caught mutation — never let them masquerade as red.
-SB2=$(mktemp -d)
-if ! HOME="$SB2" BEADS_SUPERPOWERS_SKILLS_DIR="$SB2/skills" bash "$REPO_ROOT/install.sh" --yes --source "$REPO_ROOT" >/dev/null 2>&1; then
+# PATH-sandboxed (aeq.12): shape_sandbox_setup supplies the sandbox HOME, the answering
+# mex/node stubs and the logging npm stub, so this install can neither see nor mutate the
+# host's global npm packages. `claude` is shimmed so Claude Code is detected and
+# settings.json is actually written — the same detection the host PATH used to provide.
+shape_sandbox_setup claude
+_shape_run_install
+if [ "$INSTALL_RC" -ne 0 ]; then
   echo "SELFTEST FAIL: mutation-2 setup install failed (rig broken, not a caught mutation)"; rc=1
-elif [ ! -f "$SB2/.claude/settings.json" ]; then
+  sed -n '1,25p' "$SANDBOX/install.log"
+elif [ ! -f "$SANDBOX/.claude/settings.json" ]; then
   echo "SELFTEST FAIL: mutation-2 setup produced no settings.json (rig broken, not a caught mutation)"; rc=1
 else
-  python3 - "$SB2/.claude/settings.json" << 'PY'
+  expect_npm_untouched "mutation-2 setup install"
+  python3 - "$SANDBOX/.claude/settings.json" << 'PY'
 import json, sys
 p = sys.argv[1]
 d = json.load(open(p)); d.get('hooks', {}).pop('SessionStart', None)
 json.dump(d, open(p, 'w'))
 PY
   expect_red "stripped SessionStart" python3 -c "
-import json,sys; d=json.load(open('$SB2/.claude/settings.json'))
+import json,sys; d=json.load(open('$SANDBOX/.claude/settings.json'))
 sys.exit(0 if 'SessionStart' in d.get('hooks',{}) else 1)"
 fi
-rm -rf "$SB2"
+shape_sandbox_teardown
 
 # Mutation 3: corrupted manifest JSON -> manifest assertion fails.
 MUT3=$(mktemp -d)
@@ -67,16 +105,24 @@ rm -rf "$MUT3"
 
 # Mutation 4: file planted after uninstall -> round-trip residue assertion fails.
 # Setup failures are rig breakage, NOT a caught mutation — never let them masquerade as red.
-SB4=$(mktemp -d)
-if ! HOME="$SB4" BEADS_SUPERPOWERS_SKILLS_DIR="$SB4/skills" bash "$REPO_ROOT/install.sh" --yes --source "$REPO_ROOT" >/dev/null 2>&1; then
+# PATH-sandboxed (aeq.12), same rig as mutation 2. The uninstall leg is spelled out
+# rather than calling lib.sh's shape_uninstall, whose failure would land in the FAILS
+# counter this script never reads (silently green); here it must set rc.
+shape_sandbox_setup claude
+_shape_run_install
+if [ "$INSTALL_RC" -ne 0 ]; then
   echo "SELFTEST FAIL: mutation-4 setup install failed (rig broken, not a caught mutation)"; rc=1
-elif ! HOME="$SB4" BEADS_SUPERPOWERS_SKILLS_DIR="$SB4/skills" bash "$REPO_ROOT/install.sh" --yes --uninstall >/dev/null 2>&1; then
+  sed -n '1,25p' "$SANDBOX/install.log"
+elif ! env HOME="$SANDBOX" BEADS_SUPERPOWERS_SKILLS_DIR="$SANDBOX/skills" PATH="$SANDBOX_PATH" \
+       bash "$REPO_ROOT/install.sh" --yes --uninstall > "$SANDBOX/uninstall.log" 2>&1; then
   echo "SELFTEST FAIL: mutation-4 setup uninstall failed (rig broken, not a caught mutation)"; rc=1
+  sed -n '1,25p' "$SANDBOX/uninstall.log"
 else
-  mkdir -p "$SB4/skills/using-superpowers" && touch "$SB4/skills/using-superpowers/SKILL.md"
-  expect_red "planted residue" bash -c "[ ! -e '$SB4/skills/using-superpowers/SKILL.md' ]"
+  expect_npm_untouched "mutation-4 setup install+uninstall"
+  mkdir -p "$SANDBOX/skills/using-superpowers" && touch "$SANDBOX/skills/using-superpowers/SKILL.md"
+  expect_red "planted residue" bash -c "[ ! -e '$SANDBOX/skills/using-superpowers/SKILL.md' ]"
 fi
-rm -rf "$SB4"
+shape_sandbox_teardown
 
 # Mutation 11: check-zh-docs.sh's completeness assertion (Task 8) — every
 # docs/*.md page must be registered as the EN member of a pair, else it
