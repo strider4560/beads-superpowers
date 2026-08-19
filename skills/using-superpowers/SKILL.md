@@ -50,7 +50,7 @@ Treat every project as a production system with real users, no matter how small 
 
 ## Capturing Decisions
 
-When a decision is hard to reverse, surprising without context, and a genuine trade-off, you MUST offer to record an ADR in `docs/decisions/` (the user confirms; never auto-create). Bias toward offering rather than skipping. Routine clarifications and scope questions don't qualify.
+Log every settled decision — `mex log --type decision "<one-line>"`, unconditional; that line makes it retrievable. When a decision is hard to reverse, surprising without context, and a genuine trade-off, you MUST also offer an ADR in `docs/decisions/` (the user confirms; never auto-create). Bias toward offering rather than skipping. Routine clarifications and scope questions don't qualify.
 
 ## Beads and mex
 

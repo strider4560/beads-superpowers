@@ -60,7 +60,7 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 
 10. **finishing-a-development-branch** — 给出合并/PR 选项，并执行 Land the Plane：关闭 beads、同步、推送。
 
-智能体会在执行任何任务前检查相关技能——这些是强制性工作流，而非建议。并且因为每项任务、决策和经验都保存在 `bd` 的 Dolt 数据库中，下一次会话会从上一次结束的地方开始：输入 "where are we"，智能体就会接续之前的工作。
+智能体会在执行任何任务前检查相关技能——这些是强制性工作流，而非建议。并且因为每项任务保存在 `bd` 的 Dolt 数据库中、每条决策和经验保存在 `.mex/` 知识库中，下一次会话会从上一次结束的地方开始：输入 "where are we"，智能体就会接续之前的工作。
 
 ## 功能概览
 
@@ -111,16 +111,16 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 | 技能 | 作用 |
 |------|------|
 | `getting-up-to-speed` | 会话定向——加载 `bd` 上下文并生成当前状态摘要 |
-| `memory-curator` | 整合、去重并清理持久记忆库 |
+| `mex-curator` | 把一次会话的持久知识蒸馏进仓库本地的 `.mex/` 库——路由、去重、热页面上限 |
 | `session-handoff` | 生成有据可查的交接文档，让下一次会话接续进行中的工作 |
 | `research-driven-development` | 并行研究智能体 → 经过验证的持久知识库 |
-| `project-init` | 搭建、引导并修复支撑持久记忆的 beads/Dolt 数据库 |
+| `project-init` | 搭建、引导并修复 beads/Dolt 数据库以及 `.mex/` 知识库 |
 
 **[完整技能参考 →](https://algocents.com/beads-superpowers/skills/)**
 
 ## 工作原理
 
-开始任务时，智能体先运行 **brainstorming** 以在触碰代码前明确需求，再通过 **writing-plans** 将工作拆解为 `bd` 追踪的步骤——这些步骤在会话重启后仍然保留。实现阶段遵循 **test-driven-development**（始终先写失败的测试），并可通过 **subagent-driven-development** 扇出到并行子智能体——每个智能体在各自的 git worktree 中工作。`bd` 将每项任务、决策和备注存储在本地 Dolt 数据库中，因此智能体在下次会话时能从上次中断处精确接续，无需依赖聊天记录。
+开始任务时，智能体先运行 **brainstorming** 以在触碰代码前明确需求，再通过 **writing-plans** 将工作拆解为 `bd` 追踪的步骤——这些步骤在会话重启后仍然保留。实现阶段遵循 **test-driven-development**（始终先写失败的测试），并可通过 **subagent-driven-development** 扇出到并行子智能体——每个智能体在各自的 git worktree 中工作。`bd` 将每项任务存储在本地 Dolt 数据库中，mex 则把项目的持久知识——需求、架构、约定、决策、经验——以可路由的 Markdown 页面存放在 `.mex/` 下，因此智能体在下次会话时能从上次中断处精确接续，无需依赖聊天记录。
 
 这一切之下是生产级标准：智能体将每项任务视为真实用户依赖的事项，因此它不会为了速度偷偷走捷径、遗漏需求或削弱安全控制。
 
@@ -130,7 +130,7 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 - **TDD 是铁律** — 没有失败的测试就不能实现代码
 - **系统化优于临时应对** — 调试遵循根因分析流程，绝不靠猜测和试错
 - **有证据才有主张** — "完成"需要一条命令来证明
-- **记忆优于聊天记录** — 任务、决策和经验教训持久保存在 `bd` 中，而非保存在滚动的对话缓冲区里
+- **记忆优于聊天记录** — `bd` 追踪工作；mex 保存知识。任务、决策和经验教训持久保存在磁盘上，而非保存在滚动的对话缓冲区里
 
 完整版本参见[方法论](https://algocents.com/beads-superpowers/methodology/)。
 
@@ -148,7 +148,9 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 
 ### 前提条件
 
-**先安装 `bd`，再安装插件。** 其钩子在每次会话启动时调用 `bd`；若未安装，钩子将静默失败，导致丢失持久记忆。可使用 Homebrew（`brew install beads`），或在任何平台上使用 `npm install -g @beads/bd`。通过 `bd version` 验证安装。
+**先安装 `bd`，再安装插件。** 其钩子在每次会话启动时注入 `bd` 上下文；若未安装 `bd`，这一半会被跳过，导致丢失持久的任务追踪。可使用 Homebrew（`brew install beads`），或在任何平台上使用 `npm install -g @beads/bd`。通过 `bd version` 验证安装。
+
+**同时安装 mex。** 持久知识存放在仓库本地的 `.mex/` 库中而非 beads 里，各技能会直接调用 `mex` CLI：`npm install -g mex-agent@0.7.1`（版本固定为 0.7.1，需要 Node 22.5.0 及以上）。通过 `mex --version` 验证安装。
 
 **注意：** 原生插件安装会安装技能和钩子，但不会执行 `bd init`——请在每个项目中手动运行。
 
@@ -283,6 +285,7 @@ curl -fsSL https://raw.githubusercontent.com/strider4560/beads-superpowers/main/
 
 - **[Superpowers](https://github.com/obra/superpowers)** by Jesse Vincent — 技能体系与开发实践
 - **[Beads](https://github.com/gastownhall/beads)** by Steve Yegge — 跨会话记忆的持久化问题追踪
+- **mex**（`mex-agent`）— `.mex/` 背后的仓库本地持久知识库
 
 部分技能改编自：
 

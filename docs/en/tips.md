@@ -30,15 +30,27 @@ recovery, coordination - lives in the upstream reference linked below.
 | `bd close <id> --reason "..."` | Complete with evidence |
 | `bd dep add <child> <depends-on>` | Add dependency |
 | `bd note <id> "context"` | Append evidence to a bead |
-| `bd remember "insight"` / `bd memories <kw>` / `bd forget <id>` | Persist / search / remove learnings |
-| `bd list --label <topic> --status all` / `bd search "<kw>" --status all` | Search the knowledge base - deferred `research`/`design`/`decision` beads labeled `kb` (body terms: `--desc-contains "<kw>"`; then read hits with `bd show <id1> <id2>` or `--flat --long -n 10`). |
 | `bd dolt push` / `pull` | Sync beads DB to/from your beads remote |
 
 !!! info "Go deeper - upstream Beads docs"
     - [CLI reference](https://gastownhall.github.io/beads/cli-reference) - every `bd` command and flag, including the housekeeping and coordination commands trimmed from this sheet (`list`, `stats`, `doctor`, `lint`, `stale`, `find-duplicates`, `defer`, `human`, `swarm`, `batch`, `merge-slot`, `github`, `-C`)
     - [Recovery guides](https://gastownhall.github.io/beads/recovery) - diverged Dolt history, failed syncs
 
-**Land the Plane:** Every session ends with `bd close` → `bd dolt push` (to your beads remote) → `git push` (to your code repo). The `finishing-a-development-branch` skill enforces this.
+## mex cheat sheet
+
+Durable knowledge lives in a repo-local `.mex/` store, never in beads. `bd` tracks work; mex holds knowledge.
+
+| Command | Does |
+|---------|------|
+| `mex graph scope "<task>"` | Route the store for this task - then read the routed pages in full; a routed hit is a pointer, not knowledge |
+| `mex log --type decision "<conclusion>"` | Record a decision. Bare `mex log` records kind `note` instead, which is not a decision |
+| `mex check` | Validate the store. Gate on the exit code: warnings at exit 0 are the stock baseline (a fresh scaffold scores 79/100) |
+| `mex sync` | Repair after a failed check - then run `mex check` again, because `sync` exits 0 even when it repaired nothing |
+| `mex timeline` | Read the event log back, newest first (`.mex/events/decisions.jsonl`, which holds every event kind, not just decisions) |
+
+Three files worth knowing by name: `.mex/lessons.md` is the hot page injected at every session start, hard-capped at 2048 bytes; `.mex/lessons-archive.md` holds demoted lessons, still routed but no longer injected; `.mex/private/` holds the sensitive class and is gitignored, so it never syncs to another machine.
+
+**Land the Plane:** Every session ends with `bd close` → `mex check` → `bd dolt push` (to your beads remote) → `git push` (to your code repo). The `finishing-a-development-branch` skill enforces this.
 
 ## Skill routing
 
@@ -60,7 +72,7 @@ recovery, coordination - lives in the upstream reference linked below.
 | Update docs after shipping | `document-release` |
 | Research a topic | `research-driven-development` |
 | Write human-facing prose | `write-documentation` |
-| Consolidate or dedup memories | `memory-curator` |
+| Distill durable knowledge into `.mex/` | `mex-curator` |
 
 The `using-superpowers` bootstrap skill (auto-loaded at session start) has the full routing logic; if unsure, ask Claude to read it.
 
@@ -76,6 +88,8 @@ See [Getting Started - Troubleshooting](getting-started.md#troubleshooting) for 
 
 **`bd dolt push` fails** - No beads remote configured. Harmless if you don't need remote sync.
 
+**`No .mex/ found` at session start** - The knowledge store isn't set up in this project. Run the `project-init` skill; it creates the scaffold plus the pages this plugin adds on top of it.
+
 ## Windows
 
 The SessionStart hook (`hooks/session-start`) is bash. On Windows, the polyglot wrapper `hooks/run-hook.cmd` calls it via Git Bash. The `.cmd` file is valid as both a batch file and a bash script: on Windows, `cmd.exe` finds Git Bash and re-executes; on Unix, the `:` command is a no-op and bash runs the rest. It works without WSL as long as Git for Windows is installed.
@@ -88,3 +102,4 @@ Skills are pure Markdown with no platform-specific code. Only the hook wrapper h
 |--------|----------|----------|
 | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | Skill content, new skills, hooks |
 | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.2 | CLI commands, `bd prime` format |
+| mex (`mex-agent` on npm) | 0.7.1 | CLI commands, `.mex/` layout, router format |

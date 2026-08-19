@@ -78,15 +78,15 @@ Create a bead (`bd create`), claim it (`bd update --claim`), and sync the beads 
 
 `research-driven-development` runs when the task needs understanding first - an unfamiliar library, an ambiguous requirement, a design question with no clear precedent. It decomposes the topic into sub-questions and dispatches one researcher per sub-question in parallel, with an `@explore` agent mapping affected code and dependencies when the topic is codebase-relevant.
 
-The orchestrator then verifies each load-bearing claim against the verbatim quote its researcher returned, running a capped gap-closing round (up to two) when a claim rests on a single source. The findings go into a persistent document, with key learnings stored via `bd remember` - the same pass that surfaces any contradiction between what the researcher and the explorer found, before it reaches implementation.
+The orchestrator then verifies each load-bearing claim against the verbatim quote its researcher returned, running a capped gap-closing round (up to two) when a claim rests on a single source. The findings go into a persistent document and are then distilled into the `.mex/` knowledge store - conclusions onto the pages their class routes to, each load-bearing conclusion logged with `mex log --type decision`. That same pass surfaces any contradiction between what the researcher and the explorer found, before it reaches implementation.
 
 ### Brainstorm
 
-`brainstorming` explores the solution space through structured questions, surfaces assumptions, and produces a design spec committed to git. The design must be user-approved before anything moves forward, and the spec-review gate offers a `stress-test` every time to interrogate it adversarially.
+`brainstorming` opens by querying the knowledge store - `mex graph scope "<task>"`, then reading the routed `.mex/` pages in full and reporting `mex retrieval: N pages routed, K read` - so the design starts from what the project already settled instead of re-litigating it. From there it explores the solution space through structured questions, surfaces assumptions, and produces a design spec committed to git. The design must be user-approved before anything moves forward, and the spec-review gate offers a `stress-test` every time to interrogate it adversarially.
 
 ### Decision capture
 
-When a choice is hard to reverse, surprising without its context, and a real trade-off, the agent offers to record an ADR in `docs/decisions/` - context, decision, consequences, alternatives considered. The agent leans toward offering whenever a decision plausibly fits these marks; only routine clarifications and scope calls fall outside. It turns an implicit decision into an explicit record a later reader can trace. The same capture gate reappears after stress-test and after writing-plans - wherever a design settles, not just here.
+Every settled decision is logged: `mex log --type decision "<one-line decision>"` runs unconditionally, and that log line is what makes the decision - and any ADR written for it - retrievable later. The full ADR in `docs/decisions/` - context, decision, consequences, alternatives considered - is added on top only when the ADR bar is met: the choice is hard to reverse, surprising without its context, and a real trade-off. The agent leans toward offering the ADR whenever a decision plausibly fits these marks; only routine clarifications and scope calls fall outside. It turns an implicit decision into an explicit record a later reader can trace. The same capture gate reappears after stress-test and after writing-plans - wherever a design settles, not just here.
 
 ### Stress-test (spec gate)
 
@@ -129,7 +129,7 @@ After every task passes its own [review gate](#review-gate), the orchestrator di
 
 ### Session close
 
-On non-branch paths - research queries, quick tasks that never created a branch - the same close ritual runs without the merge step: `bd close` → `bd dolt push` → `git push` → `git status`. If the session produced several new memories, the orchestrator offers a `memory-curator` pass before `bd dolt push`. The next session's start-hook injection restores the full picture.
+On non-branch paths - research queries, quick tasks that never created a branch - the same close ritual runs without the merge step: `bd close` → `mex check` → `bd dolt push` → `git push` → `git status`. When the session captured roughly three or more new durables into `.mex/`, or the hot page arrived truncated, the orchestrator offers a `mex-curator` pass first, so the curated pages ride the same push. The next session's start-hook injection restores the full picture.
 
 ## Review gate
 
@@ -174,6 +174,6 @@ Two interrupts can fire at any point. They suspend the current step, handle the 
 
 ## Session protocol
 
-**Start:** The SessionStart hook fires automatically, injecting skill context plus a composed beads context - a `bd` command pointer and the highest-salience persistent memories. Run `bd ready` to surface unblocked beads and in-progress work from previous sessions. Orient before claiming; claim before implementing. When starting work on a bead, process skills come first - brainstorming and planning before any implementation skill; a bead with an existing spec or plan proceeds straight to its planned skill.
+**Start:** The SessionStart hook fires automatically, injecting skill context plus a `bd` command pointer and the durable-knowledge block - a router line and the 2 KB hot page from `.mex/lessons.md`. Run `bd ready` to surface unblocked beads and in-progress work from previous sessions. Orient before claiming; claim before implementing. When starting work on a bead, process skills come first - brainstorming and planning before any implementation skill; a bead with an existing spec or plan proceeds straight to its planned skill.
 
-**End:** Finish for code paths, Session close for non-branch paths. Close every bead with evidence; if the session produced several new memories, offer a `memory-curator` pass before the push. Push the beads remote, push git, verify a clean tree. A session with uncommitted work or unpushed commits hasn't landed - the push is what completion means.
+**End:** Finish for code paths, Session close for non-branch paths. Close every bead with evidence; offer a `mex-curator` pass when the session produced curation-worthy volume, then gate the store with `mex check` before the push. Push the beads remote, push git, verify a clean tree. A session with uncommitted work or unpushed commits hasn't landed - the push is what completion means.

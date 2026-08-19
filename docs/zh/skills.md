@@ -35,7 +35,7 @@ beads-superpowers 附带 {{ skill_count }} 个可组合技能，通过 `Skill` �
 | 收到审查反馈 | `receiving-code-review` |
 | 编写面向用户的文本 | `write-documentation` |
 | 分支完成 | `finishing-a-development-branch` |
-| 整合或去重记忆 | `memory-curator` |
+| 把持久知识蒸馏进 `.mex/` | `mex-curator` |
 | 将工作移交至下一会话 | `session-handoff`（人工调用） |
 
 其他可用技能：`document-release`、`getting-up-to-speed`、`dispatching-parallel-agents`、`project-init`
@@ -50,7 +50,7 @@ beads-superpowers 附带 {{ skill_count }} 个可组合技能，通过 `Skill` �
 | **设计与规划** | [brainstorming](#brainstorming), [stress-test](#stress-test), [writing-plans](#writing-plans) |
 | **执行** | [subagent-driven-development](#subagent-driven-development), [executing-plans](#executing-plans), [dispatching-parallel-agents](#dispatching-parallel-agents), [using-git-worktrees](#using-git-worktrees), [requesting-code-review](#requesting-code-review), [receiving-code-review](#receiving-code-review), [finishing-a-development-branch](#finishing-a-development-branch) |
 | **文档撰写** | [write-documentation](#write-documentation), [document-release](#document-release) |
-| **记忆与定向** | [getting-up-to-speed](#getting-up-to-speed), [memory-curator](#memory-curator), [session-handoff](#session-handoff), [research-driven-development](#research-driven-development), [project-init](#project-init) |
+| **记忆与定向** | [getting-up-to-speed](#getting-up-to-speed), [mex-curator](#mex-curator), [session-handoff](#session-handoff), [research-driven-development](#research-driven-development), [project-init](#project-init) |
 
 ```mermaid
 ---
@@ -90,7 +90,7 @@ graph TD
   end
   subgraph Memory ["记忆与定向"]
     GUS["getting-up-to-speed"]
-    MC["memory-curator"]
+    MC["mex-curator"]
     SH["session-handoff"]
     RDD["research-driven-dev"]
     PI["project-init"]
@@ -116,7 +116,7 @@ graph TD
 
 ### using-superpowers
 
-在每次会话开始时注入的引导技能。将智能体路由至当前任务对应的正确技能，并承载生产级行为规范，确保每个会话遵循无捷径、无静默缩减范围、永不引入安全回归的标准。它还承载决策捕获约定：当某个选择难以撤销、出乎意料且存在真实权衡时，智能体会提议在 `docs/decisions/` 中记录一条 ADR。其他所有技能都依赖于此技能先行加载。
+在每次会话开始时注入的引导技能。将智能体路由至当前任务对应的正确技能，并承载生产级行为规范，确保每个会话遵循无捷径、无静默缩减范围、永不引入安全回归的标准。它还承载其他所有技能都依赖的两条约定：决策捕获规则——当某个选择难以撤销、出乎意料且存在真实权衡时，智能体会提议在 `docs/decisions/` 中记录一条 ADR；以及存储准则——`bd` 追踪工作，mex 保存知识，由它决定任何值得留存的东西写到哪里。其他所有技能都依赖于此技能先行加载。
 
 ### test-driven-development
 
@@ -212,17 +212,17 @@ graph TD
 
 **触发条件：** 会话开始、压缩后，或"catch me up"/"where are we"。
 
-通过一次 `orient.sh` 调用收集 beads 状态与最新交接文档，深入研究代码库（子智能体的并行扇出按仓库规模分级：`<40` / `40-150` / `>150` 个被跟踪文件），并生成结构化的当前状态摘要。它会将最新的 `.internal/handoff/` 文档（由其对应技能 `session-handoff` 写入）作为未读收件箱读取，纳入摘要后在结束时归档，以免后续会话重复读取；当 `HEAD` 已越过该文档记录的提交时，HEAD 时效性回退机制会将其标记为可能过时。预发布验证门将摘要中的每个声明都与会话中实际运行的命令相对应，beads 与 git 的对比检查会标记已发布但仍处于开放状态的工作，并在结束时清理被取代的 `continuation-*` 记忆。
+通过一次 `orient.sh` 调用收集 beads 状态与最新交接文档，深入研究代码库（子智能体的并行扇出按仓库规模分级：`<40` / `40-150` / `>150` 个被跟踪文件），并生成结构化的当前状态摘要。它会将最新的 `.internal/handoff/` 文档（由其对应技能 `session-handoff` 写入）作为未读收件箱读取，纳入摘要后在结束时归档，以免后续会话重复读取；当 `HEAD` 已越过该文档记录的提交时，HEAD 时效性回退机制会将其标记为可能过时。预发布验证门将摘要中的每个声明都与会话中实际运行的命令相对应，beads 与 git 的对比检查会标记已发布但仍处于开放状态的工作，并在结束时把 `.mex/` 热页面上被取代的续接指针清理到只剩一条。它的 `orient.sh` 调用还会报告 `.mex/` 是否存在、`mex check` 的返回结果，以及热页面的开头部分。
 
-### memory-curator
+### mex-curator
 
-**触发条件：** 会话结束时已捕获多条新记忆，或按需进行全量整理。
+**触发条件：** 会话结束时本次会话产出了持久知识，或按需对 `.mex/` 进行全量整理。
 
-将会话中原始的 `bd remember` 笔记，通过会话内智能体转化为结构良好、去重整合后的记忆——无需运行时环境、密钥或嵌入向量。其范围刻意以证据为导向：质量把关的捕获、反思式整合与修剪，而非追求结构丰富性。它绝不会静默修改记忆库——它会提出一份经过审查的命令列表，由你确认后才写入。
+通过会话内智能体，把一次会话的持久知识蒸馏进仓库本地的 `.mex/` 存储——无需运行时环境、密钥或嵌入向量。每条持久内容被路由到唯一的目的地：需求、架构、约定、模式与合规页面通过文件编辑写入；决策通过 `mex log --type decision` 记录；经验写入 2 KB 的热页面，上限占满时把最冷的条目降级到 `.mex/lessons-archive.md`。操作步骤类的 how-to 禁止入库——它们属于某个技能。入库门槛是被引用的证据；密钥绝不写入任何页面，包括被 gitignore 的 `.mex/private/`；替换遵循先写入、再验证、后移除。它绝不会静默修改知识库——它会提出一份经过审查的变更清单，由你确认后才写入。
 
 ### session-handoff
 
-**仅限人工调用。** 生成一份基于实证的交接文档，并存储 `bd remember` 续接记忆，使下一会话无需依赖聊天记录即可接续进行中的工作。其对应技能 `getting-up-to-speed` 会在下一会话的定向阶段读取该文档，随后将其归档。
+**仅限人工调用。** 生成一份基于实证的交接文档，并在 `.mex/lessons.md` 热页面上追加一行续接指针（并保持在其 2 KB 上限之内），使下一会话无需依赖聊天记录即可接续进行中的工作。其对应技能 `getting-up-to-speed` 会在下一会话的定向阶段读取该文档，随后将其归档。
 
 ### research-driven-development
 
@@ -232,9 +232,9 @@ graph TD
 
 ### project-init
 
-**触发条件：** 当 `bd` 命令失败、在新项目中设置 Beads，或从分叉的 Dolt 历史中恢复时。
+**触发条件：** 当 `bd` 命令失败、在新项目中设置 Beads 或 `.mex/`，或从分叉的 Dolt 历史中恢复时。
 
-三条路径：全新初始化、从远端引导，或在 Dolt 历史分叉时进行恢复。
+既覆盖 beads 的三条路径——全新初始化、从远端引导、Dolt 历史分叉时的恢复——也覆盖旁边的知识库搭建：`.mex/` 脚手架，以及本产品在其之上追加的页面（`.mex/lessons.md`、`.mex/lessons-archive.md`、`.mex/private/`），这些 mex 自身既不会创建也不会读取。它同时负责从已退役的知识 bead 存储迁移的路径。
 
 ## Beads 命令
 
@@ -252,13 +252,24 @@ graph TD
 | 复合查询 | `bd query "status=open AND priority<=1"` | getting-up-to-speed（替代 `bd list` + jq） |
 | 分组计数 | `bd count --by-status` | getting-up-to-speed（也可用 `--by-priority`/`--by-type`） |
 | 添加依赖 | `bd dep add <child> <parent>` | SDD, writing-plans |
-| 存储学习 | `bd remember "insight"` | {{ skill_count }} 个技能中的大多数会提示执行此操作 |
 | 附加证据 | `bd note <id> "context"` | verification |
 | 解释依赖 | `bd ready --explain` | systematic-debugging, executing-plans |
 | 同步到远端 | `bd dolt push` | finishing-a-development-branch |
 
 !!! info "深入了解 — 上游 Beads 文档"
     - [CLI 参考](https://gastownhall.github.io/beads/cli-reference) — 超出上表工作流核心集的完整 `bd` 命令（`batch`、`lint`、`defer`、`human`、`swarm`、`-C` 等）
+
+## 持久知识命令
+
+学习成果绝不进入 beads。`bd` 追踪工作；mex 保存知识，存放在仓库本地由 Markdown 页面构成的 `.mex/` 库中。
+
+| 动作 | 命令 | 使用于 |
+|---|---|---|
+| 为某个任务路由知识库 | `mex graph scope "<task>"` | brainstorming、research-driven-development、getting-up-to-speed |
+| 记录一条决策 | `mex log --type decision "<conclusion>"` | 任何定下决策的技能（裸的 `mex log` 记录的是 note，不是 decision） |
+| 检查知识库漂移 | `mex check` | mex-curator、finishing-a-development-branch（以退出码为准） |
+| 检查失败后的修复 | 先 `mex sync`，再跑一次 `mex check` | mex-curator（sync 自身的退出码不算证据） |
+| 记录一条经验 | 在 `.mex/lessons.md` 上写一条带类别前缀、写明证据的条目 | {{ skill_count }} 个技能中的大多数都带着这份写入契约 |
 
 ## 技能链式调用
 

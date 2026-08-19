@@ -15,7 +15,7 @@ beads-superpowers gives AI coding agents composable skills that enforce process 
 - **[Getting Started](getting-started.md)** - install the plugin and `bd`, per harness, then run your first session.
 - **[Example Workflow](workflow.md)** - the orchestrator that routes a request through the pipeline, from triage to finish.
 - **[Philosophy](philosophy.md)** - why the plugin behaves the way it does: the design decisions behind it, not the day-to-day mechanics.
-- **[Memory & Sessions](memory.md)** - what happens to memory across a session's life: injection, curation, the knowledge store.
+- **[Memory & Sessions](memory.md)** - the durable-knowledge architecture: what gets injected at session start, and how knowledge is retrieved, captured, and curated.
 - **[Methodology](methodology.md)** - the problem each upstream project solved, and how the two combine into one mechanism.
 - **[Skills Reference](skills.md)** - the full per-skill reference: what each skill does and when it triggers.
 - **[Research](research.md)** - the literature and the project's own measurements behind each design choice.

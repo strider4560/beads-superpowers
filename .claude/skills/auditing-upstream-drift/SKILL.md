@@ -27,6 +27,7 @@ This is the quality gate for the beads-superpowers plugin. It verifies everythin
 |--------|-----------|-------------|---------------|
 | **Superpowers** | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | Skills content, new skills, hook structure, plugin manifest |
 | **Beads** | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.2 | CLI commands, new features, bd prime format, deprecations |
+| **mex** | [mex-memory/mex](https://github.com/mex-memory/mex) (`mex-agent` on npm) | 0.7.1 (verified live 2026-08-19) | CLI commands, `.mex/` layout, router format, exit-code semantics |
 
 ## Known Deliberate Divergences
 
@@ -216,6 +217,40 @@ Done when: bd version, new/changed commands, and `bd prime` format are compared 
 
 ---
 
+### Phase 6b: Upstream mex Drift
+
+Check whether mex changed under the pinned 0.7.1 baseline. The knowledge layer is load-bearing: skills, the session-start hook, and `project-init` all encode this CLI's shapes.
+
+**Check 6b.1 — mex version:**
+```bash
+mex --version    # bare semver, no `v` prefix
+# Compare against our baseline: 0.7.1 (pinned; Node >= 22.5.0)
+```
+
+**Check 6b.2 — command surface:**
+```bash
+mex --help 2>&1 | head -40
+mex setup --help; mex log --help; mex check --help
+# Look for a non-interactive setup flag appearing (--yes/--non-interactive), new `mex log --type` values,
+# and any change to `mex graph scope` JSONL line grammar (meta / fact / summary).
+```
+
+**Check 6b.3 — the three exit-code traps (re-verify, never assume fixed):**
+- `mex setup </dev/null` exits **0** with a partial scaffold (no `config.json`, no `graph.db`).
+- `mex sync` exits **0** having repaired nothing when errors are present and stdin is closed.
+- `mex check` exits **0** with warnings; a stock scaffold scores 79/100 with 7 warnings.
+
+If any of these changes, `project-init`, `mex-curator`, and `finishing-a-development-branch` all carry text that must be updated with it.
+
+**Check 6b.4 — layout and language coverage:**
+- Paths: `.mex/context/decisions.md` (prose, created by setup) vs `.mex/events/decisions.jsonl` (created lazily by the first `mex log`).
+- Product-added pages mex neither creates nor reads: `.mex/lessons.md`, `.mex/lessons-archive.md`, `.mex/private/`. A release that starts creating or reading them is a `project-init` change.
+- `mex graph` language coverage — JS/TS/Python observed at 0.7.1 (dot-directories excluded), Rust claimed upstream but unexercised. Re-probe before widening the claim in `docs/en/memory.md`.
+
+Done when: mex version, command surface, the three exit-code traps, and the layout/coverage claims are compared against baseline, and any delta is traced to the skills and docs that encode it.
+
+---
+
 ### Phase 7: Documentation Accuracy
 
 Verify all documentation reflects the current state.
@@ -327,6 +362,7 @@ Write the report to `.internal/audits/YYYY-MM-DD-upstream-drift.md`:
 ## Upstream Drift
 - Superpowers: vX.Y.Z (baseline v6.2.0) — N changes
 - Beads: vX.Y.Z (baseline v1.1.0) — N new features
+- mex: X.Y.Z (baseline 0.7.1) — N changes; exit-code traps re-verified: Y/N
 - New skills: N (action: copy/skip for each)
 - Changed skills: N (action: merge/conflict/skip for each)
 
@@ -376,10 +412,11 @@ echo "=== Quick Audit Complete ==="
 
 | Trigger | Action |
 |---------|--------|
-| Before any plugin release | Full audit (all 8 phases) — MANDATORY |
+| Before any plugin release | Full audit (Phases 1-8, including 6b) — MANDATORY |
 | Monthly | Phases 1-4 (infrastructure + tests + content + chain) |
 | After upstream superpowers release | Add Phase 5 |
 | After upstream beads release | Add Phase 6 |
+| After an upstream mex release | Add Phase 6b |
 | After bulk skill edits | Phases 2-4 (tests + content + chain) |
 | After test refactoring | Phase 2 only (run all tests) |
 | User reports mismatch | Phase 3 check 3.x for the specific issue + Phase 5 check 5.3 for the skill |

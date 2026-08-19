@@ -13,13 +13,21 @@ description: 通过原生插件系统、curl 或 npx 为 Claude Code、Codex 和
 
 ## 前提条件
 
-**`bd` 必须在插件生效之前安装。** 该插件注册的钩子在每次会话启动时调用 `bd`；如果 `bd` 不存在，这些钩子将静默失败，您将丢失持久记忆。
+**`bd` 必须在插件生效之前安装。** 该插件注册的钩子会在每次会话启动时注入 `bd` 上下文；如果没有 `bd`，这一半会被跳过，您将失去持久的任务追踪。
 
 ```bash
 brew install beads          # macOS / Linux
 # or
 npm install -g @beads/bd    # any platform
 ```
+
+**mex 是另一半。** 持久知识存放在仓库本地的 `.mex/` 库中，而不是 beads 里，各技能会直接调用 `mex` CLI。其版本固定为 0.7.1，并要求 Node 22.5.0 或更新版本。
+
+```bash
+npm install -g mex-agent@0.7.1
+```
+
+在每个项目中，`project-init` 技能会把两个存储都搭起来——用 `bd init` 建立追踪器，以及 `.mex/` 脚手架加上本插件在其之上追加的页面。
 
 使用 `bd version` 验证安装。然后安装插件（见下文），再在每个项目中运行 `bd init`。
 
@@ -204,13 +212,13 @@ npx skills add strider4560/beads-superpowers -g --copy -y
 
 ## 你的第一次会话
 
-当该会话启动时，SessionStart 钩子会自动触发：它会在注入技能引导内容的同时，组合出一份 beads 上下文——包含精选的核心记忆，以及指向知识库的指引——让智能体从一开始就有方向，而不是一片空白。你无需自己触发这一切；它会在智能体首次回复之前完成。
+当该会话启动时，SessionStart 钩子会自动触发：它会在注入技能引导内容的同时，注入一段简短的 `bd` 命令指引和一个持久知识区块——一行路由指引，加上来自 `.mex/lessons.md` 的经验热页面——让智能体从一开始就有方向，而不是一片空白。你无需自己触发这一切；它会在智能体首次回复之前完成。
 
-关于哪些内容会被精选、知识库如何跨会话保持，请参阅[记忆与会话](memory.md)。
+关于知识如何被写入、检索，以及如何防止其漂移，请参阅[记忆与会话](memory.md)。
 
 ## 钩子的工作原理
 
-Claude Code 和 Codex 共用一个钩子脚本——**SessionStart**——通过 `hooks/hooks.json` 为 Claude Code 注册，由 `install.sh` 为 Codex 接线。它在每次会话启动、清除和压缩时触发：读取 `using-superpowers` 技能，然后组合出上文所述的 beads 上下文。如果 `bd prime` 已在其他地方注册为钩子，则 beads 部分会自动跳过，以避免重复注入。
+Claude Code 和 Codex 共用一个钩子脚本——**SessionStart**——通过 `hooks/hooks.json` 为 Claude Code 注册，由 `install.sh` 为 Codex 接线。它在每次会话启动、清除和压缩时触发：读取 `using-superpowers` 技能，然后组合出上文所述的上下文。读取 `.mex/` 只是文件读取，因此无论是否安装了 `bd`，持久知识区块都会出现。如果 `bd prime` 已在其他地方注册为钩子，则被注入的区块会自动跳过，以避免重复注入。
 
 ```mermaid
 sequenceDiagram
@@ -220,14 +228,14 @@ sequenceDiagram
 
   CC->>SH: Session begins
   SH->>SH: Read using-superpowers skill
-  SH->>SH: Compose beads context (bd pointer + core memories)
-  SH-->>Agent: Inject skills context + beads state
+  SH->>SH: Compose bd pointer + router line + .mex hot page
+  SH-->>Agent: Inject skills context + work and knowledge context
   Note over Agent: Agent is now skill-aware
 ```
 
-OpenCode 使用自己的 JavaScript 插件（`.opencode/plugins/beads-superpowers.js`），而非 `hooks/hooks.json`，包含三个进程内钩子：`config` 钩子自动注册技能，`experimental.chat.messages.transform` 钩子在每次会话中仅首次将相同的引导内容注入首条用户消息，`experimental.session.compacting` 钩子在上下文窗口压缩后重新注入 beads 上下文。
+OpenCode 使用自己的 JavaScript 插件（`.opencode/plugins/beads-superpowers.js`），而非 `hooks/hooks.json`，包含三个进程内钩子：`config` 钩子自动注册技能，`experimental.chat.messages.transform` 钩子在每次会话中仅首次将相同的引导内容注入首条用户消息，`experimental.session.compacting` 钩子在上下文窗口压缩后重新运行同一个组合器，因此 beads 上下文与持久知识区块（路由行加热页面）都会被重新注入。
 
-关于该上下文背后的整理规则——显著度阈值、字节预算、哪些内容会被丢弃——请参阅[记忆与会话](memory.md)。
+关于该上下文背后的规则——注入预算、2 KB 热页面上限，以及哪些内容改为按需路由而非注入——请参阅[记忆与会话](memory.md)。
 
 ## 配置
 
