@@ -1,26 +1,29 @@
-# Task Reviewer Prompt Template
+# Group Reviewer Prompt Template
 
-Use this template when dispatching a task reviewer subagent. The reviewer
-reads the task's diff once and returns two verdicts: spec compliance and
-code quality.
+Use this template when dispatching the group reviewer subagent. The reviewer
+reads the task group's combined diff once and returns a spec-compliance verdict
+per task bead plus one code-quality verdict for the group.
 
-**Purpose:** Verify one task's implementation matches its requirements (nothing
-more, nothing less) and is well-built (clean, tested, maintainable)
+**Purpose:** Verify one task group's implementation matches every acceptance
+criterion in the group (nothing more, nothing less) and is well-built (clean,
+tested, maintainable)
 
 ```
 Subagent (general-purpose):
-  description: "Review Task N (spec + quality)"
-  model: [MODEL — REQUIRED: choose per SKILL.md Model Selection; an omitted
-         model silently inherits the session's most expensive one]
+  description: "Review group [group name] (spec + quality)"
+  role: group-reviewer
+         [REQUIRED: dispatch by role, per SKILL.md Roles and Tiers. The tier
+         map binds group-reviewer to the review tier; never name a model here.]
   prompt: |
-    You are reviewing one task's implementation: first whether it matches its
-    requirements, then whether it is well-built. This is a task-scoped gate,
-    not a merge review — a broad whole-branch review happens separately after
-    all tasks are complete.
+    You are reviewing one task group's implementation: first whether it meets
+    every acceptance criterion of every bead in the group, then whether it is
+    well-built. This is a group-scoped gate, not a merge review — a broad
+    whole-branch review happens separately after all groups are complete.
 
     ## What Was Requested
 
-    Read the task brief: [BRIEF_FILE]
+    Read the group brief: [BRIEF_FILE] — it lists every bead in the group with
+    that bead's acceptance criteria.
 
     Global constraints from the spec/design that bind this task:
     [GLOBAL_CONSTRAINTS]
@@ -100,7 +103,7 @@ Subagent (general-purpose):
 
     **Tests:**
     - Do the new and changed tests verify real behavior, not mocks?
-    - Are the task's edge cases covered?
+    - Are the group's edge cases covered?
 
     **Structure:**
     - Does each file have one clear responsibility with a well-defined interface?
@@ -158,10 +161,13 @@ Subagent (general-purpose):
 
     ### Spec Compliance
 
-    - ✅ Spec compliant | ❌ Issues found: [what's missing/extra/misunderstood,
-      with file:line references]
-    - ⚠️ Cannot verify from diff: [requirements you could not verify from the
-      diff alone, and what the controller should check — report alongside the
+    One line per task bead in the group, naming the bead id, so the controller
+    can report each bead's outcome separately:
+
+    - `<bead-id>`: ✅ Spec compliant | ❌ Issues found: [what's missing/extra/
+      misunderstood, with file:line references]
+    - `<bead-id>`: ⚠️ Cannot verify from diff: [criteria you could not verify from
+      the diff alone, and what the controller should check — report alongside the
       ✅/❌ verdict for everything you could verify]
 
     ### Strengths
@@ -178,29 +184,28 @@ Subagent (general-purpose):
 
     ### Assessment
 
-    **Task quality:** [Approved | Needs fixes]
+    **Group quality:** [Approved | Needs fixes]
 
     **Reasoning:** [1-2 sentence technical assessment]
 ```
 
 **Placeholders:**
-- `[MODEL]` — REQUIRED: reviewer model per SKILL.md Model Selection
-- `[BRIEF_FILE]` — REQUIRED: the task brief file (`scripts/task-brief PLAN N`
-  prints the path; same file the implementer worked from)
-- `[GLOBAL_CONSTRAINTS]` — the binding requirements copied verbatim from
-  the plan's Global Constraints section or the spec: exact values, formats,
-  and stated relationships between components (not process rules — those
-  are already in this template)
+- `[BRIEF_FILE]` — REQUIRED: the group brief the controller wrote from the
+  group's beads; the same file the implementer worked from
+- `[GLOBAL_CONSTRAINTS]` — the binding requirements copied verbatim from the
+  epic's `## Success Criteria` or the spec: exact values, formats, and stated
+  relationships between components (not process rules — those are already in
+  this template)
 - `[REPORT_FILE]` — REQUIRED: the file the implementer wrote its detailed
   report to
-- `[BASE_SHA]` — commit before this task
+- `[BASE_SHA]` — commit before this task group
 - `[HEAD_SHA]` — current commit
 - `[DIFF_FILE]` — REQUIRED: the path the controller wrote the review
-  package to (`scripts/review-package PLAN_FILE BASE HEAD` prints the unique path it
-  wrote; the package never enters the controller's context)
+  package to (`scripts/review-package WORKSPACE_KEY BASE HEAD` prints the unique path
+  it wrote; the package never enters the controller's context)
 
-**Reviewer returns:** Spec Compliance verdict (✅/❌/⚠️), Strengths, Issues
-(Critical/Important/Minor), Task quality verdict
+**Reviewer returns:** a Spec Compliance verdict (✅/❌/⚠️) per task bead, Strengths,
+Issues (Critical/Important/Minor), and one Group quality verdict
 
 A fix dispatch can address spec gaps and quality findings together;
 re-review after fixes covers both verdicts.

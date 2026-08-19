@@ -1,19 +1,21 @@
 # Implementer Subagent Prompt Template
 
-Use this template when dispatching an implementer subagent.
+Use this template when dispatching the implementer subagent for one task group.
 
 ```
 Agent tool (subagent_type: "general-purpose"):
   # Do NOT use "implementer" — that is Claude Code's built-in agent type
   # with its own system prompt, which overrides this prompt template.
-  description: "Implement Task N: [task name]"
+  description: "Implement group [group name]"
   prompt: |
-    You are implementing Task N: [task name]
+    You are implementing task group [group name]: beads [bead ids]
 
-    ## Task Description
+    ## What You Are Building
 
-    Read your task brief first: [BRIEF_FILE] — it is your requirements. (The controller
-    writes it with `scripts/task-brief <plan-file> <N>`; see the skill's File Handoffs section.)
+    Read your group brief first: [BRIEF_FILE] — it is your requirements. It covers
+    every bead in the group: the shared context, then each bead's id, its acceptance
+    criteria, and the paths it owns. (The controller writes it from the beads; see the
+    skill's File Handoffs section.)
 
     ## Context
 
@@ -158,7 +160,7 @@ Agent tool (subagent_type: "general-purpose"):
     ## After Review Findings
 
     If this dispatch hands you review findings, you are continuing a task a previous
-    implementer started. You have: the task brief, the findings, and the most recent
+    implementer started. You have: the group brief, the findings, and the most recent
     section of the report file. Earlier rounds are in the report file if you need
     them — read it, don't guess.
 
@@ -195,7 +197,7 @@ Agent tool (subagent_type: "general-purpose"):
     file path**.
 
     Write the report and summary for a machine reader: short active sentences,
-    one fact per sentence, the task brief's exact names for files and functions.
+    one fact per sentence, the group brief's exact names for files and functions.
     State test results as observations ("8/8 passed", "test_foo failed with
     KeyError"), never as impressions ("tests look good"). Keep your real
     uncertainty — "may", "did not verify" — the controller acts on your exact

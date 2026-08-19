@@ -52,21 +52,21 @@ breaker as evidence of a clean task.
      recorded `ROUND0_HEAD` — round 0's final commit, which `SKILL.md` requires the
      controller to record before fix round 1. **Not** the per-task `BASE`: that is
      the commit *before* the implementer ran, so resetting there destroys round 0
-     along with the fix rounds. Round 0 passed its own full task review and failed
+     along with the fix rounds. Round 0 passed its own full group review and failed
      only on the enumerated findings.
 
    Include the round-0 verdict and the round count so the choice is informed. After
    several rounds a branch can be *worse* than round 0 — sediment from successive
    narrow patches by agents that each saw only their own slice. That option must be
    visible or it will not be chosen.
-5. **In a parallel batch:** let siblings run to completion, merge passing branches
-   normally, hold the tripped task, leave dependents blocked through their existing
-   `bd` deps, and surface everything together at batch end. Per-task worktrees exist
-   so one task's failure cannot contaminate its siblings.
+5. **With task groups running concurrently:** let the other groups run to completion,
+   merge passing branches normally, hold the tripped group, leave dependents blocked
+   through their existing `bd` deps, and surface everything together at the end of the
+   wave. Per-group worktrees exist so one group's failure cannot contaminate the others.
 
 ## Severity survives the breaker
 
-The task reviewer's security floor states that a security regression is
+The group reviewer's security floor states that a security regression is
 automatically Critical / blocking regardless of size or stated rationale, is never
 "Minor", and is never downgraded by a rationale.
 
