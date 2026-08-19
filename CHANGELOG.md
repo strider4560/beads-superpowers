@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-19
+
 ### Added
 
 - **Durable knowledge now lives in a repo-local `.mex/` store instead of the beads database.** [mex](https://github.com/mex-memory/mex) `0.7.1` is a hard dependency: `install.sh` installs `mex-agent@0.7.1` globally via npm, states the pinned coordinate at the consent prompt, and aborts before touching anything when Node is below mex-agent's `22.5.0` floor. The session-start hook injects a `.mex/ROUTER.md` pointer plus the `.mex/lessons.md` hot page, byte-capped at 2048 inside the existing context envelope, with a visible truncation marker when the page is over cap — it reads files only and never shells out to `mex`. Lessons, patterns, root causes, and corrections are captured as one-line entries in the hot page; decisions go to `mex log --type decision`; requirements, design rationale, and compliance durables go to the matching `.mex/` page, and anything naming an unmitigated risk or unreleased plan goes to gitignored `.mex/private/`. Session close now runs `mex check` between `bd close` and `bd dolt push`, gating on the exit code. **bd tracks work; mex holds knowledge.**

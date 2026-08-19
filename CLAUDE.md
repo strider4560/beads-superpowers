@@ -80,7 +80,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 A plugin for Claude Code, Codex, and OpenCode (verified) plus 7 best-effort harnesses — Cursor, Gemini CLI, GitHub Copilot CLI, Kimi Code, Antigravity, Factory Droid, and Pi — that merges [Superpowers](https://github.com/obra/superpowers) skills (v6.2.0) with [Beads](https://github.com/gastownhall/beads) issue tracking (v1.1.2). It gives AI coding agents composable process-discipline skills (TDD, brainstorming, systematic debugging, code review, verification), persistent task memory via a Dolt-backed database, and a repo-local `.mex/` durable-knowledge store (mex 0.7.1) — **bd tracks work; mex holds knowledge.**
 
 **Repository:** <https://github.com/strider4560/beads-superpowers>
-**Version:** 0.16.0
+**Version:** 0.17.0
 **License:** MIT (fork of obra/superpowers, also MIT)
 
 ## Architecture
