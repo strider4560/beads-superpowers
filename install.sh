@@ -78,6 +78,10 @@ HAS_MEX=0
 NODE_VERSION=""
 MEX_VERSION=""
 MEX_INSTALLED=false
+# Set by check_mex (pre-consent, no mutation); read by install_mex,
+# detect_existing_install and print_next_steps.
+# found | below_pin | unreadable | missing_ok_node   (missing_bad_node aborts in check_mex)
+MEX_STATE=""
 # shellcheck disable=SC2034  # INSTALL_TIER used in later install tiers
 INSTALL_TIER=""
 # shellcheck disable=SC2034  # STAGING_DIR used in later install tiers
@@ -379,6 +383,15 @@ detect_existing_install() {
     fi
     if [ "$installed_version" = "$VERSION" ] && [ -z "$INSTALL_TIER" ]; then
       success "beads-superpowers v$VERSION is already installed (via $installed_tier)."
+      # Nothing to install means nothing was consented to, so mex is not
+      # installed here — but an absent mex is still a broken install, and
+      # exiting 0 would hide it.
+      if [ "$MEX_STATE" = "missing_ok_node" ]; then
+        error "mex is required and is not installed — the skills and the session-start hook read .mex/."
+        echo "  This installer changes nothing on an already-installed system, so install it yourself:" >&2
+        echo "    npm install -g mex-agent@$MEX_PIN" >&2
+        exit 1
+      fi
       exit 0
     fi
     if [ "$installed_version" != "$VERSION" ]; then
@@ -752,18 +765,28 @@ with open(sf, 'w') as f:
 # install. An mex already on PATH is left exactly as it is — this installer never
 # upgrades or downgrades someone else's global npm package; it only reports.
 # Project scaffolding (`mex setup`) is out of scope here — project-init owns it.
-ensure_mex() {
+#
+# The dependency is handled in two phases so that nothing is mutated before the
+# user consents: check_mex (pure checks, runs pre-consent) records MEX_STATE and
+# aborts on an unsatisfiable environment; install_mex (the npm mutation) runs
+# inside do_install, after consent.
+check_mex() {
   if [ "$HAS_MEX" = 1 ]; then
     if [ -z "$MEX_VERSION" ]; then
+      MEX_STATE="unreadable"
       warn "mex: on PATH but 'mex --version' printed no readable version — left as is (pin is $MEX_PIN)"
     elif version_ge "$MEX_VERSION" "$MEX_PIN"; then
+      MEX_STATE="found"
       info "mex: found $MEX_VERSION"
     else
+      MEX_STATE="below_pin"
       warn "mex: found $MEX_VERSION, below the pinned $MEX_PIN — not upgraded automatically. To upgrade: npm install -g mex-agent@$MEX_PIN"
     fi
     return 0
   fi
 
+  # Dry run reports the plan and never aborts — it is called from print_dry_run,
+  # which exits before install_mex is ever reachable.
   if [ "$FLAG_DRY_RUN" = true ]; then
     if [ -n "$NODE_VERSION" ] && version_ge "$NODE_VERSION" "$MEX_NODE_FLOOR"; then
       echo "  + would install mex-agent@$MEX_PIN via npm (durable-knowledge dependency)"
@@ -773,11 +796,22 @@ ensure_mex() {
     return 0
   fi
 
+  # Unsatisfiable: mex is absent and no npm install could succeed. This is a
+  # check, not a mutation — failing loudly here, before consent, is correct.
   if [ -z "$NODE_VERSION" ] || ! version_ge "$NODE_VERSION" "$MEX_NODE_FLOOR"; then
+    MEX_STATE="missing_bad_node"
     error "mex is required and not installed, and node ${NODE_VERSION:-absent} is below mex-agent@$MEX_PIN's Node floor $MEX_NODE_FLOOR."
     echo "  Install Node >= $MEX_NODE_FLOOR, then re-run this installer." >&2
     exit 1
   fi
+
+  MEX_STATE="missing_ok_node"
+  info "mex: not installed — mex-agent@$MEX_PIN will be installed via npm once you confirm below"
+}
+
+# The npm mutation. Runs only after consent, from do_install.
+install_mex() {
+  [ "$MEX_STATE" = "missing_ok_node" ] || return 0
 
   info "Installing mex-agent@$MEX_PIN (durable-knowledge dependency)..."
   if npm install -g "mex-agent@${MEX_PIN}"; then
@@ -811,6 +845,10 @@ do_install() {
   if [ "$UPGRADING" = true ]; then
     cleanup_legacy_skills
   fi
+
+  # Hard dependency — aborts the install if npm fails. Post-consent by
+  # construction: do_install runs only after wait_for_consent.
+  install_mex
 
   # Write version file with tier info
   mkdir -p "$(dirname "$VERSION_FILE")"
@@ -1184,7 +1222,7 @@ print_dry_run() {
   if [ "$HAS_OPENCODE" = 1 ]; then
     echo "  (OpenCode: see .opencode/INSTALL.md — git plugin spec, not installed by this script)"
   fi
-  ensure_mex
+  check_mex
   echo
   echo "No files were modified."
 }
@@ -1370,10 +1408,10 @@ main() {
     exit 0
   fi
 
-  # Hard dependency — aborts if it cannot be satisfied. Runs BEFORE
-  # detect_existing_install (which exits 0 when the target version is already
-  # installed) so re-running the installer repairs a vanished mex.
-  ensure_mex
+  # Hard-dependency checks only — no mutation, so this is safe before consent.
+  # Runs BEFORE detect_existing_install (which exits when the target version is
+  # already installed) so that path can see a vanished mex and say so.
+  check_mex
 
   detect_existing_install
 
