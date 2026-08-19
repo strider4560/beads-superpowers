@@ -41,4 +41,20 @@ else
   echo "git origin: clean (no dolt refs)"
 fi
 
+echo "== mex =="
+# `mex --version` prints a bare semver with no program name — label it here.
+if command -v mex >/dev/null 2>&1; then
+  printf 'mex: %s\n' "$(mex --version 2>/dev/null | head -1)"
+else
+  echo "mex: UNAVAILABLE (needs Node >= 22.5.0; npm i -g mex-agent@0.7.1)"
+fi
+if [ -d .mex ]; then b ls -la .mex/; else echo ".mex/: ABSENT"; fi
+if command -v mex >/dev/null 2>&1; then
+  MEX_OUT=$(mex check 2>&1)
+  MEX_RC=$?
+  printf 'check: exit=%s | %s\n' "$MEX_RC" "$(printf '%s\n' "$MEX_OUT" | head -1)"
+else
+  echo "check: NOT RUN (mex binary absent)"
+fi
+
 exit 0

@@ -38,7 +38,8 @@ bash scripts/diagnose.sh
 
 One Bash call gathers the full read-only battery as labeled RAW DATA (no verdicts, no
 fixes): `bd`/`dolt` versions, `.beads/` presence, `config.yaml`/`metadata.json`, whether
-`bd list`/`bd vc status` work, and any dolt refs on the git remote. Read the `== section ==`
+`bd list`/`bd vc status` work, any dolt refs on the git remote, and the mex state
+(`mex` binary + version, `.mex/` presence, `mex check`'s exit code). Read the `== section ==`
 output, then author the diagnosis yourself against the Decision Matrix below:
 
 **Diagnosis:** <one-line read of what the sections above show>
@@ -65,6 +66,9 @@ git origin; see "Multi-Repo / Private Beads Remote" below.
 | .beads/ exists, `bd list` works, no beads remote configured | Add remote | → Path E |
 | .beads/ exists, push fails "no common ancestor" | Fix diverged history | → Path C |
 | .beads/ exists but empty/corrupt, remote has data | Export + re-bootstrap | → Path F |
+
+Every path continues into **mex Setup** below — `bd` tracks work, `mex` holds durable
+knowledge, and an init with only one of them is half-done.
 
 ## Path A: Fresh Initialization (New Project)
 
@@ -240,6 +244,103 @@ bd dolt remote list
 bd config drift 2>/dev/null
 ```
 
+## mex Setup
+
+Run once, after the chosen path above and Configuration Validation. Requires Node
+**≥ 22.5.0** (`mex-agent` is pinned at **0.7.1**). Below that floor, stop and report the
+Node version — do not attempt setup.
+
+**Runtime posture — fail loudly.** Every `mex` call here is load-bearing. If one errors,
+surface the exact command and its output and stop. There is no fallback flow, and a
+hand-built `.mex/` directory is not a substitute for a scaffold `mex` will read.
+
+### 1. Scaffold
+
+```bash
+printf '1\nn\n' | mex setup      # answers: 1 = Claude Code, n = do not install mex globally
+```
+
+`mex setup` has NO non-interactive flag — both prompts must be answered on stdin. Answer
+`8` (None / skip) instead of `1` for a non-Claude harness, or to keep mex from writing a
+repo-root `CLAUDE.md`. Re-running `mex setup` re-copies and overwrites every `.mex/`
+scaffold file, so re-run it only while the scaffold is still unpopulated.
+
+### 2. Verify — MANDATORY
+
+```bash
+ls .mex/ROUTER.md            # must exist
+mex check; echo "exit=$?"    # must be 0
+```
+
+Both must hold. `mex setup` exits 0 even on a partial scaffold when stdin closes early —
+a `</dev/null` run writes the 11 template files, no `config.json`, no `graph.db`, and
+still reports success — so its exit code proves nothing. And `mex check` exits 0 **with**
+warnings: a stock scaffold scores 79/100 with 7 warnings from mex's own
+`patterns/INDEX.md` placeholders. Gate on the exit code, never on a warning-free report.
+
+Done when: `.mex/ROUTER.md` exists and `mex check` exits 0.
+
+### 3. Create the product-defined pages
+
+mex 0.7.1 creates none of these — this product does. The commands are idempotent; they
+never overwrite an existing page.
+
+```bash
+[ -f .mex/lessons.md ] || printf '<!-- hot page: one bullet per lesson, hard-capped at 2048 bytes -->\n' > .mex/lessons.md
+mkdir -p .mex/private
+grep -qxF '.mex/private/' .gitignore 2>/dev/null || printf '.mex/private/\n' >> .gitignore
+```
+
+`.mex/lessons-archive.md` is NOT seeded here — `mex-curator` creates it on the first
+demotion. Decisions have two homes, both already provided by mex: the prose page
+`.mex/context/decisions.md` (not `.mex/decisions.md`), and the append-only log
+`.mex/events/decisions.jsonl`, created lazily by the first `mex log`. Record one with
+`mex log --type decision "<one-line decision>"` — bare `mex log` records kind `note`.
+
+Done when: `.mex/lessons.md` and `.mex/private/` exist, and `.gitignore` carries the
+`.mex/private/` entry.
+
+## Migrating from knowledge-beads
+
+One-time, for a repo that used the retired knowledge-bead and memory plumbing. Run it
+after mex Setup above; a fresh project skips it entirely. This section is the only place in
+the skill library where the retired commands still appear — a guard enforces that.
+
+**1. List the knowledge-beads.**
+
+```bash
+bd list --label kb --status all
+```
+
+**2. Distill each one into `.mex/`.** Read the body (`bd show <id>`) and write it to the
+page the `mex-curator` routing table names — requirements to `.mex/requirements.md`,
+design rationale to `.mex/architecture.md`, conventions to `.mex/conventions.md`,
+decisions via `mex log --type decision`, and so on. Distill, don't paste: a knowledge-bead
+that is a pointer to a doc becomes a pointer on the page, not a copy of the doc. Verify
+the page reads correctly before moving on — write, verify, then close.
+
+**3. Close each migrated bead.**
+
+```bash
+bd close <id> --reason "migrated-to-mex"
+```
+
+**4. Then the injected memories.**
+
+```bash
+bd memories
+```
+
+Append the surviving entries to `.mex/lessons.md`, one bullet per entry prefixed by kind
+(`lesson:` / `pattern:` / `root-cause:` / `correction:`) with the evidence named. The hot
+page is hard-capped at **2048 bytes** — check `wc -c .mex/lessons.md` before each append
+and demote the coldest entries to `.mex/lessons-archive.md` when an append would exceed
+the cap. An entry that no longer holds, or that carries no evidence, is dropped rather
+than migrated; say which ones you dropped.
+
+Done when: every bead the first command listed is closed with reason `migrated-to-mex`,
+each distilled durable is readable on its `.mex/` page, and `.mex/lessons.md` is ≤ 2048 bytes.
+
 ## Red Flags
 
 **Never:**
@@ -247,6 +348,7 @@ bd config drift 2>/dev/null
 - Manually delete files inside `.dolt/` directories — causes unrecoverable corruption
 - Run raw `dolt` CLI commands while bd Dolt server is running — causes journal corruption
 - Assume "database not found" means data is missing — it may be a server connectivity issue
+- Improvise around a failing `mex` command (hand-built pages, a skipped step) — surface the error and stop
 
 **Always:**
 - Run diagnostics before taking action
@@ -255,6 +357,7 @@ bd config drift 2>/dev/null
 - Distinguish "database missing" from "server can't connect" (check `bd dolt status`)
 - Commit before pulling: `bd dolt commit` before `bd dolt pull`
 - After any pull: repair denormalized blocked flags — `bd recompute-blocked` (bd v1.1.0+)
+- Verify mex setup on both signals — `.mex/ROUTER.md` present AND `mex check` exit 0; setup's own exit code proves nothing
 
 ## Lessons Learnt (Field-Validated)
 

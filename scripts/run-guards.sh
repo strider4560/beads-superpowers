@@ -8,6 +8,7 @@ run() { echo "── $1"; shift; if "$@"; then echo "   PASS"; else echo "   FAI
 
 run "todowrite gate"        bash scripts/check-todowrite.sh
 run "todowrite gate (.claude)" bash scripts/check-todowrite.sh .claude/skills
+run "legacy memory refs"    bash scripts/check-no-legacy-memory-refs.sh
 run "agent bead stamp"      bash scripts/check-agent-bead-stamp.sh
 run "zh docs parity"        bash scripts/check-zh-docs.sh
 run "convention sync"       bash scripts/check-convention-sync.sh
