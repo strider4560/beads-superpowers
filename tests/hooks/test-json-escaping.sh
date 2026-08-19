@@ -13,21 +13,29 @@ cp -f "$ROOT/hooks/session-start" "$tmp/hooks/session-start"
 # Scratch HOME for every hook run below: the hook maintains
 # $HOME/.agents/beads-superpowers and writes $HOME/.local/state/beads-superpowers/,
 # and on a developer machine $HOME/.agents is commonly a synced dotfiles tree.
-mkdir -p "$tmp/home"
 
 # Fixture: contains a double-quote, a backslash, and multiple real newlines.
 # All three require escape_for_json to produce valid JSON.
 printf 'line one has a "double-quote"\nline two has a backslash \\\nline three is clean\n' \
   > "$tmp/skills/using-superpowers/SKILL.md"
 
+# Sandboxed HOME + CWD, as in the C0 case below. On a pipeline-armed machine
+# ($HOME/.agents/great_cto/ AND <root>/shared/tier-map.json both present) the hook
+# writes .internal/pipeline/session.json RELATIVE TO ITS CWD; run bare, this case
+# wrote that file into the repo root. The escaping assertion reads neither HOME nor
+# CWD — the fixture SKILL.md is resolved from the hook's own $0 under "$tmp".
+mkdir -p "$tmp/home" "$tmp/ws" "$tmp/run"
+esc_hook() { ( cd "$tmp/ws" && HOME="$tmp/home" XDG_RUNTIME_DIR="$tmp/run" \
+  bash "$tmp/hooks/session-start" ); }
+
 # Run hook and pipe output directly to jq -e . (do NOT echo "$var" | jq — echo mangles \n).
 # Generic dialect (no harness env vars) → top-level { "additionalContext": "..." }.
-if HOME="$tmp/home" bash "$tmp/hooks/session-start" 2>/dev/null | jq -e . >/dev/null 2>&1; then
+if esc_hook 2>/dev/null | jq -e . >/dev/null 2>&1; then
   echo "PASS: escape_for_json — output is valid JSON with quotes, backslashes, and newlines in content"
 else
   echo "FAIL: escape_for_json — output is NOT valid JSON"
   echo "--- raw hook output ---"
-  HOME="$tmp/home" bash "$tmp/hooks/session-start" 2>/dev/null || true
+  esc_hook 2>/dev/null || true
   echo "--- end ---"
   fail=1
 fi
