@@ -1,8 +1,8 @@
 # STE Authoring — Writing Bead Text for Machine Readers
 
-Every bead description, task brief, review finding, close reason, and handoff line in
+Every bead description, group brief, review finding, close reason, and handoff line in
 this workflow is parsed by an agent that cannot ask you what you meant. A fresh
-implementer subagent reads its task brief cold. A scoped re-reviewer reads findings
+implementer subagent reads its group brief cold. A scoped re-reviewer reads findings
 cold. A post-compaction controller reads close reasons cold. If a sentence has two
 possible readings, some agent will eventually take the wrong one — and in this
 workflow that costs a fix round, a re-dispatched task, or a silently wrong close.
@@ -56,7 +56,7 @@ name beats a rotating short one.
 
 ## Per-Surface Guidance
 
-**Acceptance criteria** (writing-plans → bead description → task brief): strictest
+**Acceptance criteria** (writing-plans → bead description → group brief): strictest
 surface. Each criterion is one testable sentence with an observable outcome. Bad:
 "Progress reporting works correctly." Good: "The command prints one progress line per
 100 items processed."

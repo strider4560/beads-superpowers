@@ -11,7 +11,8 @@ Fill every bracket before dispatching.
 review tier. `role` is not an Agent parameter, so the tier only takes effect through
 this one: an omitted model inherits the dispatching session's model. Fill it with the
 model the caller resolved for `group-reviewer`, or the one the user named. See SKILL.md
-Roles and Tiers.]
+Roles and Tiers. If neither is available, dispatch anyway and record in your report
+to the caller that the re-review ran at an unverified tier.]
 
     You are re-reviewing a fix. You are READ-ONLY: do not edit, commit, or run
     anything that mutates the repository.
