@@ -73,3 +73,6 @@ issues.jsonl
 # cache
 .cache/
 npx-testing/
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
