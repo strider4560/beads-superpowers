@@ -25,9 +25,9 @@ Then announce "Using [skill] to [purpose]" and follow the skill exactly. If it h
 
 ## Skill Priority
 
-Process skills come first — they set the approach, implementation skills carry it out. Implementation is **spec-backed**: it starts from an approved spec or plan, and you name that file before the first edit.
+Process skills come first — they set the approach, implementation skills carry it out. Implementation is **spec-backed**: it starts from an approved spec or plan, and you name that file before the first edit (typo-level fixes aside).
 
-- "Let's build X" → planning session (planning tier): brainstorming → great_cto's planning-with-reviews → writing-plans.
+- "Let's build X" → planning session (planning tier): beads-superpowers:brainstorming → great_cto's planning-with-reviews → beads-superpowers:writing-plans.
 - "Implement the ready epic" → implementation session: great_cto's `implementing-epics`.
 - "Fix this bug" → beads-superpowers:systematic-debugging first, then domain skills.
 - Design question mid-implementation → file a `needs-planning` bead. **Never** re-plan in-lane.
@@ -68,10 +68,9 @@ Session close = land the plane: `bd close` → `mex check` → `bd dolt push` �
 
 ## Skill Name Resolution
 
-Skills are referenced here as `beads-superpowers:<skill>`. Your skill list may show
-them bare (`brainstorming`) or namespaced — the same skills. Invoke whichever form
-your list shows; if a reference errors as unknown, match it to the closest name in
-your list and retry.
+Skills are referenced here as `beads-superpowers:<skill>`. Invoke whichever form
+your skill list shows; if a reference errors as unknown, match it to the closest
+name in your list and retry.
 
 ## Platform Adaptation
 
