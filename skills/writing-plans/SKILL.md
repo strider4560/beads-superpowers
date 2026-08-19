@@ -250,7 +250,7 @@ fi
 
 Then immediately ask via your structured question tool (content below; shape shown in Claude Code schema — adapt to your tool):
 
-<!-- Canonical 3-option stress-test gate — keep identical to brainstorming/SKILL.md -->
+<!-- Canonical 2-option review gate — keep identical to brainstorming/SKILL.md -->
 
 ```json
 {
@@ -258,8 +258,7 @@ Then immediately ask via your structured question tool (content below; shape sho
     "question": "Plan opened in your editor at `<path>`. Review it and let me know how to proceed.",
     "header": "Plan review",
     "options": [
-      {"label": "Approved + stress-test (Recommended)", "description": "Plan looks good — run an adversarial stress-test before execution"},
-      {"label": "Approved", "description": "Plan looks good — skip stress-test and proceed to choose execution method"},
+      {"label": "Approved", "description": "Plan looks good — proceed to capture the bead graph"},
       {"label": "Needs changes", "description": "I want to revise the plan before proceeding"}
     ],
     "multiSelect": false
@@ -268,8 +267,7 @@ Then immediately ask via your structured question tool (content below; shape sho
 ```
 
 Route on the answer:
-- **Approved + stress-test** → invoke the `stress-test` skill with the plan path (`.internal/plans/YYYY-MM-DD-<feature-name>.md`) as the Mode-A artifact; when it completes, proceed to **Capture to Beads**.
-- **Approved** → proceed to **Capture to Beads** directly.
+- **Approved** → proceed to **Capture to Beads**.
 - **Needs changes** → make the requested changes and re-run the self-review. Only proceed once approved.
 
 > When filing a bead for discovered/follow-up work, stamp it per **Agent-Filed Bead Discipline** (`verification-before-completion`).
@@ -432,7 +430,7 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 ## Integration
 
-**Called by:** **brainstorming** — this is brainstorming's terminal state. After design approval, brainstorming invokes writing-plans.
+**Called by:** **great_cto `planning-with-reviews`** — brainstorming's terminal state. It settles the spec against its reviewers, then hands to writing-plans.
 
 **Hands off to:** **great_cto `implementing-epics`** — the default for every plan. A separate implementation session consumes the captured bead graph.
 
@@ -440,4 +438,4 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 - **subagent-driven-development** — in-session execution, only when the user directs it (see Execution Handoff).
 - **executing-plans** — in-session execution, only when the user directs it.
 
-**Pairs with:** **stress-test** — offered at the plan-review gate every time (the "Approved + stress-test" option), before execution.
+**Pairs with:** **stress-test** — available standalone, on demand; it is no longer offered at the plan-review gate.
