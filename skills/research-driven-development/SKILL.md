@@ -98,7 +98,7 @@ Add to every brief: **start wide, then narrow** — open with a SHORT broad quer
 Dispatch via the `Agent` tool:
 
 1. `Read` the prompt template at `./researcher-prompt.md`
-2. Use its content as the `prompt` parameter, appending the sub-question + the four contract parts above + bead context (bead ID, what decision this informs, prior knowledge from `bd memories`)
+2. Use its content as the `prompt` parameter, appending the sub-question + the four contract parts above + bead context (bead ID, what decision this informs, prior knowledge from the `.mex/` pages you read in Step 2)
 3. Use `subagent_type: "general-purpose"` (do NOT use `"researcher"` — that built-in agent's system prompt overrides the template)
 
 ### Agent B: @explore (codebase) — one agent, conditional
@@ -157,21 +157,16 @@ Filename: `YYYY-MM-DD-<topic-slug>.md`
 
 Write the document using the structure in **`./document-template.md`** (read it now).
 
-### Create the Research Knowledge-Bead
+### Distill the Document into `.mex/`
 
-Creating the knowledge-bead is part of this step, not a separate one — it happens the moment the document is written, never deferred to later.
+Distilling is part of this step, not a separate one — it happens the moment the document is written, never deferred to later. The full document stays in `.internal/research/` (gitignored scratch); only the distillate is durable.
 
-**Secret/PII scan first:** before creating the bead, scan the one-line summary and the doc path for secrets or PII (tokens, keys, credentials, personal data) — same discipline as the kv migration engine and memory-curator. If either looks like a secret, flag it and **skip bead creation**. Never write a secret/token/PII into a bead description or metadata: bead descriptions are queryable and ride Dolt history, which outlives `bd forget`.
+**Write authority is yours alone.** Only the orchestrating agent writes to `.mex/` or runs `mex log`. Researcher subagents return *recommended* page edits and decision lines in their reports — review each one, then apply it yourself.
 
-```bash
-printf '%s' "<distilled 0.5-2.5KB summary: what the research established, key evidence, verdicts>" | \
-bd create "<one-line summary of the research>" -t research -l kb,<1-3 topic labels from scripts/kb-label-vocab.txt> \
-  --defer 2099-01-01 --metadata "$(jq -nc --arg d "<docpath>" '{doc:$d}')" --body-file - --silent
-```
+**Secret/PII scan first:** scan the distillate before writing. Never write a secret, token, key, or PII into a `.mex/` page — tracked pages are public in a public repo and ride git history, which outlives a later edit. Durables that name an unmitigated risk, security gap, compliance exposure, or unreleased plan go to `.mex/private/` (gitignored), never to a tracked page.
 
-The description carries the distilled findings — a reader should act on it without opening the doc.
-
-Labels: `kb` plus 1–3 topics from the controlled vocabulary (`scripts/kb-label-vocab.txt`) — the guard requires at least one topic label, at most three, and every label present in the vocab.
+1. **Distill into the matching pages** — requirements the research settled into `.mex/requirements.md`, design rationale and architectural conclusions into `.mex/architecture.md`, repo conventions into `.mex/conventions.md`, reusable patterns into `.mex/patterns/<name>.md`, compliance durables into `.mex/compliance.md`. Update an existing entry in place rather than adding a near-duplicate. Each entry must be actionable on its own — a reader acts on it without opening the document.
+2. **Log every load-bearing conclusion** — `mex log --type decision "<one-line conclusion> (see <docpath>)"`. Bare `mex log` records kind `note`, not a decision; the decision prose page is `.mex/context/decisions.md`.
 
 ### Quality Checklist
 
@@ -236,14 +231,16 @@ User asks: "How does Dolt handle merge conflicts?"
 
 ```
 1. bd create "Research: Dolt merge conflict handling" -t task -p 2
-2. bd memories "dolt merge" → check for prior research
+2. mex graph scope "dolt merge conflict handling" → read the routed .mex/ pages in full
 3. Dispatch researcher (via ./researcher-prompt.md): "Research Dolt merge conflict resolution..."
    Dispatch @explore: "Search codebase for Dolt merge, conflict..."
 4. Synthesize: researcher found cell-level merge docs, explore found bd dolt pull usage
 5. Write to .internal/research/2026-05-01-dolt-merge-conflict-handling.md
-5a. Secret/PII scan the summary, then create the knowledge-bead:
-    printf '%s' "Dolt uses cell-level 3-way merge on SQL tables: conflicts are detected per cell, not via line-based diff, so there are no textual conflict markers. This repo already exercises the merge path via bd dolt pull/push (see the doc for the full write-up)." | \
-    bd create "Dolt uses cell-level 3-way merge on SQL tables (no textual conflict markers)" -t research -l kb,rdd,beads-tooling --defer 2099-01-01 --metadata '{"doc":".internal/research/2026-05-01-dolt-merge-conflict-handling.md"}' --body-file - --silent
+5a. Secret/PII scan the distillate, then distill into .mex/ and log the conclusion:
+    → append to .mex/architecture.md: "Dolt merges SQL tables cell-level (3-way), so conflicts are
+      detected per cell and there are no textual conflict markers; this repo exercises the merge path
+      via bd dolt pull/push. Full write-up: .internal/research/2026-05-01-dolt-merge-conflict-handling.md"
+    mex log --type decision "Dolt uses cell-level 3-way merge on SQL tables (no textual conflict markers) (see .internal/research/2026-05-01-dolt-merge-conflict-handling.md)"
 6. bd close <id> --reason "Research complete: Dolt uses cell-level merge on SQL tables"
 ```
 

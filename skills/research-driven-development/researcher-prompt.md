@@ -19,7 +19,7 @@ Agent tool (subagent_type: "general-purpose"):
     ## Context
 
     [Scene-setting: what bead this relates to, what the dispatching agent needs to decide,
-    any constraints or prior knowledge from bd memories]
+    any constraints or prior knowledge from the routed `.mex/` pages]
 
     ## Before You Begin
 
@@ -33,8 +33,8 @@ Agent tool (subagent_type: "general-purpose"):
 
     ## Your Workflow
 
-    1. **Search the knowledge base first** — Use `bd memories <keyword>` for workflow
-       context. Then search for existing research documents:
+    1. **Search the knowledge base first** — Query the knowledge store (below) and read
+       the pages it routes, then search for existing research documents:
        ```bash
        # Search the project research directory
        find .internal/research -name "*.md" -exec grep -li "<keyword>" {} \; 2>/dev/null
@@ -64,6 +64,9 @@ Agent tool (subagent_type: "general-purpose"):
 
     - You CANNOT write files. Return your findings as structured output. The
       dispatching agent writes the document and commits it.
+    - You CANNOT write to `.mex/` or run `mex log` — write authority belongs to the
+      dispatching agent alone. Read the routed pages; propose page edits and decision
+      lines in your report and let the dispatching agent apply them.
     - Note the active bead if the dispatching agent provides one — reference it to
       understand the broader task.
     - Skip beads labelled `human-only` — these are for human action only.
@@ -92,6 +95,11 @@ Agent tool (subagent_type: "general-purpose"):
     ## Recommended Beads
     [If research reveals sub-tasks, list them as recommended `bd create` commands]
     - `bd create "Title" -t <type> -p <priority>` — [Why this bead is needed]
+
+    ## Recommended Knowledge Updates
+    [Durable findings worth persisting. Recommendations ONLY — you do not apply them.]
+    - `.mex/<page>.md` — [the exact entry text you propose, and why it belongs on that page]
+    - `mex log --type decision "<one-line conclusion>"` — [what this conclusion decides]
 
     ## Open Questions
     [Anything unresolved or needing further investigation]
