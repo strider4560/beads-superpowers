@@ -90,8 +90,11 @@ KERNEL_MAP=(
   '.claude/skills/auditing-upstream-drift/SKILL.md|NO PLUGIN RELEASE WITHOUT A FULL AUDIT FIRST'
   # executing-plans is a deprecated pointer with no autonomous take-next flow and no
   # bead creation, so its two former kernels (the --claim consent boundary and the
-  # `bd import -` creation line) are not pinned here. The --claim boundary is NOT lost:
-  # it is stated verbatim, kernel substring intact, in subagent-driven-development below.
+  # `bd import -` creation line) are not pinned there. Neither kernel is lost: the
+  # --claim boundary is stated verbatim, kernel substring intact, in
+  # subagent-driven-development below, and the bead-creation walkthrough now lives in
+  # writing-plans, which is where `bd import -` is pinned.
+  'skills/writing-plans/SKILL.md|bd import -'
   'skills/subagent-driven-development/SKILL.md|the consent gate binds even when this skill is not loaded'
   'skills/using-git-worktrees/SKILL.md|the consent gate binds even when this skill is not loaded'
   'skills/finishing-a-development-branch/SKILL.md|Work is NOT complete until'

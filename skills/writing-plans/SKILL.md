@@ -402,7 +402,7 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 - **REQUIRED SUB-SKILL:** Use beads-superpowers:subagent-driven-development
 - It works in **task groups** formed from the task beads you just captured: one implementer subagent and one review per group, and it never closes a bead.
-- On this path you are its caller. You form the groups under its two constraints, create each group's worktree, merge the branch when you accept the verdicts, and close each task bead yourself.
+- On this path you are its caller. You form the groups under its two constraints, create each group's worktree, choose the workspace key it takes for the whole invocation, merge the branch when you accept the verdicts, and close each task bead yourself.
 
 ## Integration
 
