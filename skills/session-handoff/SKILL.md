@@ -1,13 +1,13 @@
 ---
 name: session-handoff
-description: A human-invoked utility that writes a grounded session-handoff document (plus a continuation pointer memory) so a fresh agent can resume in-progress work. Not auto-invoked; a human runs it deliberately.
+description: A human-invoked utility that writes a grounded session-handoff document (plus a continuation pointer on the mex hot page) so a fresh agent can resume in-progress work. Not auto-invoked; a human runs it deliberately.
 disable-model-invocation: true
 ---
 
 # Session Handoff
 
-Write a grounded handoff document — and a one-line continuation memory — so a fresh
-session can resume exactly where this one left off.
+Write a grounded handoff document — and a one-line continuation pointer on the mex hot
+page — so a fresh session can resume exactly where this one left off.
 
 **Announce at start:** "I'm using the session-handoff skill to write a session handoff."
 
@@ -47,27 +47,36 @@ tailor Work In Progress / Loose Threads / Suggested Skills.
    If the human names another location,
    write there. `mkdir -p` the target first.
    Done when: the doc exists at the target path.
-4. **Write the continuation memory** —
-   `bd remember "continuation-<date>-<topic>: <one-line pointer to doc path + headline state>"`
-   (episodic continuation record; one-line pointer only).
-   Done when: `bd remember` has run for the continuation key.
+4. **Write the continuation pointer** — append one entry to `.mex/lessons.md` per the
+   capture contract (`mex-curator` owns the store; this skill only appends):
+   `lesson: continuation — <one-line pointer to doc path + headline state>; see .internal/handoff/<file>`
+   One entry per handoff, named for its doc (`continuation-<date>-<topic>`), so
+   `getting-up-to-speed` can prune superseded ones by the `lesson: continuation`
+   line prefix.
+   **Cap-aware:** the hot page is hard-capped at 2048 bytes. Check first
+   (`wc -c .mex/lessons.md`); if the append would exceed the cap, demote the coldest
+   entries to `.mex/lessons-archive.md` until it fits — demote, never delete.
+   No `.mex/` directory → say so and skip this step; the doc still stands on its own.
+   Done when: the entry is in `.mex/lessons.md` and the page is ≤ 2048 bytes.
 5. **Verification (externally anchored — output the result block):**
    - Cross-check each state line against the **captured Phase-1 command output**.
    - **Gitignore safety:** `git check-ignore <output-path>`; if NOT ignored, warn the
      human ("⚠️ <dir> is not gitignored; a handoff can contain sensitive session
      state") and offer to add it to `.gitignore` **before** writing.
-   - `ls <path>` confirms the doc exists; `bd memories <key>` confirms the memory.
+   - `ls <path>` confirms the doc exists; `grep -n 'continuation' .mex/lessons.md` plus
+     `wc -c .mex/lessons.md` confirm the entry landed and the page is within its cap.
    - **Secret-scan grep** over the doc (`sk-`, `ghp_`, `AKIA`, `-----BEGIN`,
      `password=`) — a backstop, not a guarantee.
    - The narrative synthesis is the author's recollection — not externally verified;
      that is why it references artifacts by path.
-   Done when: the confirmation block is output — doc path · memory key ·
-   gitignore-safety result · secret-scan result.
+   Done when: the confirmation block is output — doc path · continuation entry +
+   hot-page byte count · gitignore-safety result · secret-scan result.
 
 ## Doctrine
 
 - **Redact secrets** (keys, tokens, passwords, PII) — the doc lands on disk and may be
-  shared. This is a hard rule; never weaken it.
+  shared, and the continuation entry lands on a hot page injected into every future
+  session. This is a hard rule; never weaken it.
 - **Reference, don't duplicate** — point at commits/ADRs/specs by path.
 - **Ground every fact** — run the gather commands; never invent state. If a command
   fails (not a git repo, `bd` absent), degrade gracefully and note the gap.
