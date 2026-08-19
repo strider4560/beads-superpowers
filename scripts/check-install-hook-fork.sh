@@ -13,13 +13,19 @@
 # forked copy here would drift from the composer.
 # 'salience' and 'bd memories --json' are the retired memory-selection surface
 # (spec 2026-08-18); they stay pinned so a resurrection fails loudly.
+#
+# One exemption: '$(mex --version'. install.sh installs mex-agent at a pin and
+# must read the installed version to decide; a version probe carries no routing,
+# ranking, or retrieval, so it cannot drift from the composer. Every other mex
+# subcommand stays banned everywhere in install.sh (bead beads-superpowers-wuu).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:-$ROOT/install.sh}"   # override for self-testing against a fixture
 rc=0
 # shellcheck disable=SC2016  # '$(bd prime' / '$(mex ' are literal forbidden patterns, not expansions
 for pat in 'salience' 'bd memories --json' '$(bd prime' '$(mex ' 'BSP_MEX_CEILING' 'BSP_ENVELOPE_BUDGET'; do
-  if hits=$(grep -nF -- "$pat" "$TARGET"); then
+  hits=$(grep -nF -- "$pat" "$TARGET" | grep -vF -- '$(mex --version' || true)
+  if [ -n "$hits" ]; then
     echo "install-hook-fork: FAIL — forbidden pattern '$pat' in ${TARGET##*/}:"
     echo "$hits"
     rc=1

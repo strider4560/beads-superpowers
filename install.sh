@@ -20,6 +20,11 @@ set -euo pipefail
 # --- Configuration ---
 REPO="strider4560/beads-superpowers"
 FALLBACK_VERSION="0.5.3"
+# mex is a hard dependency: skills and the session-start hook read .mex/.
+# MEX_PIN is the exact npm version installed; MEX_NODE_FLOOR mirrors
+# mex-agent's own engines.node (">=22.5") — below it the package will not run.
+MEX_PIN="0.7.1"
+MEX_NODE_FLOOR="22.5.0"
 SKILLS_DIR="${BEADS_SUPERPOWERS_SKILLS_DIR:-$HOME/.claude/skills}"
 HOOKS_DIR="$HOME/.claude/hooks"
 SETTINGS_FILE="$HOME/.claude/settings.json"
@@ -68,6 +73,11 @@ HAS_GIT=0
 HAS_CURL=0
 HAS_WGET=0
 HAS_PYTHON3=0
+HAS_NODE=0
+HAS_MEX=0
+NODE_VERSION=""
+MEX_VERSION=""
+MEX_INSTALLED=false
 # shellcheck disable=SC2034  # INSTALL_TIER used in later install tiers
 INSTALL_TIER=""
 # shellcheck disable=SC2034  # STAGING_DIR used in later install tiers
@@ -253,6 +263,30 @@ parse_flags() {
 }
 
 # --- Phase 1: Checks ---
+# Dotted numeric version compare: is $1 >= $2? Three fields, integer per field
+# (2.10.0 > 2.9.0). Any pre-release suffix is dropped; missing fields read as 0.
+# Callers must pass sanitized versions (see sanitize_version) — plain bash only.
+version_ge() {
+  local a1 a2 a3 b1 b2 b3 a b
+  IFS=. read -r a1 a2 a3 <<< "${1%%-*}"
+  IFS=. read -r b1 b2 b3 <<< "${2%%-*}"
+  a=$(( ${a1:-0} * 1000000 + ${a2:-0} * 1000 + ${a3:-0} ))
+  b=$(( ${b1:-0} * 1000000 + ${b2:-0} * 1000 + ${b3:-0} ))
+  [ "$a" -ge "$b" ]
+}
+
+# Echo $1 as a bare dotted-numeric version, or nothing if it is not one.
+# Strips a leading "v" (node prints "v22.5.0"; mex prints a bare "0.7.1").
+sanitize_version() {
+  local v="${1%%$'\n'*}"
+  v="${v#v}"
+  v="${v//[[:space:]]/}"
+  case "$v" in
+    ''|*[!0-9.]*) return 0 ;;
+    *) printf '%s' "$v" ;;
+  esac
+}
+
 # shellcheck disable=SC2034  # vars are consumed by later install tiers
 detect_tools() {
   command -v claude   >/dev/null 2>&1 && HAS_CLAUDE=1
@@ -271,6 +305,14 @@ detect_tools() {
   command -v kimi         >/dev/null 2>&1 && HAS_KIMI=1 || HAS_KIMI=0
   command -v pi           >/dev/null 2>&1 && HAS_PI=1 || HAS_PI=0
   command -v gemini       >/dev/null 2>&1 && HAS_GEMINI=1 || HAS_GEMINI=0
+  command -v node         >/dev/null 2>&1 && HAS_NODE=1 || HAS_NODE=0
+  command -v mex          >/dev/null 2>&1 && HAS_MEX=1 || HAS_MEX=0
+  if [ "$HAS_NODE" = 1 ]; then
+    NODE_VERSION=$(sanitize_version "$(node --version 2>/dev/null || true)")
+  fi
+  if [ "$HAS_MEX" = 1 ]; then
+    MEX_VERSION=$(sanitize_version "$(mex --version 2>/dev/null || true)")
+  fi
 }
 
 detect_upstream_conflict() {
@@ -358,6 +400,8 @@ print_consent() {
   fi
   [ "$HAS_NPX" = 1 ] && echo "  2. npx skills add"
   echo "  3. Direct download (tarball / git clone)"
+  echo
+  echo "  Installs mex-agent@$MEX_PIN globally via npm (durable-knowledge dependency)"
   echo
   if [ "$HAS_CODEX" = 1 ]; then
     echo "  Codex CLI detected — skills will also be installed to ~/.codex/skills/"
@@ -699,6 +743,50 @@ with open(sf, 'w') as f:
   success "Previous install cleaned up"
 }
 
+# mex is a hard dependency, never a best-effort extra: an absent mex aborts the
+# install. An mex already on PATH is left exactly as it is — this installer never
+# upgrades or downgrades someone else's global npm package; it only reports.
+# Project scaffolding (`mex setup`) is out of scope here — project-init owns it.
+ensure_mex() {
+  if [ "$HAS_MEX" = 1 ]; then
+    if [ -z "$MEX_VERSION" ]; then
+      warn "mex: on PATH but 'mex --version' printed no readable version — left as is (pin is $MEX_PIN)"
+    elif version_ge "$MEX_VERSION" "$MEX_PIN"; then
+      info "mex: found $MEX_VERSION"
+    else
+      warn "mex: found $MEX_VERSION, below the pinned $MEX_PIN — not upgraded automatically. To upgrade: npm install -g mex-agent@$MEX_PIN"
+    fi
+    return 0
+  fi
+
+  if [ "$FLAG_DRY_RUN" = true ]; then
+    if [ -n "$NODE_VERSION" ] && version_ge "$NODE_VERSION" "$MEX_NODE_FLOOR"; then
+      echo "  + would install mex-agent@$MEX_PIN via npm (durable-knowledge dependency)"
+    else
+      echo "  + would install mex-agent@$MEX_PIN via npm — but node ${NODE_VERSION:-absent} is below the required $MEX_NODE_FLOOR, so the install would abort"
+    fi
+    return 0
+  fi
+
+  if [ -z "$NODE_VERSION" ] || ! version_ge "$NODE_VERSION" "$MEX_NODE_FLOOR"; then
+    error "mex is required and not installed, and node ${NODE_VERSION:-absent} is below mex-agent@$MEX_PIN's Node floor $MEX_NODE_FLOOR."
+    echo "  Install Node >= $MEX_NODE_FLOOR, then re-run this installer." >&2
+    exit 1
+  fi
+
+  info "Installing mex-agent@$MEX_PIN (durable-knowledge dependency)..."
+  if npm install -g "mex-agent@${MEX_PIN}"; then
+    MEX_VERSION="$MEX_PIN"
+    MEX_INSTALLED=true
+    success "mex-agent@$MEX_PIN installed"
+  else
+    error "npm install -g mex-agent@$MEX_PIN failed."
+    echo "  Install it manually, then re-run this installer:" >&2
+    echo "    npm install -g mex-agent@$MEX_PIN" >&2
+    exit 1
+  fi
+}
+
 do_install() {
   # Auto-uninstall previous tier if switching
   do_auto_uninstall_previous
@@ -718,6 +806,9 @@ do_install() {
   if [ "$UPGRADING" = true ]; then
     cleanup_legacy_skills
   fi
+
+  # Hard dependency — aborts the install if it cannot be satisfied
+  ensure_mex
 
   # Write version file with tier info
   mkdir -p "$(dirname "$VERSION_FILE")"
@@ -988,6 +1079,13 @@ print_next_steps() {
     echo "    Install via the git plugin spec in opencode.json — see .opencode/INSTALL.md."
   fi
   echo
+  if [ "$MEX_INSTALLED" = true ]; then
+    info "mex: mex-agent@$MEX_PIN installed (durable knowledge)"
+  elif [ -n "$MEX_VERSION" ] && version_ge "$MEX_VERSION" "$MEX_PIN"; then
+    info "mex: using existing $MEX_VERSION (pin $MEX_PIN)"
+  else
+    warn "mex: existing install ${MEX_VERSION:-(version unreadable)} is below the pin $MEX_PIN — upgrade with: npm install -g mex-agent@$MEX_PIN"
+  fi
   if [ "$HAS_COPILOT" = 1 ]; then info "Copilot CLI detected — native install: copilot plugin marketplace add strider4560/beads-superpowers && copilot plugin install beads-superpowers@beads-superpowers-marketplace"; fi
   if [ "$HAS_CURSOR" = 1 ]; then info "Cursor detected — native install: /add-plugin beads-superpowers (in Cursor Agent)"; fi
   if [ "$HAS_DROID" = 1 ]; then info "Factory Droid detected — native: droid plugin marketplace add https://github.com/strider4560/beads-superpowers && droid plugin install beads-superpowers@beads-superpowers-marketplace"; fi
@@ -1082,6 +1180,7 @@ print_dry_run() {
   if [ "$HAS_OPENCODE" = 1 ]; then
     echo "  (OpenCode: see .opencode/INSTALL.md — git plugin spec, not installed by this script)"
   fi
+  ensure_mex
   echo
   echo "No files were modified."
 }
