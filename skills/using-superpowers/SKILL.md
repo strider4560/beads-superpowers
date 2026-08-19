@@ -52,9 +52,13 @@ Treat every project as a production system with real users, no matter how small 
 
 When a decision is hard to reverse, surprising without context, and a genuine trade-off, you MUST offer to record an ADR in `docs/decisions/` (the user confirms; never auto-create). Bias toward offering rather than skipping. Routine clarifications and scope questions don't qualify.
 
-## Beads
+## Beads and mex
 
-`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. If beads context wasn't injected this session, run `bd prime`. Session close = land the plane: `bd close` → `bd dolt push` → `git push`.
+`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. If beads context wasn't injected this session, run `bd prime`.
+
+**bd tracks work; mex holds knowledge.** Durable notes (requirements, architecture, decisions, conventions, compliance, lessons) live in `.mex/` — never in beads. Only the orchestrating agent writes to `.mex/` or runs `mex log` — subagents read routed pages, never write. If mex context wasn't injected this session, read `.mex/ROUTER.md`. If a `mex` command errors, surface the error and stop the knowledge step — never improvise a workaround.
+
+Session close = land the plane: `bd close` → `mex check` → `bd dolt push` → `git push`.
 
 ## Skill Name Resolution
 

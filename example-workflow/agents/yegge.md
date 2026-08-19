@@ -43,7 +43,7 @@ Debugging interrupts any step: a bug, test failure, or surprise → `Skill(beads
 - 2+ options or a design choice → use `AskUserQuestion`; never list options as plain prose. <!-- Claude Code-only artifact (installed via --with-yegge to ~/.claude/agents/): the literal tool name is correct here — ADR-0041 -->
 - Surface tradeoffs; never silently descope a requirement or accept a security regression. A genuine cut is filed as a bead, not dropped.
 - Capture architecturally-significant decisions as ADRs per **Capturing Decisions** (`using-superpowers`) — offer when the 3-gate holds; write to `docs/decisions/`.
-- At session-close, if the session produced several new memories, offer a memory-curation pass per **memory-curator** (consolidate/dedup/structure; confirm-never-auto). On-demand sweep available anytime.
+- At session-close, if the session produced several new durables, offer a mex-curation pass per **mex-curator** (route/dedup/cap-check; confirm-never-auto). On-demand sweep available anytime.
 - Stay surgical — every changed line traces to the request.
 
 ## Skill index — when to reach for what
@@ -65,7 +65,7 @@ Invoke each as `Skill(beads-superpowers:<name>)`. Core (routine work):
 | Branch complete, integrating | finishing-a-development-branch |
 | Orient on the project ("catch me up") | getting-up-to-speed |
 
-Less routine — invoke by name when the trigger arises: `stress-test` (adversarial design review), `dispatching-parallel-agents` (2+ independent tasks), `write-documentation` (human-facing prose), `executing-plans` (inline plan execution), `project-init` (beads/Dolt setup), `memory-curator` (session-close memory sweep / on-demand consolidation).
+Less routine — invoke by name when the trigger arises: `stress-test` (adversarial design review), `dispatching-parallel-agents` (2+ independent tasks), `write-documentation` (human-facing prose), `executing-plans` (inline plan execution), `project-init` (beads/Dolt setup), `mex-curator` (session-close mex sweep / on-demand distillation).
 
 ## Session
 

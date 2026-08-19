@@ -155,14 +155,15 @@ This plugin uses `bd` (beads) for ALL task tracking.
 - Never guess bd syntax — on first use of a command or flag this session, read `bd <cmd> --help` (the binary is SSOT)
 - Only the orchestrating agent manages beads — subagents do NOT touch beads
 - Include bead IDs in commit messages: `git commit -m "Add feature (bd-a1b2)"`
-- Every session ends with Land the Plane: `bd close` → `bd dolt push` → `git push` (work lands on `dev`; `main` only advances at release cut)
-- Beads *policy* is embedded where it's read — using-superpowers' Beads section plus inline own-operation kernels (no dedicated policy skill); bd *commands* defer to `bd human` — don't restate command tables in skills
+- Use mex for ALL durable knowledge — never knowledge-beads or bd remember
+- Every session ends with Land the Plane: `bd close` → `mex check` → `bd dolt push` → `git push` (work lands on `dev`; `main` only advances at release cut)
+- Beads *policy* is embedded where it's read — using-superpowers' Beads-and-mex section plus inline own-operation kernels (no dedicated policy skill); bd *commands* defer to `bd human` — don't restate command tables in skills
 
 ## Skills
 
 | Skill                          | Purpose                                                                                                                     |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| using-superpowers              | Bootstrap — loaded at session start, routes to other skills                                                                 |
+| using-superpowers              | Bootstrap — loaded at session start, routes to other skills, carries the bd/mex doctrine                                     |
 | brainstorming                  | Socratic design before code — creates session beads                                                                         |
 | stress-test                    | Adversarial design interrogation with recommended answers                                                                   |
 | writing-plans                  | Bite-sized task plans — each task becomes a bead                                                                            |
@@ -174,7 +175,7 @@ This plugin uses `bd` (beads) for ALL task tracking.
 | requesting-code-review         | Dispatches code reviewer subagent                                                                                           |
 | receiving-code-review          | Anti-sycophancy review reception                                                                                            |
 | using-git-worktrees            | Isolated development branches                                                                                               |
-| finishing-a-development-branch | Merge/PR + Land the Plane (Step 6)                                                                                          |
+| finishing-a-development-branch | Merge/PR + Land the Plane (Step 7 — `bd close` → `mex check` → `bd dolt push` → `git push`)                                  |
 | document-release               | Post-ship documentation audit and sync                                                                                      |
 | project-init                   | Beads/Dolt DB setup, bootstrap, and recovery                                                                                |
 | dispatching-parallel-agents    | 2+ independent tasks without shared state                                                                                   |

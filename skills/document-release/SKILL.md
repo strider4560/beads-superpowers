@@ -131,8 +131,16 @@ Done when: every CHANGELOG entry is scored, and any entry scoring below 2 is rew
 1. Check README/CLAUDE.md/ARCHITECTURE alignment
 2. Ensure every doc file is reachable from one entry point (README or CLAUDE.md)
 3. Fix clear factual inconsistencies (e.g., version mismatch between files)
+4. **The mex store is not stale** — run `mex check` and gate on the **exit code**; warnings at exit 0 are the stock baseline, not a failure. Non-zero → repair per `beads-superpowers:mex-curator` (one scoped `mex sync`, then a **second** `mex check` — `mex sync`'s own exit code proves nothing) before the doc commit. If a `mex` command errors, surface the error and stop the knowledge step — never improvise a workaround.
+5. **Every ADR appears in the decision log** — the log file is `.mex/events/decisions.jsonl`:
 
-Done when: README/CLAUDE.md/ARCHITECTURE alignment is checked and every factual inconsistency found is fixed.
+   ```bash
+   for f in docs/decisions/ADR-*.md; do grep -q "$(basename "$f" .md)" .mex/events/decisions.jsonl || echo "MISSING: $f"; done
+   ```
+
+   Expect no output. Each `MISSING:` line → record it with `mex log --type decision "<one-line decision> (ADR-NNNN)"`.
+
+Done when: README/CLAUDE.md/ARCHITECTURE alignment is checked, every factual inconsistency found is fixed, `mex check` exits 0, and the ADR cross-check prints nothing.
 
 ### Step 7: TODOS Cleanup
 1. Mark completed items based on the diff

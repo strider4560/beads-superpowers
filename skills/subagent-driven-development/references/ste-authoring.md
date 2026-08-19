@@ -70,7 +70,7 @@ The finding text is re-parsed twice: by the controller for dispatch, and by a fr
 fix-round implementer who was not present at the review. Keep genuine uncertainty as
 ⚠️ — never promote "may be unused" to "is unused".
 
-**Close reasons and `bd remember`** (durable ledger): parsed after compaction by an
+**Close reasons and `.mex/lessons.md` entries** (durable ledger): parsed after compaction by an
 agent with no other context. State what was done, the commit range, and the evidence.
 No pronouns whose referent lives in the dead conversation ("fixed it as discussed").
 

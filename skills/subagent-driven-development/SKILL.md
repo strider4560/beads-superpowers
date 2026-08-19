@@ -320,7 +320,8 @@ Hand task text and review diffs to subagents as **files**, not pasted context �
 Every string you author in this workflow is parsed by an agent that cannot ask what
 you meant: bead descriptions (`bd create`), scene-setting context in implementer
 prompts, answers to subagent questions, review-finding relays, close reasons, and
-`bd remember` insights. Write them under the Simplified Technical English rules in
+the durable insights you write to `.mex/lessons.md` per the capture contract.
+Write them under the Simplified Technical English rules in
 `references/ste-authoring.md` — short active sentences, one instruction per sentence,
 one name per concept, hedges preserved.
 
@@ -328,7 +329,7 @@ The two failure modes this prevents are expensive here: a misread task brief cos
 full fix round, and synonym rotation across parallel task briefs makes independent
 implementers diverge on shared names (a divergence no worktree isolates). Run the
 reference's six-item scan checklist before `bd create` and before every dispatch.
-Close reasons and memories get the same treatment — they are re-parsed after
+Close reasons and `.mex/` entries get the same treatment — they are re-parsed after
 compaction by an agent with no other context.
 
 ## Prompt Templates

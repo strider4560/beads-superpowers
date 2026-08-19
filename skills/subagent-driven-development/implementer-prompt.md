@@ -41,6 +41,10 @@ Agent tool (subagent_type: "general-purpose"):
     Format), and a bead closed without verification evidence is worse than
     a bead left open.
 
+    Durable knowledge lives in `.mex/` and the controller owns it too.
+    Never write to `.mex/` and never run `mex log` — read routed pages only.
+    Put durables you found in your report; the controller records them.
+
     ## Mandatory Skills
 
     Invoke these skills explicitly via the `Skill` tool at each step of your workflow:
