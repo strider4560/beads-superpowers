@@ -28,7 +28,16 @@ Planning runs on the planning tier. Confirm that before reading the spec:
 bash scripts/pipeline/tier-gate.sh --stage planning
 ```
 
-Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Any nonzero exit stops this skill: report the gate's message to the user and go no further. Exit 4 is a visible SKIP for a harness that does not expose the session model, and a SKIP is not a pass, so it stops the skill too.
+Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Route on the exit code. "Stop on any nonzero" is wrong here:
+
+| Exit | Meaning | What this skill does |
+| --- | --- | --- |
+| 0 | The tier is verified. | Proceed. |
+| 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
+| 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
+| 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
+
+Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit answer. An answer that arrives skipped, dismissed, or auto-resolved is not consent — treat it as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
 
 When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier>`. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
 
@@ -112,7 +121,7 @@ text an agent must act on.
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use beads-superpowers:subagent-driven-development (recommended) or beads-superpowers:executing-plans to implement this plan task-by-task. Each Task becomes a bead (`bd create -t task --parent <epic-id>`). Steps within tasks use checkbox (`- [ ]`) syntax for human readability.
+> **For agentic workers:** The bead graph for this plan already exists — an initiative epic, its child epics, and one task bead per Task below. **Do not** create task beads for these tasks: a second set forks the plan of record, and the reviewers and tier assignments live on the beads that are already there. Find the initiative id in `.mex/context/initiatives.md`, then claim a bead that exists (`bd ready --parent <initiative-id>`, then `bd update <id> --claim`). Implementation runs in a separate session through great_cto's `implementing-epics`. Steps within tasks use checkbox (`- [ ]`) syntax for human readability.
 
 **Goal:** [One sentence describing what this builds]
 
@@ -201,7 +210,7 @@ Every step must contain the actual content an engineer needs. These are **plan f
 
 After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself — not a subagent dispatch.
 
-**0. Deterministic checks:** Run these commands and fix anything they flag before proceeding to the judgment checks below:
+**0. Deterministic checks — run these after Capture to Beads has created the graph, not now.** No bead exists at this point in the flow. **Capture to Beads** creates the graph once the user approves the plan, and it sends you back to these three commands at that point. Run them there and fix anything they flag before the Capture Complete Gate. The judgment checks below run now:
 
 ```bash
 bd lint <epic-id>                                                    # required-section check on the epic
@@ -296,14 +305,14 @@ Read `bd create --help`, `bd import --help`, and `bd batch --help` on first use 
 ```bash
 bd create "Initiative: <plan name>" -t epic -p 1 -l initiative -d "<the plan's Goal>
 
-Spec: .internal/specs/<YYYY-MM-DD-topic>.md
+Spec: .internal/specs/YYYY-MM-DD-<topic>-design.md
 Declarations: .mex/context/initiatives.md
 
 ## Success Criteria
 - <measurable outcome from the Goal>"
 ```
 
-Note the initiative id — every later step needs it. Labels inherit to children by default; leave that alone. The graph lint checks the `initiative` label on this bead only.
+Note the initiative id — every later step needs it. The graph lint checks the `initiative` label on this bead alone, so whether the label reaches any other bead does not matter.
 
 **2. The epics, then the tasks.** Two import streams, in that order. A task's `parent-child` dependency names its epic's id, and the epic ids are assigned by the import that creates the epics.
 
@@ -340,20 +349,22 @@ bd list --parent <epic-id> --json | jq -r '.[].id'
 printf 'dep add <task-2-id> <task-1-id> blocks\n' | bd batch
 ```
 
-Then run the Self-Review step 0 commands against the graph you just created. `bd lint` is the per-bead check; the Capture Complete Gate below is the whole-graph check.
+Then run the Self-Review step 0 commands against the graph you just created — `bd lint` is the per-bead check. Go to **Capture to mex** next, then **Capture Complete Gate**, which is the whole-graph check.
 
 ## Capture to mex
 
 The beads say what to build. `.mex/` says why, and both exist before this skill finishes.
+
+This section is not the Capture gate. That gate asks whether the session left behind an ad-hoc durable, and **Skip** is its usual answer. The three decision lines and the distilled block below are mandatory on every plan, whatever was answered there.
 
 **Scan first.** `.mex/` is committed and travels with the repo, so in a public repo these declarations are public. Scan every line before writing it and drop credentials, tokens, keys, PII, client names, and verbatim sensitive requirements. A durable that names an unmitigated risk, a security gap, or an unreleased plan belongs in `.mex/private/` (gitignored), **never** on a tracked page.
 
 **Three decisions.** One line each for the finalized requirements, the design, and the plan rationale. Every line ends with the spec path and the initiative bead id:
 
 ```bash
-mex log --type decision "requirements: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
-mex log --type decision "design: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
-mex log --type decision "plan rationale: <one line> — .internal/specs/<spec>.md, initiative <initiative-id>"
+mex log --type decision "requirements: <one line> — .internal/specs/YYYY-MM-DD-<topic>-design.md, initiative <initiative-id>"
+mex log --type decision "design: <one line> — .internal/specs/YYYY-MM-DD-<topic>-design.md, initiative <initiative-id>"
+mex log --type decision "plan rationale: <one line> — .internal/specs/YYYY-MM-DD-<topic>-design.md, initiative <initiative-id>"
 ```
 
 `--type decision` is required: a bare `mex log` records kind `note`, and a note is not a decision. If a `mex` call fails, surface the exact command and its output and stop. **Never** hand-write the entry into a page instead — that leaves a store that looks current and is not.
@@ -363,8 +374,9 @@ mex log --type decision "plan rationale: <one line> — .internal/specs/<spec>.m
 The appended block is capped at 2.5 KB (2560 bytes). Write it to a file, measure it, and append only once it fits:
 
 ```bash
-wc -c /tmp/initiative-block.md          # must be <= 2560
-cat /tmp/initiative-block.md >> .mex/context/initiatives.md
+block="$(mktemp)"                       # write the distilled block here
+wc -c "$block"                          # must be <= 2560
+cat "$block" >> .mex/context/initiatives.md
 ```
 
 If it does not fit, cut summary prose. **Never** cut the spec path or the bead ids — they are what a later session follows back.
@@ -374,7 +386,8 @@ If it does not fit, cut summary prose. **Never** cut the spec path or the bead i
 The plan is not captured until the graph lint passes:
 
 ```bash
-bd list --all -n 0 --json > /tmp/state.json && node scripts/pipeline/graph-lint.mjs --initiative <initiative-id> --state /tmp/state.json
+state="$(mktemp)"
+bd list --all -n 0 --json > "$state" && node scripts/pipeline/graph-lint.mjs --initiative <initiative-id> --state "$state"
 ```
 
 Exit 0 is the only pass. On exit 1 the lint prints one line per violation, each naming the bead id and the field, so fix those beads and run it again.
@@ -383,9 +396,11 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 ## Execution Handoff
 
-**Initiative work hands off through the graph, not through this session.** The plan is captured and the lint is green, so execution belongs to a separate implementation session running great_cto's `implementing-epics` against the initiative. Report the initiative id, the epic and task counts, and the spec path, then ask the user to start that session. **Never** carry on into implementation here — a planning-tier session that implements is the tier wall failing open.
+**Initiative work hands off through the graph, not through this session.** The plan is captured and the lint is green, so execution belongs to a separate implementation session running great_cto's `implementing-epics` against the initiative. Report the initiative id, the epic and task counts, and the spec path, then ask the user to start that session. **Never** decide on your own to carry on into implementation here — a planning-tier session that implements is the tier wall failing open.
 
-**Non-initiative work** — a plan small enough that you captured no initiative epic — still executes in this session. Use your structured question tool to offer the execution choice:
+**Every plan this skill produces is initiative work.** Capture to Beads is mandatory and has already run, so an initiative epic exists and you hold its id. Hand off, then stop.
+
+**The one exception, and the test for it.** The user may direct you, in this session, to execute the plan here instead. That direction is the only thing that opens the in-session path, and the test is a single question: did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, ask which in-session method they want:
 
 ```json
 {
@@ -419,8 +434,10 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 **Called by:** **brainstorming** — this is brainstorming's terminal state. After design approval, brainstorming invokes writing-plans.
 
+**Hands off to:** **great_cto `implementing-epics`** — the default for every plan. A separate implementation session consumes the captured bead graph.
+
 **Invokes:**
-- **subagent-driven-development** — execution handoff (user choice).
-- **executing-plans** — execution handoff (user choice).
+- **subagent-driven-development** — in-session execution, only when the user directs it (see Execution Handoff).
+- **executing-plans** — in-session execution, only when the user directs it.
 
 **Pairs with:** **stress-test** — offered at the plan-review gate every time (the "Approved + stress-test" option), before execution.
