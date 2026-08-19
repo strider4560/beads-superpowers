@@ -14,7 +14,6 @@ if ! command -v bd >/dev/null 2>&1 || ! bd ready -n 1 >/dev/null 2>&1; then
     echo "== ready ==";  echo "SKIP"
     echo "== in-progress =="; echo "SKIP"
     echo "== blocked =="; echo "SKIP"
-    echo "== mex =="; echo "SKIP"
 else
     echo "== ledger =="
     bd count --by-status 2>/dev/null | head -10
@@ -25,22 +24,24 @@ else
     bd query "status=in_progress" -n 10 2>/dev/null | head -12
     echo "== blocked =="
     bd blocked 2>/dev/null | head -12
-    echo "== mex =="
-    if [ ! -d .mex ]; then
-        echo "ABSENT"
+fi
+
+# mex is independent of bd: a repo can have .mex/ without a beads workspace.
+echo "== mex =="
+if [ ! -d .mex ]; then
+    echo "ABSENT"
+else
+    echo "PRESENT"
+    if command -v mex >/dev/null 2>&1; then
+        # Exit code AND first output line, both raw: `mex check` exits 0 WITH
+        # warnings, so the code alone under-reports and the text alone
+        # over-reports. The agent reads both; this script judges neither.
+        mex_out=$(mex check 2>&1); mex_rc=$?
+        echo "check: exit=$mex_rc $(printf '%s\n' "$mex_out" | head -1)"
     else
-        echo "PRESENT"
-        if command -v mex >/dev/null 2>&1; then
-            # Exit code AND first output line, both raw: `mex check` exits 0 WITH
-            # warnings, so the code alone under-reports and the text alone
-            # over-reports. The agent reads both; this script judges neither.
-            mex_out=$(mex check 2>&1); mex_rc=$?
-            echo "check: exit=$mex_rc $(printf '%s\n' "$mex_out" | head -1)"
-        else
-            echo "check: exit=127 (mex not on PATH)"
-        fi
-        head -20 .mex/lessons.md 2>/dev/null
+        echo "check: exit=127 (mex not on PATH)"
     fi
+    head -20 .mex/lessons.md 2>/dev/null
 fi
 
 echo "== handoff =="

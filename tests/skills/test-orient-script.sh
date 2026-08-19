@@ -25,7 +25,7 @@ esac
 FAKE
 chmod +x "$TMP/bin/bd"
 out=$(PATH="$TMP/bin:$PATH" bash "$SCRIPT")
-for s in scale ledger ready in-progress blocked memories handoff; do
+for s in scale ledger ready in-progress blocked mex handoff; do
   echo "$out" | grep -q "== $s ==" || { echo "FAIL: section $s missing"; exit 1; }
 done
 
