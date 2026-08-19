@@ -96,6 +96,15 @@ p_epic_global_dir='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db cr
 p_epic_alias_new='{"tool_name":"Bash","tool_input":{"command":"bd new -t epic \"X\""}}'
 p_epic_quick='{"tool_name":"Bash","tool_input":{"command":"bd q -t epic \"Q1\""}}'
 p_import_global_dir='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db import issues.jsonl"}}'
+# Bulk creation. `bd create` is documented as "Create a new issue (or batch from
+# markdown/graph JSON)", and `bd create --graph plan.json` was run against the
+# installed bd v1.1.2: it created an epic plus a parent-child edge with no type
+# flag anywhere in the command string, because the type lives in the JSON file.
+# `-f` / `--file` are the same shape.
+p_bulk_graph='{"tool_name":"Bash","tool_input":{"command":"bd create --graph g.json"}}'
+p_bulk_f='{"tool_name":"Bash","tool_input":{"command":"bd create -f plan.md"}}'
+p_bulk_file='{"tool_name":"Bash","tool_input":{"command":"bd create --file plan.md"}}'
+p_bulk_graph_global='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db create --graph g.json"}}'
 p_task_alias_new='{"tool_name":"Bash","tool_input":{"command":"bd new -t task \"X\""}}'
 # Not bd. The rule keys on a `bd` token at a word boundary, so a command whose
 # name merely contains or extends `bd` must still be allowed.
@@ -229,6 +238,21 @@ check "ruleA-quick-capture-denied" 2 'Rule A'
 # The import clause gets the same treatment, for the same reason.
 run "$c_orch" "$h_full" "$p_import_global_dir"
 check "ruleA-import-behind-a-global-flag-denied" 2 'Rule A'
+
+# Bulk creation puts the type out-of-band, in the file the command names, so no
+# type flag appears in the command string at all. The bulk-creation flags are
+# therefore a third token alternative alongside the type flag and `import`.
+run "$c_orch" "$h_full" "$p_bulk_graph"
+check "ruleA-bulk-graph-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_bulk_f"
+check "ruleA-bulk-short-file-flag-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_bulk_file"
+check "ruleA-bulk-long-file-flag-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_bulk_graph_global"
+check "ruleA-bulk-graph-behind-a-global-flag-denied" 2 'Rule A'
 
 run "$c_orch" "$h_full" "$p_task"
 check "ruleA-task-allowed" 0

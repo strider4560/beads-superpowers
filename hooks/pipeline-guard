@@ -134,17 +134,18 @@ while IFS= read -r tier; do
 done <<< "$tiers"
 
 # --- Rule A: only a planning-tier session mutates the plan graph ------------
-# The rule keys on TWO independent tokens, wherever they appear in the command
-# string, instead of on bd's subcommand grammar: a `bd` invocation, AND either
-# an epic-type flag or an `import` token. Guessing the grammar failed three
-# times. Cobra finds the subcommand PAST any leading global flag, so
+# The rule keys on independent tokens, wherever they appear in the command
+# string, instead of on bd's subcommand grammar: a `bd` invocation, AND any one
+# of an epic-type flag, an `import` token, or a bulk-creation flag. Guessing the
+# grammar failed three times. Cobra finds the subcommand PAST any leading global
+# flag, so
 # `bd --type epic create` and `bd -C <dir> create -t epic` never match an
 # anchored `bd create`; and `create` is not the only creation path — it carries
 # the alias `new` (`bd create --help` prints `Aliases: create, new`), and `bd q`
 # is "Quick capture creates an issue ... Designed for scripting and AI agent
 # integration". Each of those, and `bd -C <dir> import`, was run against the
 # installed bd v1.1.2 and did create an epic. Enumerating subcommands and
-# aliases loses to the next bd release; two independent tokens do not.
+# aliases loses to the next bd release; independent tokens do not.
 # The type flag is matched in eight spellings, all of which reach bd as
 # `--type epic`: `-t epic`, `-tepic`, `--type epic`, `--type=epic`, `-t=epic`,
 # `--type "epic"`, `-t 'epic'` and `--type='epic'`. bd is Cobra/pflag-based, so
@@ -154,11 +155,29 @@ done <<< "$tiers"
 # `$padded` is the command with one space added at each end, so the `bd` and
 # `import` token patterns need no ^/$ anchor — a plain character class is the
 # same regex on every libc. It is what rejects `abd` and `bd-helper`.
-# This is best-effort, NOT a parse of bd's flag grammar: a regex over a shell
-# command string cannot be one. Uncovered, and known to be: a type value
-# produced by expansion or substitution (`--type=$T`, `-t "$(echo epic)"`), a
-# value split across quoting (`-t ep'ic'`), and a flag that reaches bd through a
-# helper script whose own command string does not contain `bd`.
+# The bulk-creation flags are the third alternative. `bd create` is documented as
+# "Create a new issue (or batch from markdown/graph JSON)", and
+# `bd create --graph plan.json` was run against the installed bd v1.1.2: it
+# created an epic plus a parent-child edge with NO type flag anywhere in the
+# command string, because the type lives in the JSON file. `-f` and `--file` are
+# the same shape. `-f` is a bare short flag, so any bd command carrying it is
+# denied off the planning tier whether or not it creates anything — a cost taken
+# deliberately, on the same reasoning as the epic-flag clause below.
+#
+# Rule A is best-effort defence-in-depth. It is NOT a boundary, and a regex over
+# a shell command string cannot be one. What actually enforces the tier wall:
+# `tier-gate.sh --stage` fails closed at stage entry, so a session on the wrong
+# tier cannot COMPLETE a stage whatever it typed; `graph-lint.mjs` validates the
+# captured graph before any implementation session consumes it; and Rules C and D
+# close the two self-authorization paths, at every tier. A bypass of Rule A alone
+# does not ship a bad plan graph — it produces beads the lint and the stage gate
+# still have to accept.
+# What Rule A does not cover is an OPEN set. It includes, but is not limited to:
+# a quoted or expanded command name (`"bd"`, `$BD`, `$(which bd)`); a type value
+# from expansion or split quoting (`--type=$T`, `-t ep'ic'`); `bd create-form`; a
+# helper script whose own command string never spells `bd`; and any path that
+# puts the type out-of-band in a file not named by the flags above. Do not read a
+# list of uncovered spellings anywhere in this file as complete.
 # The cost is wider denial, taken deliberately: ANY bd command whose string
 # carries an epic-type flag is denied off the planning tier — `bd list -t epic`
 # included — as is a `bd create -t task` whose text quotes `--type epic`, or a
@@ -172,8 +191,10 @@ padded=" $cmd "
 bd_re='[^[:alnum:]_-]bd[[:space:]]'
 epic_flag_re='(-t|--type)[[:space:]='"'"'"]*epic'
 import_re='[^[:alnum:]_-]import[^[:alnum:]_-]'
+bulk_re='(--graph|--file|-f)[[:space:]=]'
 if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ] && [[ "$padded" =~ $bd_re ]]; then
-  if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]]; then
+  if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]] ||
+     [[ "$padded" =~ $bulk_re ]]; then
     [ "$has_tier" -eq 1 ] &&
       deny "only a planning-tier session mutates the plan graph (Rule A)"
     deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run 'bash scripts/pipeline/tier-gate.sh --assert <tier>' (Rule A)"
