@@ -15,7 +15,13 @@ usage() {
 }
 [ $# -eq 2 ] || usage
 
+# --assert is the human remedy for a session whose model the harness did not
+# report. Anything that can write the tier assert file can self-authorize any
+# tier, so this branch refuses without an interactive terminal — a model's tool
+# calls are never a tty. The check is the control; the "user-run only" wording
+# below is only its label. Do not remove it as superfluous.
 if [ "$1" = "--assert" ]; then
+  [ -t 0 ] || { echo "ERROR: --assert is human-only; run it in an interactive shell" >&2; exit 1; }
   case "$2" in planning|implementation-orchestration|implementation|review) ;; *) usage ;; esac
   mkdir -p "$state_dir"
   printf '%s\n' "$2" > "$state_dir/tier-assert"

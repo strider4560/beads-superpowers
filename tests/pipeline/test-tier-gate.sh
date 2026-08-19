@@ -38,11 +38,32 @@ make_cwd() { # <name> [model] [effort] -> path to a working dir
 
 run() { # <cwd> <home> <prog> [args...] — sets rc, out (stdout), err (stderr)
   # PATH_OVERRIDE, when set, replaces PATH for the gate only (jq-absence cases).
+  # stdin comes from /dev/null so it is never a tty, whether this suite is
+  # launched from an interactive terminal or from `just`. --assert refuses
+  # without a tty, so leaving stdin inherited would make the suite non-deterministic.
   local cwd="$1" home="$2" prog="$3"; shift 3
   out="$(cd "$cwd" && HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" \
-    "$BASH" "$prog" "$@" 2>"$TMP/stderr")"
+    "$BASH" "$prog" "$@" 2>"$TMP/stderr" </dev/null)"
   rc=$?
   err="$(cat "$TMP/stderr")"
+}
+
+# The human path through --assert needs a real terminal on stdin. `script` is the
+# only portable-ish way to get one; where it is missing or behaves differently
+# (BSD/macOS take different flags) those cases report a visible SKIP.
+pty_ok=0
+if command -v script >/dev/null 2>&1 &&
+   [ "$(script -qec '[ -t 0 ] && echo TTY' /dev/null 2>/dev/null | tr -d '\r\n')" = "TTY" ]; then
+  pty_ok=1
+fi
+
+run_pty() { # <cwd> <home> <prog> [args...] — same, but with a pty on stdin
+  local cwd="$1" home="$2" prog="$3" cmd a; shift 3
+  cmd="$(printf 'cd %q && HOME=%q %q %q' "$cwd" "$home" "$BASH" "$prog")"
+  for a in "$@"; do cmd="$cmd $(printf '%q' "$a")"; done
+  out="$(script -qec "$cmd" /dev/null | tr -d '\r')"
+  rc=$?
+  err="$out"   # a pty merges stdout and stderr into one stream
 }
 
 check() { # <name> <want-exit> [<ere-pattern> [stdout|stderr]] — one PASS/FAIL line
@@ -72,7 +93,11 @@ c_eff_ok="$(make_cwd eff-ok model-plan-1 high)"
 c_eff_bad="$(make_cwd eff-bad model-plan-1 low)"
 c_unknown="$(make_cwd unknown model-not-in-map)"
 c_none="$(make_cwd none)"                                    # no session state file
-c_assert="$(make_cwd assert)"
+c_assert="$(make_cwd assert)"                                # tier assert file below
+mkdir -p "$c_assert/.internal/pipeline"
+printf 'planning\n' > "$c_assert/.internal/pipeline/tier-assert"
+c_noassert="$(make_cwd noassert)"                            # --assert refusal cases
+c_pty="$(make_cwd pty)"                                      # --assert under a pty
 c_orch_only="$(make_cwd orch-only model-orch-only)"
 c_review_only="$(make_cwd review-only model-review-only)"
 c_multi="$(make_cwd multi model-orch-1)"                     # listed in two tiers
@@ -101,9 +126,6 @@ check "usage-says-run-from-the-repo-root" 2 'run from the repo root' stderr
 
 run "$c_none" "$h_full" "$gate" --stage bogus
 check "usage-unknown-stage-exits-2" 2
-
-run "$c_none" "$h_full" "$gate" --assert bogus
-check "usage-unknown-assert-tier-exits-2" 2
 
 # --- secondary harness ------------------------------------------------------
 
@@ -145,8 +167,6 @@ run "$c_none" "$h_full" "$gate" --stage planning
 check "no-session-and-no-tier-assert-exits-1" 1
 check "no-session-tells-user-to-run-assert" 1 'tier-gate\.sh --assert' stderr
 
-run "$c_assert" "$h_full" "$gate" --assert planning
-check "assert-exits-0" 0
 run "$c_assert" "$h_full" "$gate" --stage planning
 check "tier-assert-file-unblocks-stage-entry" 0
 
@@ -161,6 +181,39 @@ if printf '%s' "$err" | grep -q -- '--assert'; then
   echo "FAIL unparsable-session-json-does-not-offer-the---assert-remedy: $err"; fails=$((fails+1))
 else
   echo "PASS unparsable-session-json-does-not-offer-the---assert-remedy"
+fi
+
+# --- --assert is human-only -------------------------------------------------
+# The terminal check sits ahead of the tier-name validation, so a non-tty caller
+# passing a bogus tier is still refused as non-human rather than told its tier
+# name is wrong.
+
+run "$c_noassert" "$h_full" "$gate" --assert planning
+check "assert-without-a-tty-exits-1" 1
+check "assert-without-a-tty-says-human-only" 1 'human-only' stderr
+if [ -e "$c_noassert/.internal/pipeline/tier-assert" ]; then
+  echo "FAIL assert-without-a-tty-writes-no-tier-assert-file: the file was written"
+  fails=$((fails+1))
+else
+  echo "PASS assert-without-a-tty-writes-no-tier-assert-file"
+fi
+
+run "$c_noassert" "$h_full" "$gate" --assert bogus
+check "assert-unknown-tier-without-a-tty-is-refused-before-tier-validation" 1 'human-only' stderr
+
+if [ "$pty_ok" -eq 1 ]; then
+  run_pty "$c_pty" "$h_full" "$gate" --assert planning
+  check "assert-with-a-tty-exits-0" 0
+  if [ -f "$c_pty/.internal/pipeline/tier-assert" ]; then
+    echo "PASS assert-with-a-tty-writes-the-tier-assert-file"
+  else
+    echo "FAIL assert-with-a-tty-writes-the-tier-assert-file: no file"
+    fails=$((fails+1))
+  fi
+  run_pty "$c_pty" "$h_full" "$gate" --assert bogus
+  check "assert-with-a-tty-unknown-tier-exits-2" 2
+else
+  echo "SKIP assert-with-a-tty-*: no working 'script' pty helper on this machine"
 fi
 
 # --- stage -> tier mapping --------------------------------------------------
