@@ -9,15 +9,23 @@
  *
  * Fork delta (minimal, policy-free): bootstrap content comes from the canonical
  * composer `hooks/session-start --emit-plain` (using-superpowers bootstrap +
- * composed <beads-context>); on failure it falls back to a minimal pointer —
- * NEVER the full bd prime dump. Plus a compaction re-injection hook. All
- * selection/degradation policy lives in hooks/session-start; the anti-fork
- * guard is tests/hooks/test-opencode-injection.mjs.
+ * composed <beads-context>); on failure it falls back to a minimal pointer plus
+ * the durable-knowledge (mex) hot page — NEVER the full bd prime dump. Plus a
+ * compaction re-injection hook. All selection/degradation policy lives in
+ * hooks/session-start; the anti-fork guard is
+ * tests/hooks/test-opencode-injection.mjs.
  */
 
 import path from 'path';
 import { execSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+
+// Byte cap on the injected .mex/lessons.md hot page — the product-wide constant,
+// mirroring BSP_MEX_CEILING in hooks/session-start. Everything past the cap stays
+// reachable through the router, so clipping is lossless at the store level, but
+// never silent: a clipped page carries the truncation marker below.
+const MEX_CEILING = 2048;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +52,37 @@ export const BeadsSuperpowersPlugin = async ({ client, directory }) => {
     }
   };
 
+  // Durable knowledge (mex) for the fallback payload — the JS mirror of
+  // bsp_compose_mex in hooks/session-start. File reads only: routing and ranking
+  // are the agent's job at retrieval time, not session-start policy. Independent
+  // of bd — .mex/ is a store on disk, not a beads feature.
+  const composeMex = () => {
+    const mexDir = path.join(directory ?? process.cwd(), '.mex');
+    if (!existsSync(mexDir)) {
+      // In-context (not stderr): the agent is the actor who can fix this.
+      return 'No .mex/ found — run the project-init skill to set up mex.';
+    }
+    const lines = [
+      '## Durable Knowledge (mex)',
+      '',
+      'Router: read .mex/ROUTER.md for task-scoped pages. Retrieval: mex graph scope "<task>".',
+    ];
+    let page;
+    try {
+      // Buffer, not string — a UTF-8 page must clip on the BYTE cap.
+      page = readFileSync(path.join(mexDir, 'lessons.md'));
+    } catch {
+      return lines.join('\n'); // no hot page: router pointer only
+    }
+    if (page.length === 0) return lines.join('\n'); // empty page: no empty block
+    lines.push('', page.subarray(0, MEX_CEILING).toString('utf8'));
+    // The marker is the loss disclosure — a clipped page must never look complete.
+    if (page.length > MEX_CEILING) {
+      lines.push('[truncated — lessons.md exceeds the 2 KB hot-page cap; run mex-curator]');
+    }
+    return lines.join('\n');
+  };
+
   const getBootstrapContent = () => {
     if (_bootstrapCache !== undefined) return _bootstrapCache;
 
@@ -55,17 +94,11 @@ export const BeadsSuperpowersPlugin = async ({ client, directory }) => {
 
     // Policy-free pointer fallback (composer missing/failed). Wrapped in the
     // marker so the transform guard below stays idempotent.
-    let memLine = '';
-    try {
-      memLine = execSync('bd memories 2>/dev/null', { encoding: 'utf8', timeout: 5000 }).split('\n')[0] ?? '';
-    } catch {
-      // bd absent
-    }
     _bootstrapCache = [
       '<EXTREMELY_IMPORTANT>',
       'beads-superpowers: session composer unavailable in this environment.',
       'Load skills via the skill tool (start: using-superpowers).',
-      memLine ? `${memLine} — search: bd memories <keyword>, fetch: bd recall <key>` : '',
+      composeMex(),
       '</EXTREMELY_IMPORTANT>',
     ].filter(Boolean).join('\n');
     return _bootstrapCache;

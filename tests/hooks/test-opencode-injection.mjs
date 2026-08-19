@@ -44,9 +44,19 @@ assert.ok(
 assert.ok(!pluginSrc.includes("bd memories --json"), "plugin source must not reimplement memory selection (bd memories --json)")
 console.log("PASS: anti-fork guard — no selection policy in plugin source")
 
-// buildFixture(withHook) — a standalone fixture dir with its own copy of the plugin
+// Test 0c: legacy bd-memory surface is gone — durable knowledge is .mex/, and the
+// plugin must not shell out to the retired bd memory commands.
+assert.ok(
+  !/bd (remember|memories|forget|recall)\b/.test(pluginSrc),
+  "plugin source must not reference bd remember/memories/forget/recall"
+)
+console.log("PASS: no legacy bd-memory references in plugin source")
+
+// buildFixture(withHook, mex) — a standalone fixture dir with its own copy of the plugin
 // file (fresh module identity), a skills/using-superpowers/SKILL.md stub, and
 // optionally a hooks/session-start stub that echoes a canned composer payload.
+// mex: null → no .mex/ at all; { lessons } → .mex/ with that lessons.md body;
+// {} → .mex/ present but no lessons.md.
 const stubPayload = [
   "<EXTREMELY_IMPORTANT>",
   "stub bootstrap body",
@@ -57,7 +67,7 @@ const stubPayload = [
   "</beads-context>",
 ].join("\n")
 
-function buildFixture(withHook) {
+function buildFixture(withHook, mex = null) {
   const root = mkdtempSync(join(tmpdir(), "bsp-oc-test-"))
   const pluginDir = join(root, ".opencode/plugins")
   mkdirSync(pluginDir, { recursive: true })
@@ -79,7 +89,23 @@ function buildFixture(withHook) {
     )
   }
 
+  if (mex) {
+    const mexDir = join(root, ".mex")
+    mkdirSync(mexDir, { recursive: true })
+    if (mex.lessons !== undefined) writeFileSync(join(mexDir, "lessons.md"), mex.lessons)
+  }
+
   return { root, pluginPath }
+}
+
+// Fallback payload for a fixture — the composer is absent, so getBootstrapContent
+// takes the pointer + mex path.
+async function fallbackText(fixture) {
+  const { BeadsSuperpowersPlugin } = await import(fixture.pluginPath)
+  const hooks = await BeadsSuperpowersPlugin({ client: {}, directory: fixture.root })
+  const out = { messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "hi" }] }] }
+  await hooks["experimental.chat.messages.transform"]({}, out)
+  return out.messages[0].parts[0].text
 }
 
 // --- Scenario A: hook present — primary composer path ---
@@ -118,22 +144,63 @@ console.log("PASS: compaction — composer output pushed to context (primary pat
 
 rmSync(fixtureA.root, { recursive: true, force: true })
 
-// --- Scenario B: hook absent (fresh fixture, fresh import) — policy-free pointer fallback ---
-const fixtureB = buildFixture(false)
-const { BeadsSuperpowersPlugin: PluginB } = await import(fixtureB.pluginPath)
-const hooksB = await PluginB({ client: {}, directory: fixtureB.root })
-
-const fallbackOutput = { messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "hi" }] }] }
-await hooksB["experimental.chat.messages.transform"]({}, fallbackOutput)
-const fallbackText = fallbackOutput.messages[0].parts[0].text
-assert.ok(fallbackText.includes("session composer unavailable"), "fallback pointer present when the composer is unreachable")
-assert.ok(fallbackText.includes("skill tool"), "fallback still points at the skill tool")
+// --- Scenario B: hook absent, no .mex/ — policy-free pointer + mex nudge ---
+const fixtureB = buildFixture(false, null)
+const textB = await fallbackText(fixtureB)
+assert.ok(textB.includes("session composer unavailable"), "fallback pointer present when the composer is unreachable")
+assert.ok(textB.includes("skill tool"), "fallback still points at the skill tool")
 assert.ok(
-  !/salience|@type=|BSP_MEM_CEILING/i.test(fallbackText),
+  !/salience|@type=|BSP_MEM_CEILING/i.test(textB),
   "fallback pointer must not carry memory-selection policy strings"
 )
-console.log("PASS: fallback — policy-free pointer injected when composer is unavailable")
+assert.ok(
+  textB.includes("No .mex/ found — run the project-init skill to set up mex."),
+  "absent .mex/ injects the project-init nudge (bsp_compose_mex parity)"
+)
+assert.ok(!textB.includes("Durable Knowledge (mex)"), "no mex section header when .mex/ is absent")
+console.log("PASS: fallback — pointer + '.mex/ absent' nudge")
 
 rmSync(fixtureB.root, { recursive: true, force: true })
 
-console.log("PASS: opencode plugin — config idempotent, inject-once, compaction OK, policy-free fallback OK")
+// --- Scenario C: .mex/ present, lessons.md under the cap — header + router + page ---
+const lessonsC = "# Lessons\n\n- fixture lesson body\n"
+const fixtureC = buildFixture(false, { lessons: lessonsC })
+const textC = await fallbackText(fixtureC)
+assert.ok(textC.includes("## Durable Knowledge (mex)"), "present .mex/ injects the section header")
+assert.ok(
+  textC.includes('Router: read .mex/ROUTER.md for task-scoped pages. Retrieval: mex graph scope "<task>".'),
+  "present .mex/ injects the router line verbatim"
+)
+assert.ok(textC.includes(lessonsC.trim()), "lessons.md content is injected")
+assert.ok(!textC.includes("No .mex/ found"), "no absent-nudge when .mex/ exists")
+assert.ok(!textC.includes("[truncated"), "an under-cap page carries no truncation marker")
+console.log("PASS: mex present — header + router line + lessons hot page")
+
+rmSync(fixtureC.root, { recursive: true, force: true })
+
+// --- Scenario D: lessons.md over the 2 KB cap — byte prefix + truncation marker ---
+const CAP = 2048
+const lessonsD = "x".repeat(CAP + 500) // ASCII: bytes == chars, so the prefix is checkable
+const fixtureD = buildFixture(false, { lessons: lessonsD })
+const textD = await fallbackText(fixtureD)
+assert.ok(
+  textD.includes("[truncated — lessons.md exceeds the 2 KB hot-page cap; run mex-curator]"),
+  "an over-cap page carries the truncation marker (loss is disclosed, never silent)"
+)
+assert.ok(textD.includes("x".repeat(CAP)), "the first 2048 bytes of lessons.md are injected")
+assert.ok(!textD.includes("x".repeat(CAP + 1)), "nothing past the 2048-byte cap is injected")
+console.log("PASS: mex over-cap — 2048-byte prefix plus truncation marker")
+
+rmSync(fixtureD.root, { recursive: true, force: true })
+
+// --- Scenario E: .mex/ present but no lessons.md — router pointer only ---
+const fixtureE = buildFixture(false, {})
+const textE = await fallbackText(fixtureE)
+assert.ok(textE.includes("## Durable Knowledge (mex)"), "header present without a hot page")
+assert.ok(textE.includes(".mex/ROUTER.md"), "router pointer present without a hot page")
+assert.ok(!textE.includes("No .mex/ found"), "an existing .mex/ never emits the absent-nudge")
+console.log("PASS: mex present, no lessons.md — router pointer only")
+
+rmSync(fixtureE.root, { recursive: true, force: true })
+
+console.log("PASS: opencode plugin — config idempotent, inject-once, compaction OK, mex fallback OK")
