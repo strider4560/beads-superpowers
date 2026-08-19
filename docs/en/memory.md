@@ -146,6 +146,8 @@ A non-zero exit gets one `mex sync` attempt, followed by a second `mex check` - 
 
 The same check runs as part of landing the plane: `bd close` → `mex check` → `bd dolt push` → `git push`.
 
+Worth disclosing while you are here: mex 0.7.1 ships with telemetry enabled by default, so `mex check` - like every other mex command - reports a machine id from `~/.mex/telemetry-id`, the OS, the Node and mex versions, and the scaffold id over the network; `mex telemetry status` shows the current setting, and `mex config set` is documented as the way to turn it off, though the exact key was not observed in 0.7.1.
+
 ## What the code graph covers
 
 `mex graph` indexes source files so that `mex impact <symbol|file>` can tell you which pages a code change touches. That indexing covers a subset of languages, and the boundary matters more than the headline.

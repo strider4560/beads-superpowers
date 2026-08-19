@@ -149,6 +149,8 @@ mex check    # 以退出码为准，绝不以"没有告警"为准
 
 同一次检查也是 Land the Plane 的一环：`bd close` → `mex check` → `bd dolt push` → `git push`。
 
+顺带需要披露一点：mex 0.7.1 默认开启遥测，因此 `mex check`——和其他每一条 mex 命令一样——会通过网络上报一个来自 `~/.mex/telemetry-id` 的机器 id、操作系统、Node 与 mex 版本，以及 scaffold id；`mex telemetry status` 可以查看当前设置，而 `mex config set` 被文档描述为关闭它的方式，只是具体的配置键在 0.7.1 中未被观察到。
+
 ## 代码图谱覆盖到哪里
 
 `mex graph` 会索引源码文件，使 `mex impact <symbol|file>` 能告诉你一次代码改动会牵动哪些页面。这种索引只覆盖部分语言，而这条边界比结论本身更重要。

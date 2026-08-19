@@ -278,6 +278,12 @@ still reports success — so its exit code proves nothing. And `mex check` exits
 warnings: a stock scaffold scores 79/100 with 7 warnings from mex's own
 `patterns/INDEX.md` placeholders. Gate on the exit code, never on a warning-free report.
 
+Disclose the network side effect when you report this step: telemetry is on by default in
+mex 0.7.1, so `mex check` — like every mex command — sends a machine id (persisted at
+`~/.mex/telemetry-id`), the OS, the Node and mex versions, and the scaffold id.
+`mex telemetry status` shows the setting, and `mex config set` is documented as the way to
+turn it off, though the exact key was not observed in 0.7.1.
+
 Done when: `.mex/ROUTER.md` exists and `mex check` exits 0.
 
 ### 3. Create the product-defined pages
