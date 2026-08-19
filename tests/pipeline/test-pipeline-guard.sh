@@ -36,13 +36,23 @@ make_cwd() { # <name> [model] -> path to a working dir (session state file when 
 
 # --- runner + assertion -----------------------------------------------------
 
+stray_stdout=""
+
 run() { # <cwd> <home> <stdin-payload> — sets rc, err (stderr)
   # PATH_OVERRIDE, when set, replaces PATH for the guard only (jq-absence cases).
   local cwd="$1" home="$2" payload="$3"
   ( cd "$cwd" && HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" "$BASH" "$guard" ) \
-    <<<"$payload" >/dev/null 2>"$TMP/stderr"
+    <<<"$payload" >"$TMP/stdout" 2>"$TMP/stderr"
   rc=$?
   err="$(cat "$TMP/stderr")"
+  # Claude Code parses hook stdout as JSON directives, so the guard must emit
+  # nothing on stdout — ever, on any path. Recorded on every run so the
+  # no-stdout assertion at the end covers every case in this file.
+  if [ -s "$TMP/stdout" ]; then
+    stray_stdout="$stray_stdout$payload -> $(cat "$TMP/stdout")
+"
+  fi
+  return 0
 }
 
 check() { # <name> <want-exit> [<ere-pattern on stderr>] — one PASS/FAIL line
@@ -63,10 +73,14 @@ check() { # <name> <want-exit> [<ere-pattern on stderr>] — one PASS/FAIL line
 # --- payloads ---------------------------------------------------------------
 
 p_epic='{"tool_name":"Bash","tool_input":{"command":"bd create -t epic \"X\""}}'
+p_epic_longopt='{"tool_name":"Bash","tool_input":{"command":"bd create --type epic \"X\""}}'
+p_epic_glued='{"tool_name":"Bash","tool_input":{"command":"bd create -tepic \"X\""}}'
 p_import='{"tool_name":"Bash","tool_input":{"command":"bd import issues.jsonl"}}'
 p_task='{"tool_name":"Bash","tool_input":{"command":"bd create -t task \"X\""}}'
+p_task_longopt='{"tool_name":"Bash","tool_input":{"command":"bd create --type task \"X\""}}'
 p_src='{"tool_name":"Write","tool_input":{"file_path":"src/x.js","content":"x"}}'
 p_src_edit='{"tool_name":"Edit","tool_input":{"file_path":"src/x.js","old_string":"a","new_string":"b"}}'
+p_src_via_docs='{"tool_name":"Write","tool_input":{"file_path":"docs/../src/x.js","content":"x"}}'
 p_internal='{"tool_name":"Write","tool_input":{"file_path":".internal/specs/a.md","content":"x"}}'
 p_mex='{"tool_name":"Write","tool_input":{"file_path":".mex/lessons.md","content":"x"}}'
 p_docs='{"tool_name":"Write","tool_input":{"file_path":"docs/en/x.md","content":"x"}}'
@@ -74,7 +88,18 @@ p_assert='{"tool_name":"Bash","tool_input":{"command":"bash scripts/pipeline/tie
 p_assert_pty='{"tool_name":"Bash","tool_input":{"command":"script -qec '"'"'bash scripts/pipeline/tier-gate.sh --assert planning'"'"' /dev/null"}}'
 p_state_assert='{"tool_name":"Write","tool_input":{"file_path":".internal/pipeline/tier-assert","content":"review"}}'
 p_state_session='{"tool_name":"Write","tool_input":{"file_path":".internal/pipeline/session.json","content":"{}"}}'
+p_state_dotdot='{"tool_name":"Write","tool_input":{"file_path":".internal/specs/../pipeline/tier-assert","content":"review"}}'
+p_state_dblslash='{"tool_name":"Write","tool_input":{"file_path":".internal//pipeline/tier-assert","content":"review"}}'
+p_state_dotslash='{"tool_name":"Write","tool_input":{"file_path":"./.internal/pipeline/tier-assert","content":"review"}}'
 p_state_bash='{"tool_name":"Bash","tool_input":{"command":"printf '"'"'review\\n'"'"' > .internal/pipeline/tier-assert"}}'
+p_pipeline_lookalike='{"tool_name":"Write","tool_input":{"file_path":".internal/pipeline-notes.md","content":"x"}}'
+# A file_path carrying an embedded newline. `docs/a\n/../../src/y.js` has the
+# components docs, "a\n", "", .., .., src, y.js — it resolves ABOVE the project,
+# to a source file, while its first line reads as an allowed docs/ path.
+p_newline_escape='{"tool_name":"Write","tool_input":{"file_path":"docs/a\n/../../src/y.js","content":"x"}}'
+# Same trick aimed at the state directory: first line "x", real target
+# .internal/pipeline/tier-assert.
+p_newline_state='{"tool_name":"Write","tool_input":{"file_path":"x\n/../.internal/pipeline/tier-assert","content":"review"}}'
 p_malformed='{"tool_name":"Bash","tool_input":'
 
 # --- fixtures ---------------------------------------------------------------
@@ -90,6 +115,32 @@ c_assertfile="$(make_cwd assertfile)"           # armed by the tier assert file 
 mkdir -p "$c_assertfile/.internal/pipeline"
 printf 'planning\n' > "$c_assertfile/.internal/pipeline/tier-assert"
 
+# Armed, but the tier cannot be resolved: the harness did not report a model
+# (D2 says that is the NORMAL case) and no human has asserted a tier.
+c_notier="$(make_cwd notier)"
+mkdir -p "$c_notier/.internal/pipeline"
+printf '{"model_id":null,"effort":null,"source":"hook","timestamp":"t"}\n' \
+  > "$c_notier/.internal/pipeline/session.json"
+
+# Armed and broken: resolve_session_tier's two `return 1` paths.
+c_badmodel="$(make_cwd badmodel model-not-in-the-map)"
+c_badjson="$(make_cwd badjson)"
+mkdir -p "$c_badjson/.internal/pipeline"
+printf 'not json at all\n' > "$c_badjson/.internal/pipeline/session.json"
+
+# Absolute file_path payloads. The Write and Edit tools document file_path as
+# "must be absolute, not relative", so this — not the relative spelling — is the
+# form production actually emits.
+abs_payload() { # <cwd> <relative-path> -> a Write payload with an absolute file_path
+  printf '{"tool_name":"Write","tool_input":{"file_path":"%s/%s","content":"x"}}' "$1" "$2"
+}
+pa_src="$(abs_payload "$c_plan" src/x.js)"
+pa_internal="$(abs_payload "$c_plan" .internal/specs/a.md)"
+pa_mex="$(abs_payload "$c_plan" .mex/lessons.md)"
+pa_docs="$(abs_payload "$c_plan" docs/en/x.md)"
+pa_state_assert="$(abs_payload "$c_plan" .internal/pipeline/tier-assert)"
+pa_state_assert_orch="$(abs_payload "$c_orch" .internal/pipeline/tier-assert)"
+
 # A PATH with no jq on it, for the missing-jq case.
 nojq="$TMP/bin-nojq"; mkdir -p "$nojq"
 for b in bash dirname sort head cat mkdir; do ln -sf "$(command -v "$b")" "$nojq/$b"; done
@@ -104,13 +155,33 @@ check "ruleA-epic-reason-is-one-line" 2 '^pipeline-guard: only a planning-tier s
 run "$c_orch" "$h_full" "$p_import"
 check "ruleA-import-denied" 2 'Rule A'
 
+# The same option spelled long, and glued to its value. `bd create --type epic`
+# and `bd create -tepic` are the same mutation; a guard that only catches one
+# spelling advertises a control it does not have.
+run "$c_orch" "$h_full" "$p_epic_longopt"
+check "ruleA-long-option-type-epic-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_glued"
+check "ruleA-glued-option-tepic-denied" 2 'Rule A'
+
 run "$c_orch" "$h_full" "$p_task"
 check "ruleA-task-allowed" 0
+
+run "$c_orch" "$h_full" "$p_task_longopt"
+check "ruleA-long-option-type-task-allowed" 0
 
 # Rule A is scoped to non-planning tiers: the planning session is the one that
 # is supposed to be creating epics.
 run "$c_plan" "$h_full" "$p_epic"
 check "ruleA-does-not-fire-on-the-planning-tier" 0
+
+# D17a: an unresolved tier DENIES Rule A, and says how to fix it.
+run "$c_notier" "$h_full" "$p_epic"
+check "ruleA-unresolved-tier-denies" 2 'Rule A'
+check "ruleA-unresolved-tier-names-the---assert-remedy" 2 '\-\-assert'
+
+run "$c_notier" "$h_full" "$p_task"
+check "ruleA-unresolved-tier-still-allows-a-task" 0
 
 # --- Rule B: a planning-tier session cannot write source files --------------
 
@@ -130,9 +201,39 @@ check "ruleB-mex-allowed" 0
 run "$c_plan" "$h_full" "$p_docs"
 check "ruleB-docs-allowed" 0
 
+# The Write and Edit tools require an ABSOLUTE file_path. These four are the
+# form the harness actually sends; a relative-only allow-list denies all of them.
+run "$c_plan" "$h_full" "$pa_src"
+check "ruleB-absolute-src-denied" 2 'Rule B'
+
+run "$c_plan" "$h_full" "$pa_internal"
+check "ruleB-absolute-internal-allowed" 0
+
+run "$c_plan" "$h_full" "$pa_mex"
+check "ruleB-absolute-mex-allowed" 0
+
+run "$c_plan" "$h_full" "$pa_docs"
+check "ruleB-absolute-docs-allowed" 0
+
+# An allowed prefix followed by `..` lands on a source file. The allow-list must
+# be read after normalization, not before it.
+run "$c_plan" "$h_full" "$p_src_via_docs"
+check "ruleB-dotdot-escape-from-docs-denied" 2 'Rule B'
+
+# Normalization must see the WHOLE path. A newline inside file_path must not
+# truncate it into a prefix that reads as allowed.
+run "$c_plan" "$h_full" "$p_newline_escape"
+check "ruleB-newline-in-path-does-not-truncate-the-allow-list-check" 2 'Rule B'
+
 # Rule B is scoped to the planning tier: an implementation session writes source.
 run "$c_orch" "$h_full" "$p_src"
 check "ruleB-does-not-fire-off-the-planning-tier" 0
+
+# D17a: Rule B stays INERT when the tier is unresolved. Denying every Write in
+# that state would brick a session with no model-side remedy, because --assert
+# is human-only under D13.
+run "$c_notier" "$h_full" "$p_src"
+check "ruleB-unresolved-tier-stays-inert" 0
 
 # The tier assert file is the other arming channel, and resolves a tier too.
 run "$c_assertfile" "$h_full" "$p_src"
@@ -165,12 +266,39 @@ check "ruleD-write-to-session-json-denied" 2 'Rule D'
 run "$c_plan" "$h_full" "$p_state_bash"
 check "ruleD-bash-redirect-into-the-state-dir-denied" 2 'Rule D'
 
+# Four path spellings that all RESOLVE inside the state directory. D13b requires
+# resolution, not a substring test: each of these reaches the same file.
+run "$c_plan" "$h_full" "$p_state_dotdot"
+check "ruleD-dotdot-path-denied" 2 'Rule D'
+
+run "$c_plan" "$h_full" "$p_state_dblslash"
+check "ruleD-double-slash-path-denied" 2 'Rule D'
+
+run "$c_plan" "$h_full" "$p_state_dotslash"
+check "ruleD-leading-dot-slash-path-denied" 2 'Rule D'
+
+run "$c_plan" "$h_full" "$pa_state_assert"
+check "ruleD-absolute-path-denied" 2 'Rule D'
+
 # Rule D is evaluated before Rule B's .internal/ allowance, and at every tier.
 run "$c_orch" "$h_full" "$p_state_assert"
 check "ruleD-denied-at-a-non-planning-tier-too" 2 'Rule D'
 
+run "$c_orch" "$h_full" "$pa_state_assert_orch"
+check "ruleD-absolute-path-denied-at-a-non-planning-tier-too" 2 'Rule D'
+
 run "$c_plan" "$h_full" "$p_internal"
 check "ruleD-leaves-rule-Bs-internal-allowance-intact" 0
+
+# `.internal/pipeline-notes.md` is not inside the state directory. Rule D is
+# component-anchored, so it does not swallow a same-prefix sibling.
+run "$c_plan" "$h_full" "$p_pipeline_lookalike"
+check "ruleD-does-not-fire-on-a-same-prefix-sibling" 0
+
+# Off the planning tier Rule D is the only rule reading file_path, so a newline
+# that truncates the path is a clean bypass of the state-directory deny.
+run "$c_orch" "$h_full" "$p_newline_state"
+check "ruleD-newline-in-path-does-not-truncate-the-state-dir-check" 2 'Rule D'
 
 # --- unarmed: no pipeline state -> allow everything, cost nothing -----------
 # No bundle root, no tier-map and no jq on PATH, because phase 1 must not touch
@@ -178,9 +306,13 @@ check "ruleD-leaves-rule-Bs-internal-allowance-intact" 0
 
 PATH_OVERRIDE="$nojq"
 unarmed_bad=0
-for p in "$p_epic" "$p_import" "$p_task" "$p_src" "$p_src_edit" "$p_internal" \
-         "$p_mex" "$p_docs" "$p_assert" "$p_assert_pty" "$p_state_assert" \
-         "$p_state_session" "$p_state_bash" "$p_malformed"; do
+for p in "$p_epic" "$p_epic_longopt" "$p_epic_glued" "$p_import" "$p_task" \
+         "$p_src" "$p_src_edit" "$p_src_via_docs" "$p_internal" "$p_mex" \
+         "$p_docs" "$p_assert" "$p_assert_pty" "$p_state_assert" \
+         "$p_state_session" "$p_state_dotdot" "$p_state_dblslash" \
+         "$p_state_dotslash" "$p_state_bash" "$p_pipeline_lookalike" \
+         "$p_newline_escape" "$p_newline_state" \
+         "$pa_src" "$pa_state_assert" "$p_malformed"; do
   run "$c_unarmed" "$h_nobundle" "$p"
   if [ "$rc" -ne 0 ]; then
     echo "FAIL unarmed-allows-all: exit $rc on payload: $p"
@@ -206,6 +338,48 @@ check "armed-missing-bundle-root-denies" 2
 
 run "$c_plan" "$h_nomap" "$p_task"
 check "armed-missing-tier-map-denies" 2
+
+# resolve_session_tier's two error returns. Neither is reachable from any case
+# above, and both must deny rather than fall through to an unresolved tier.
+run "$c_badmodel" "$h_full" "$p_task"
+check "armed-model-absent-from-tier-map-denies" 2 '^pipeline-guard: '
+
+run "$c_badjson" "$h_full" "$p_task"
+check "armed-unparsable-session-json-denies" 2 '^pipeline-guard: '
+
+# The guard's own diagnostics must not leak into the deny reason. resolve_bundle_root
+# and resolve_session_tier both print multi-line advice on stderr; the guard's call
+# sites suppress it, and a PreToolUse deny reason is one line.
+run "$c_badmodel" "$h_full" "$p_task"
+if [ "$rc" -eq 2 ] && [ "$(printf '%s\n' "$err" | wc -l)" -eq 1 ]; then
+  echo "PASS armed-model-absent-from-tier-map-reason-is-one-line"
+else
+  echo "FAIL armed-model-absent-from-tier-map-reason-is-one-line: exit $rc, stderr: $err"
+  fails=$((fails+1))
+fi
+
+# --- stdout must stay empty on every path -----------------------------------
+# Claude Code parses hook stdout as JSON directives, so anything the guard
+# prints there is a directive it did not mean to issue.
+
+if [ -z "$stray_stdout" ]; then
+  echo "PASS guard-never-writes-to-stdout"
+else
+  echo "FAIL guard-never-writes-to-stdout: $stray_stdout"
+  fails=$((fails+1))
+fi
+
+# --- dispatch path: run-hook.cmd must fail closed when bash is absent (D17b) -
+# The Windows batch branch cannot execute on this platform, so this is a static
+# assertion on the source. A PreToolUse guard whose dispatcher exits 0 when it
+# cannot find bash is an absent security control, not a degraded one.
+
+if grep -qE '^exit /b 0[[:space:]]*$' "$root/hooks/run-hook.cmd"; then
+  echo "FAIL run-hook-cmd-fails-closed-without-bash: batch branch still ends 'exit /b 0'"
+  fails=$((fails+1))
+else
+  echo "PASS run-hook-cmd-fails-closed-without-bash"
+fi
 
 # --- summary ----------------------------------------------------------------
 

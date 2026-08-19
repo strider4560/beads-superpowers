@@ -34,9 +34,19 @@ if %ERRORLEVEL% equ 0 (
     exit /b %ERRORLEVEL%
 )
 
-REM No bash found - exit silently rather than error
-REM (plugin still works, just without SessionStart context injection)
-exit /b 0
+REM No bash found - fail closed for EVERY hook, not just the guard ones.
+REM hooks/pipeline-guard is a PreToolUse security control that shares this
+REM dispatch path: a guard that silently exits 0 because its interpreter is
+REM missing is an ABSENT control, not a degraded one, and an armed pipeline
+REM would then run with Rules A-D entirely off and no signal. The old
+REM graceful-degradation rationale held only while SessionStart context
+REM injection was the sole hook; it no longer does.
+REM Exit 2 rather than 1 deliberately, and for every script name alike: for
+REM PreToolUse, 2 is the code Claude Code reads as "block the tool call", so it
+REM is the only non-zero value that actually fails closed. For SessionStart it
+REM surfaces the error to the user instead of blocking anything. One rule, one
+REM exit code, no special-casing by script name.
+exit /b 2
 CMDBLOCK
 
 # Unix: run the named script directly

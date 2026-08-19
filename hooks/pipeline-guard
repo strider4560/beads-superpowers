@@ -22,6 +22,48 @@ state_dir=".internal/pipeline"
 # --- Phase 2 ----------------------------------------------------------------
 deny() { echo "pipeline-guard: $1" >&2; exit 2; }
 
+# normalize_path <path> — lexical, cwd-relative normalization of a tool-supplied
+# file_path. ONE helper with two callers, Rule D and Rule B, because both ask the
+# same question — where does this write land? — and neither can answer it from the
+# raw string:
+#   * The Write and Edit tools document file_path as "must be absolute", so the
+#     value that actually arrives is /home/u/proj/docs/x.md, not docs/x.md. An
+#     allow-list anchored to a relative path matches none of it.
+#   * `..`, `//` and a leading `./` let one file be spelled many ways, so a
+#     substring or prefix test over the raw string is bypassed by rewriting the
+#     spelling: .internal/specs/../pipeline/tier-assert reaches the state file.
+# Purely lexical — no realpath, no stat. The file a Write creates does not exist
+# yet, so there is nothing on disk to canonicalize, and symlink resolution would
+# answer a different question than the one asked.
+# Prints the path relative to $PWD when it is inside the project, otherwise the
+# cleaned absolute path — which matches no allow-list prefix, so outside-the-
+# project writes stay denied on the planning tier.
+normalize_path() {
+  local raw="$1" abs out seg
+  case "$raw" in
+    /*) abs="$raw" ;;
+    *)  abs="$PWD/$raw" ;;
+  esac
+  # Split on / with parameter expansion only. `read -a` would stop at the first
+  # newline, and a file_path may legally contain one — `docs/a<LF>/../../src/y.js`
+  # resolves to a source file while its first line reads as an allowed docs/ path.
+  out=""
+  while [ -n "$abs" ]; do
+    seg="${abs%%/*}"
+    if [ "$abs" = "$seg" ]; then abs=""; else abs="${abs#*/}"; fi
+    case "$seg" in
+      ''|.) ;;
+      ..)   out="${out%/*}" ;;
+      *)    out="$out/$seg" ;;
+    esac
+  done
+  [ "$out" = "$PWD" ] && return 0
+  case "$out" in
+    "$PWD"/*) printf '%s' "${out#"$PWD"/}" ;;
+    *)        printf '%s' "$out" ;;
+  esac
+}
+
 command -v jq >/dev/null || deny "jq is required once the pipeline is active"
 
 payload="$(cat)" || deny "cannot read the PreToolUse payload"
@@ -30,6 +72,7 @@ jq -e . >/dev/null 2>&1 <<< "$payload" || deny "PreToolUse payload is not valid 
 tool="$(jq -r '.tool_name // empty' <<< "$payload")"
 cmd="$(jq -r '.tool_input.command // empty' <<< "$payload")"
 path="$(jq -r '.tool_input.file_path // empty' <<< "$payload")"
+npath="$(normalize_path "$path")"
 
 # --- Rule C: --assert is human-only (D13, D13a) -----------------------------
 # tier-gate.sh's own `[ -t 0 ]` check is a heuristic a model can defeat by
@@ -46,13 +89,19 @@ fi
 # every tier and BEFORE Rule B's `.internal/` allowance, which would otherwise
 # swallow it.
 # The Write/Edit half is the reliable one: it inspects a single path the harness
-# hands us. The Bash half is a substring test over a shell command string and is
-# therefore best-effort only — an adversarial command can reach the directory
-# without the literal path ever appearing (variables, encoding, a helper script).
-# Do not read the Bash half as a boundary; it catches the obvious redirect.
+# hands us, and D13b requires that path to RESOLVE inside the state directory —
+# so it is matched after normalize_path, component-anchored. A substring test
+# would be bypassed by .internal/specs/../pipeline/tier-assert and would also
+# over-deny .internal/pipeline-notes.md.
+# The Bash half is a substring test over a shell command string and is therefore
+# best-effort only — an adversarial command can reach the directory without the
+# literal path ever appearing (variables, encoding, a helper script). Do not read
+# the Bash half as a boundary; it catches the obvious redirect, and it stays a
+# bare substring test on purpose: narrowing it would only shrink what it catches.
 case "$tool" in
-  Write|Edit) case "$path" in *".internal/pipeline"*)
-    deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
+  Write|Edit) case "$npath" in
+    .internal/pipeline|.internal/pipeline/*|*/.internal/pipeline|*/.internal/pipeline/*)
+      deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
   Bash) case "$cmd" in *".internal/pipeline"*)
     deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
 esac
@@ -68,8 +117,11 @@ tiers="$(resolve_session_tier "$state_dir" "$map" 2>/dev/null)" ||
   deny "session tier could not be resolved from $state_dir"
 
 # An unresolved tier (a session state file with a null model and no asserted
-# tier) leaves Rules A and B inert — they are tier-scoped by definition. Rules C
-# and D above already ran, and tier-gate.sh still fails closed at stage entry.
+# tier) denies Rule A and leaves Rule B inert — D17a. The costs are asymmetric:
+# Rule A guards a rare, hard-to-undo plan-graph mutation with a defined human
+# remedy, while Rule B guards every Write and Edit and denying those would brick
+# the session, because --assert is human-only under D13. Rules C and D above
+# already ran, and tier-gate.sh still fails closed at stage entry.
 has_tier=0
 is_planning=0
 while IFS= read -r tier; do
@@ -79,23 +131,34 @@ while IFS= read -r tier; do
 done <<< "$tiers"
 
 # --- Rule A: only a planning-tier session mutates the plan graph ------------
-# Substring matches over a command string, so they over-deny: a `bd create -t
-# task` whose description quotes "-t epic", or a `git log --grep="bd import"`,
-# is denied off the planning tier. That is the safe direction for a plan-graph
-# mutation guard — do not anchor the patterns to make a false positive pass.
-if [ "$tool" = "Bash" ] && [ "$has_tier" -eq 1 ] && [ "$is_planning" -eq 0 ]; then
-  if [[ "$cmd" =~ bd[[:space:]]+create[[:space:]].*-t[[:space:]]+epic ]] ||
+# The option is matched in all three spellings bd accepts — `-t epic`, `-tepic`
+# and `--type epic` — because a guard that catches one of them advertises a
+# control it does not have. (This widens the plan's literal `-t[[:space:]]+epic`;
+# the deviation is disclosed in the task report.)
+# These stay substring matches over a command string, so they over-deny: a `bd
+# create -t task` whose description quotes "-t epic", or a `git log --grep="bd
+# import"`, is denied off the planning tier. That is the safe direction for a
+# plan-graph mutation guard — do not anchor the patterns to make a false positive
+# pass.
+if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ]; then
+  if [[ "$cmd" =~ bd[[:space:]]+create[[:space:]].*(-t|--type)[[:space:]]*epic ]] ||
      [[ "$cmd" =~ bd[[:space:]]+import ]]; then
-    deny "only a planning-tier session mutates the plan graph (Rule A)"
+    [ "$has_tier" -eq 1 ] &&
+      deny "only a planning-tier session mutates the plan graph (Rule A)"
+    deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run 'bash scripts/pipeline/tier-gate.sh --assert <tier>' (Rule A)"
   fi
 fi
 
 # --- Rule B: a planning-tier session cannot write source files -------------
+# The allow-list is read off the NORMALIZED path, so it matches the absolute
+# file_path the harness actually sends and is not fooled by docs/../src/x.js.
 if [ "$is_planning" -eq 1 ]; then
   case "$tool" in
     Write|Edit)
-      [[ "$path" =~ ^(\.internal/|\.mex/|docs/) ]] ||
-        deny "planning-tier session cannot write source files (Rule B)" ;;
+      case "$npath" in
+        .internal/*|.mex/*|docs/*) ;;
+        *) deny "planning-tier session cannot write source files (Rule B)" ;;
+      esac ;;
   esac
 fi
 
