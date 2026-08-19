@@ -37,7 +37,7 @@ Run it from the repo root — the gate reads session state from `./.internal/pip
 | 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
 | 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
 
-Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit answer. An answer that arrives skipped, dismissed, or auto-resolved is not consent — treat it as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
+Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
 
 When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier>`. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
 
@@ -400,7 +400,7 @@ Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M
 
 **Every plan this skill produces is initiative work.** Capture to Beads is mandatory and has already run, so an initiative epic exists and you hold its id. Hand off, then stop.
 
-**The one exception, and the test for it.** The user may direct you, in this session, to execute the plan here instead. That direction is the only thing that opens the in-session path, and the test is a single question: did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, ask which in-session method they want:
+**The one exception, and the test for it.** Once you have presented the plan and the handoff, the user may direct you to execute it here instead. Only a direction given then, against the handoff, opens the in-session path; a standing instruction from the top of the session, such as "plan this and then build it", was given before the plan existed and is not one. The test is a single question: after seeing the handoff, did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, ask which in-session method they want:
 
 ```json
 {
