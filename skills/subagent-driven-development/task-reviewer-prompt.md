@@ -9,11 +9,17 @@ criterion in the group (nothing more, nothing less) and is well-built (clean,
 tested, maintainable)
 
 ```
-Subagent (general-purpose):
+Agent tool (subagent_type: "general-purpose"):
   description: "Review group [group name] (spec + quality)"
-  role: group-reviewer
-         [REQUIRED: dispatch by role, per SKILL.md Roles and Tiers. The tier
-         map binds group-reviewer to the review tier; never name a model here.]
+  model: [MODEL]
+         [REQUIRED. The role is `group-reviewer`, which runs at the review tier.
+         `role` is not an Agent parameter, so the tier only takes effect through
+         this one: an omitted model inherits the dispatching session's model, and
+         a reviewer that inherited an implementation-tier session did not review
+         at the review tier. Fill it with the model the caller resolved for
+         `group-reviewer`, or the one the user named. See SKILL.md Roles and
+         Tiers. If neither is available, dispatch anyway and record in your report
+         to the caller that the review ran at an unverified tier.]
   prompt: |
     You are reviewing one task group's implementation: first whether it meets
     every acceptance criterion of every bead in the group, then whether it is
@@ -25,7 +31,7 @@ Subagent (general-purpose):
     Read the group brief: [BRIEF_FILE] — it lists every bead in the group with
     that bead's acceptance criteria.
 
-    Global constraints from the spec/design that bind this task:
+    Global constraints from the epic's Success Criteria that bind this task group:
     [GLOBAL_CONSTRAINTS]
 
     ## What the Implementer Claims They Built
@@ -108,7 +114,7 @@ Subagent (general-purpose):
     **Structure:**
     - Does each file have one clear responsibility with a well-defined interface?
     - Are units decomposed so they can be understood and tested independently?
-    - Is the implementation following the file structure from the plan?
+    - Is the implementation following the file structure the group brief defines?
     - Did this change create new files that are already large, or
       significantly grow existing files? (Don't flag pre-existing file
       sizes — focus on what this change contributed.)
@@ -124,7 +130,7 @@ Subagent (general-purpose):
     no closing summary.
 
     Phrase each finding for a machine reader: one finding per sentence,
-    active voice, the plan's exact names for files and functions. Your
+    active voice, the group brief's exact names for files and functions. Your
     words are re-parsed twice with no chance to clarify — by the
     controller for dispatch, and by a fresh fix-round implementer who was
     not at this review. State what you observed, not an impression
@@ -135,16 +141,16 @@ Subagent (general-purpose):
     ## Calibration
 
     Categorize issues by actual severity. Not everything is Critical.
-    Important means this task cannot be trusted until it is fixed: incorrect
+    Important means this task group cannot be trusted until it is fixed: incorrect
     or fragile behavior, a missed requirement, or maintainability damage you
     would block a merge over — verbatim duplication of a logic block,
     swallowed errors, tests that assert nothing. "Coverage could be broader"
     and polish suggestions are Minor.
-    If the plan or brief explicitly mandates something this rubric calls a
-    defect (a test that asserts nothing, verbatim duplication of a logic
-    block), that IS a finding — report it as Important, labeled
-    plan-mandated. The plan's authorship does not grade its own work; the
-    human decides.
+    If a bead's acceptance criteria or the group brief explicitly mandates
+    something this rubric calls a defect (a test that asserts nothing,
+    verbatim duplication of a logic block), that IS a finding — report it as
+    Important, labeled brief-mandated. The brief's authorship does not grade
+    its own work; the human decides.
     Acknowledge what was done well before listing issues — accurate praise
     helps the implementer trust the rest of the feedback.
 
@@ -190,6 +196,8 @@ Subagent (general-purpose):
 ```
 
 **Placeholders:**
+- `[MODEL]` — REQUIRED: the model `group-reviewer` runs on, from the caller or
+  the user; see SKILL.md Roles and Tiers
 - `[BRIEF_FILE]` — REQUIRED: the group brief the controller wrote from the
   group's beads; the same file the implementer worked from
 - `[GLOBAL_CONSTRAINTS]` — the binding requirements copied verbatim from the

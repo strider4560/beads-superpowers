@@ -11,9 +11,10 @@ This skill is the task engine. A caller hands it work that is already captured a
 
 | Part | Value |
 | --- | --- |
-| Input | One or more **task groups**. Each carries its task bead ids, the one `implementation_agent` those beads share, the non-overlapping paths they touch, and a worktree path. |
+| Input | One or more **task groups**. Each carries its task bead ids, the one `implementation_agent` those beads share, the non-overlapping paths they touch, and the path of a worktree the caller already created. The caller also passes one **workspace key** for the whole invocation — the path of a file that already exists, whose basename names the review workspace. |
 | Behavior | Per task group: one STE brief, one implementer subagent, one group review over the combined diff, then fix rounds under the five-round breaker. |
 | Output | Verified commits on each group's branch, plus that group's review verdicts, reported per task bead id. |
+| Worktrees and branches | The caller owns both. It creates each group's worktree, merges the group branch when it accepts the verdicts, and removes the worktree. This engine works inside the worktree it was handed and **NEVER** merges a branch or removes a worktree. |
 | Bead closing | The caller closes each task bead individually. This engine **NEVER** closes a task bead. |
 
 **Task group.** A set of task beads that one implementer subagent builds, in one worktree, under one review. Two constraints define it:
@@ -25,7 +26,7 @@ A set that breaks either constraint is not a task group — split it until both 
 
 **This engine operates on existing beads.** `writing-plans` creates the initiative, the epics, and the task beads, and lints the graph before it hands off. This skill creates no task beads and parses no plan file (the breaker files blocker beads for discovered work, and nothing else). Each task bead's `## Acceptance Criteria` section is the requirement of record, and its `metadata` names the implementing role.
 
-**Callers.** great_cto's `implementing-epics` is the normal caller: it forms the groups, invokes this engine, and closes the beads afterwards. The other entry is the user directing in-session execution after `writing-plans` presents its handoff — then you form the groups yourself, under the same two constraints, from `bd ready --parent <epic-id>`.
+**Callers.** great_cto's `implementing-epics` is the normal caller: it forms the groups, invokes this engine, and closes the beads afterwards. The other entry is the user directing in-session execution after `writing-plans` presents its handoff — then you form the groups yourself, under the same two constraints, from `bd ready --parent <epic-id>`. On that path you hold both jobs: you create the worktrees, you choose the workspace key, and you merge. The walkthrough below marks each step `[caller]` or `[engine]` so the two jobs stay distinguishable when one agent does both.
 
 **Why subagents:** You delegate a task group to a specialized agent with isolated context. By precisely crafting its instructions and context, you ensure it stays focused and succeeds. It should never inherit your session's context or history — you construct exactly what it needs. This also preserves your own context for coordination work.
 
@@ -94,7 +95,7 @@ Task groups do not share paths, so two groups can run at the same time without c
 
 **Core principle:** One `bd worktree` per task group + concurrent dispatch = safe concurrency with per-group rollback.
 
-**Concurrency cap:** at most five task groups in flight at once. If the caller hands you more, run the rest in a later wave.
+**Concurrency cap:** at most five task groups in flight at once. If the caller hands you more, run the rest in a later **wave** — one wave is one set of task groups dispatched together, the same unit `bd swarm validate` reports. A wave holds groups; it is not another word for a group.
 
 ### Before you fan out (orchestrator-only)
 
@@ -107,73 +108,82 @@ This is orchestrator discipline applied before dispatch; do not ask subagents to
 
 ### Concurrent Walkthrough
 
+Each step is marked with the job that owns it. On the in-session path you do both.
+
 ```
-1. Create the shared worktree once, at the start:
+1. [caller] Create the shared worktree once, at the start:
      bd worktree create .worktrees/<initiative-name>
 
-2. Check the work graph before dispatching:
+2. [caller] Check the work graph before dispatching:
      bd swarm validate <epic-id>
      → Shows wave structure (which work can run concurrently vs sequentially),
        max parallelism, estimated worker-sessions, and dependency warnings.
      Use it to catch missing dependencies before spending subagent runs on
      groups that will block.
 
-3. For each task group in flight (at most five):
+3. [caller] For each task group in the wave (at most five), create the worktree
+   the engine will be handed:
      bd worktree create .worktrees/<group-name> --branch feature/<epic>/<group>
 
-4. Dispatch the implementers concurrently:
+4. [engine] Dispatch the implementers concurrently:
    Read ./implementer-prompt.md, then one Agent tool call per task group,
    ALL in the same message:
      Agent({
        description: "Implement group <name>",
        prompt: "<implementer-prompt content with 'Work from: <group-worktree-path>'>",
-       subagent_type: "general-purpose"
+       subagent_type: "general-purpose",
+       model: "<the model the role runs on — see Roles and Tiers>"
      })
 
-5. Group review per group (these can also run concurrently):
+5. [engine] Group review per group (these can also run concurrently):
    Dispatch the group reviewer (./task-reviewer-prompt.md) with the group brief,
    the implementer's report file, and the review-package diff of the group's
    combined range. It returns one spec-compliance verdict per task bead id
    (✅/❌/⚠️) and one code-quality verdict for the group.
 
-6. For each group that passes review:
+6. [engine] Report each group's per-bead verdicts and commit range. The verified
+   commits stay on feature/<epic>/<group>. Stop here: merging and removing the
+   worktree are the caller's, and so is closing the beads.
+
+7. [caller] For each group whose verdicts you accept:
      cd .worktrees/<initiative-name>
      git merge feature/<epic>/<group>
      bd worktree remove .worktrees/<group-name>
-   Report the group's per-bead verdicts and commit range to the caller, which
-   closes the beads.
 
-7. Run the full test suite on the shared worktree (integration check):
+8. [caller] Run the full test suite on the shared worktree (integration check):
    If it fails → invoke systematic-debugging → fix before the next wave.
 
-8. Repeat from step 3 until no groups remain.
+9. Repeat from step 3 until no groups remain.
 ```
 
 > **Tip:** Use `bd -C .worktrees/<group> ready` to check bead status across worktrees without changing directory.
 
-> **Concurrent orchestrators (optional — `bd merge-slot`):** Step 6's merges run through a single orchestrator, one at a time, so the normal flow has no merge race and needs no coordination. The exception is when **two or more orchestrators or sessions** run this engine concurrently against the same repo — their merges into the shared base could collide. For that case only, serialize merges with the beads v1.0.5 merge slot: `bd merge-slot create` once for the repo, then wrap each merge as `bd merge-slot acquire` → `git merge feature/<epic>/<group>` → `bd merge-slot release`, so only one orchestrator resolves conflicts at a time. Pairs with the `bd swarm validate` pre-step above.
+> **Concurrent orchestrators (optional — `bd merge-slot`):** Step 7's merges run through a single caller, one at a time, so the normal flow has no merge race and needs no coordination. The exception is when **two or more orchestrators or sessions** run this engine concurrently against the same repo — their merges into the shared base could collide. For that case only, serialize merges with the beads v1.0.5 merge slot: `bd merge-slot create` once for the repo, then wrap each merge as `bd merge-slot acquire` → `git merge feature/<epic>/<group>` → `bd merge-slot release`, so only one orchestrator resolves conflicts at a time. Pairs with the `bd swarm validate` pre-step above.
 
 ### Failed Group Handling
 
 When a task group fails review:
 
-1. **Do not merge** its branch into the shared branch.
+1. **Do not merge** its branch, and report to the caller that it must not merge it either.
 2. **Option A — Fix rounds:** Keep the group's worktree and run **`## Fix Rounds` / `## The Breaker`** below, unchanged: five-round cap, a FRESH implementer every round, scoped re-review via `./re-review-prompt.md`, PASS gated on a green full suite. Concurrent execution gets no unbounded loop.
 3. **Option B — Discard:** not a controller call. Discarding a failed group's branch (`bd worktree remove .worktrees/<group-name>`) is a disposition **the user** decides — surface it per `references/breaker-trip.md`; never adjudicate it yourself.
-4. Groups that passed review are still merged independently — one failure does not block the others.
+4. Groups that passed review are still reported independently, and the caller merges them — one failure does not block the others.
 
 ## Roles and Tiers
 
-**Dispatch by role, never by model.** Every subagent this engine dispatches is named by a tier-map role, and the tier map is what binds a role to the model it runs on.
+**Name the role, never choose the model yourself.** Every subagent this engine dispatches is named by a role:
 
-| Role | Where the name comes from | What it does |
-| --- | --- | --- |
-| `implementer` | the `implementation_agent` shared by the group's beads | builds the whole task group in the group's worktree |
-| `group-reviewer` | fixed for this engine | reviews the group's combined diff against every acceptance criterion in the group |
+| Role | Where the name comes from | What it does | Runs at |
+| --- | --- | --- | --- |
+| `implementer` | the `implementation_agent` shared by the group's beads | builds the whole task group in the group's worktree | the implementation tier |
+| `group-reviewer` | fixed for this engine | reviews the group's combined diff against every acceptance criterion in the group | the review tier, at high effort |
 
-`implementer` runs at the implementation tier. `group-reviewer` runs at the review tier, at high effort, because that is what its own agent definition pins.
+**A role is not a dispatch parameter.** The `Agent` tool takes `description`, `prompt`, `subagent_type` and `model`. It has no `role` field, and `$HOME/.agents/great_cto/shared/tier-map.json` lists which models belong to each tier rather than naming one model per role, so there is nothing here to look the role up in. The role names what the subagent is; the `model` parameter is what actually decides where it runs. Both must be right, and they are set differently on the two entry paths:
 
-**Never** write a model name into a dispatch, and never pass an effort value with one. Task beads carry no `effort` field: effort is set in the agent definition's frontmatter, so there is nothing to choose at dispatch time. A model name in a dispatch bypasses the tier map, which is the only thing that knows what a role should run on.
+- **A caller supplied the groups.** The caller resolves each role to its tier's model and passes that model in the dispatch. Write the role name in the brief and the review prompt, and pass through the model the caller gave you.
+- **The user directed in-session execution.** No resolver exists on this path. **Always** set the dispatch's `model` explicitly, and ask the user which model the review tier runs on if you do not already know — one question covers the whole session. An omitted `model` makes the subagent inherit your session's model, silently, and a `group-reviewer` that inherited an implementation-tier session is not a review-tier review. If the user does not answer, dispatch anyway and record in your report that the group review ran at an unverified tier. **Do not** report it as a review-tier review.
+
+**Never** invent a model name, and never pass an effort value with one. Task beads carry no `effort` field: effort is set in the agent definition's frontmatter, so there is nothing to choose at dispatch time.
 
 **The role is fixed for the group.** Fix rounds dispatch a fresh `implementer` — the same role, every round. There is no cheaper substitution and no escalation to a different agent: if the role the bead names is wrong for the work, say so and stop, rather than swap in another one.
 
@@ -232,7 +242,7 @@ Hand group text and review diffs to subagents as **files**, not pasted context �
 - The implementer writes its full report to the workspace (you name the path via `[REPORT_FILE]`); the reviewer reads it as a file. Fix rounds **append** to it.
 - Before dispatching the reviewer, run `scripts/review-package <workspace-key> <BASE> <HEAD>` → writes the group's combined diff into the workspace. `BASE` is the commit recorded before the implementer ran — never `HEAD~1`.
 - The reviewer is **read-only**: it must not mutate the working tree, the index, HEAD, or branch state.
-- The workspace is resolved per working tree by `scripts/sdd-workspace <workspace-key>`. The workspace key is any existing file whose basename names the directory — the plan file `writing-plans` wrote, or the spec path the initiative bead points at. This engine never parses that file; it names the workspace and nothing else. Each `bd worktree` gets its own tree, so concurrent groups never share filenames.
+- The workspace is resolved per working tree by `scripts/sdd-workspace <workspace-key>`. **The caller passes the workspace key** — it is in the Contract's Input row, because `sdd-workspace` exits 2 with `no such plan file` unless the key is a file that already exists. On the in-session path you choose it yourself: the plan file `writing-plans` wrote, or the spec path the initiative bead points at. Check the file exists before the first group review, not at the review. This engine never parses that file; it names the workspace and nothing else. Each `bd worktree` gets its own tree, so concurrent groups never share filenames.
 
 ## Authoring Text for Machine Readers (STE)
 
@@ -258,6 +268,7 @@ Dispatch via the `Agent` tool:
 1. `Read` the prompt template file
 2. Use its content as the `prompt` parameter
 3. Use `subagent_type: "general-purpose"` (do NOT use `"implementer"` — that is Claude Code's built-in implementer agent with its own system prompt, which overrides the prompt template)
+4. Set `model` explicitly — the model the caller resolved for the role, or the one the user named. Omitting it inherits your session's model. See Roles and Tiers.
 
 - `./implementer-prompt.md` - Dispatch the implementer subagent for one task group
 - `./task-reviewer-prompt.md` - Dispatch the group reviewer (one spec verdict per task bead plus one code-quality verdict, in one read-only pass over the group's combined diff)
@@ -267,8 +278,9 @@ Dispatch via the `Agent` tool:
 
 ```
 Caller: implementing-epics hands over group A — beads bsp-a1, bsp-a2, bsp-a3,
-        implementation_agent senior-dev, paths src/hooks/**, worktree
-        .worktrees/group-a.
+        implementation_agent senior-dev, paths src/hooks/**, the worktree
+        .worktrees/group-a it already created, and the workspace key
+        .internal/specs/hook-install.md. It names the model for each role.
 
 [bd show bsp-a1 / bsp-a2 / bsp-a3 → acceptance criteria + metadata]
 [Pre-flight scan: no contradictions, no path claimed twice → proceed]
@@ -303,9 +315,10 @@ Re-reviewer:
   Named findings: all resolved
   Full test suite: green → PASS
 
-[Report to the caller: group A verified, commits e4f5a6b..c7d8e9f,
- bsp-a1 ✅, bsp-a2 ✅, bsp-a3 ✅, group quality approved]
-[The caller closes bsp-a1, bsp-a2, and bsp-a3 individually]
+[Report to the caller: group A verified on feature/epic/group-a,
+ commits e4f5a6b..c7d8e9f, bsp-a1 ✅, bsp-a2 ✅, bsp-a3 ✅, quality approved]
+[The caller merges the branch, removes the worktree, and closes bsp-a1,
+ bsp-a2 and bsp-a3 individually]
 ```
 
 ## Durable Progress
@@ -323,7 +336,7 @@ Conversation memory does not survive compaction, and a controller that loses its
 | "Good enough, I'll move on" | Never proceed with unfixed issues. |
 | "I'll call it a chunk in this brief, everyone will follow" | One name per concept: it is a task group, everywhere. Rotating the name across briefs is what makes independent implementers diverge. |
 | "These two beads only overlap in one file" | A shared path means they are not one task group — split them. A single overlapping path is enough to make one implementer's work clobber the other's. |
-| "Concurrent subagents on different files won't collide" | Every task group MUST have its own `bd worktree` — never dispatch concurrent implementers without per-group worktree isolation. |
+| "Parallel subagents on different files won't collide" | Every task group MUST have its own `bd worktree` — never dispatch concurrent implementers without per-group worktree isolation. |
 | "A few extra groups this wave won't hurt" | Never run more than five task groups at once (resource exhaustion). |
 | "Claude's built-in `isolation: \"worktree\"` is the same thing" | It bypasses beads DB sharing — `bd worktree` is not optional isolation, it's the only isolation this skill recognizes. **Never** substitute Claude's `isolation: "worktree"` parameter for it. |
 | "The subagent can just read the beads itself" | Never make a subagent assemble its own requirements from the bead graph — give it a focused, self-contained group brief instead (see File Handoffs). |
@@ -340,9 +353,11 @@ Conversation memory does not survive compaction, and a controller that loses its
 | "The reviewer will just find something new anyway" | A scoped re-review verifies only the named findings in the fix diff; it cannot wander. New findings on code the fix diff didn't touch aren't this round's job — track them separately, they don't extend the loop. |
 | "This finding is obviously wrong, I'll drop it" | Never self-adjudicate a finding. At the round cap, file every open finding as a bead and surface both dispositions to the user — silent discards are forbidden. |
 | "Reviews slow the loop down" | The loop without reviews is just unverified churn — reviews are the loop's brakes and steering. |
+| "The dispatch will pick a sensible model on its own" | An omitted `model` inherits your session's model. A `group-reviewer` that inherited an implementation-tier session never ran at the review tier — set the model explicitly, or report the tier as unverified. Never claim a tier you did not set. |
+| "I'll merge the group branch, the caller would only do the same" | The caller owns merging, worktree removal, and closing. Merging here hides the verdicts it needed to decide with and leaves it holding a worktree it did not create. |
 | "The bead's agent is overkill for this, I'll dispatch a cheaper one" | The role is the bead's, not yours. Dispatch the `implementation_agent` the bead names, or stop and say why it is wrong — a substituted agent is an unreviewed change to what the plan decided. |
 | "I'll close the beads as I finish them, the caller can double-check" | The caller closes every task bead. Closing one here hides the verdict the caller needs and desynchronizes its view of the graph. |
-| "Reporting progress to the caller is overhead" | Beads plus your report are what survive compaction. Controllers that lose their place have re-dispatched entire completed sequences — report each group's commit range with its verdicts as you go. |
+| "Recording progress in beads is overhead" / "Reporting progress to the caller is overhead" | Beads plus your report are what survive compaction. Controllers that lose their place have re-dispatched entire completed sequences — report each group's commit range with its verdicts as you go. |
 | "Discard or defer a failed group to quietly descope a required deliverable" / "let a cheaper role accept weaker correctness/security review" | Surface the trade-off, never take it silently (Production-Grade Doctrine). |
 
 ## Integration

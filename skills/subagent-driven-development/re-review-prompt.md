@@ -7,8 +7,11 @@ Fill every bracket before dispatching.
 
 **`description`:** "Re-review group [group name] fix"
 
-**`role`:** `group-reviewer` [REQUIRED: dispatch by role, per SKILL.md Roles and
-Tiers. The tier map binds group-reviewer to the review tier; never name a model here.]
+**`model`:** `[MODEL]` [REQUIRED. The role is `group-reviewer`, which runs at the
+review tier. `role` is not an Agent parameter, so the tier only takes effect through
+this one: an omitted model inherits the dispatching session's model. Fill it with the
+model the caller resolved for `group-reviewer`, or the one the user named. See SKILL.md
+Roles and Tiers.]
 
     You are re-reviewing a fix. You are READ-ONLY: do not edit, commit, or run
     anything that mutates the repository.

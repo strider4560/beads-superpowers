@@ -45,7 +45,7 @@ breaker as evidence of a clean task.
 2. **Set the task bead `blocked`** and record the round count on it
    (`bd note <task-id> "fix rounds: N"`). Those counts are how the five-round cap
    gets calibrated later against real data instead of taste.
-3. **Hold the task's branch unmerged.**
+3. **Hold the group's branch unmerged**, and report to the caller that it must not merge it.
 4. **Surface to the user and STOP.** Present **both** dispositions:
    - **Resolve** the open findings on the current branch, or
    - **Discard the fix rounds** and return to the round-0 state, preserved at the
@@ -60,9 +60,10 @@ breaker as evidence of a clean task.
    narrow patches by agents that each saw only their own slice. That option must be
    visible or it will not be chosen.
 5. **With task groups running concurrently:** let the other groups run to completion,
-   merge passing branches normally, hold the tripped group, leave dependents blocked
-   through their existing `bd` deps, and surface everything together at the end of the
-   wave. Per-group worktrees exist so one group's failure cannot contaminate the others.
+   report the passing groups' verdicts normally so the caller can merge them, hold the
+   tripped group, leave dependents blocked through their existing `bd` deps, and surface
+   everything together at the end of the wave. Per-group worktrees exist so one group's
+   failure cannot contaminate the others.
 
 ## Severity survives the breaker
 
@@ -98,13 +99,13 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
 
-**BLOCKED:** The implementer cannot complete the task. Assess the blocker:
-1. If it's a context problem, provide more context and re-dispatch with the same model
-2. If the task requires more reasoning, re-dispatch with a more capable model
-3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, escalate to the human
+**BLOCKED:** The implementer cannot complete the group. Assess the blocker:
+1. If it's a context problem, provide more context and re-dispatch the same role
+2. If the group is too large, split it into smaller task groups under the same two constraints
+3. If a bead's acceptance criteria are themselves wrong, escalate to the human
+4. If the role the beads name is wrong for the work, say so and stop — never substitute another one (SKILL.md, Roles and Tiers)
 
 Stamp the blocker bead Severity / Confidence / Evidence per Agent-Filed Bead
 Discipline — the `bd create` form is in `SKILL.md`.
 
-**Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
+**Never** ignore an escalation, and never re-dispatch unchanged. If the implementer said it's stuck, something in the brief, the context, or the group's size has to change first.
