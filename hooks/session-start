@@ -10,114 +10,63 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BSP_MEM_CEILING=1550
-# Gates the COMPOSED entry (body + "### <key>\n" header + "\n\n" scaffolding —
-# hooks/session-start's bsp_compose_memories `entry=` block), not the raw
-# recalled body. Live continuation memory measures ~1256B body / ~1302B
-# composed; 1550 leaves ~250B of deliberate headroom above that so ordinary
-# growth doesn't evict it — never size a budget to today's measurement. Stays
-# below the 1623B worst-case bsp_allowance (bootstrap at its 6144B ceiling,
-# pointer + wrap overhead), so it can never be clamped by the min() below.
-# Bulk memory surfacing lives in scripts/orient.sh (getting-up-to-speed skill,
-# no byte envelope, on demand); this ceiling only needs to hold the
-# continuation memory plus the retrieval hint below.
+BSP_MEX_CEILING=2048
+# Byte cap on the injected .mex/lessons.md hot page (product-wide constant). The
+# page is a curated 2 KB working set, not an archive: everything past the cap is
+# reachable through the router, so clipping it is lossless at the store level —
+# but never silent, hence the truncation marker in bsp_compose_mex. Bulk browsing
+# of .mex/ is on-demand (getting-up-to-speed / `mex graph scope`), off this
+# envelope. The caller may clamp BELOW this ceiling when the envelope is tight;
+# it must never be raised past it here.
 # Claude Code persists any hook output's additionalContext OUT-OF-LINE above
 # 10,000 chars (hard-coded, per-hook-output, not configurable):
 #   https://code.claude.com/docs/en/hooks   (verified 2026-07-12, ADR-0052)
 # Symptom of rot: session start shows a <persisted-output> pointer instead of
 # inline context. Fallback ladder: if the E2E probe persists, drop to 8500.
-BSP_ENVELOPE_BUDGET=9500
-# Reserved bytes around/inside the beads side that the memory ceiling does NOT
-# count: wrapper joins ("\n\n<beads-context>\n" … "\n</beads-context>" ≈ 37B)
-# plus the composer's fixed frame — section header (~30B), +N-over-budget tail
-# (≤60B), disclosure line (≤170B), and the worst-case tier-2 escalation
-# directive (≤340B) — rounded up for slack. Enforced by the overflow fixture in
-# tests/hooks/test-bootstrap-budget.sh.
-BSP_WRAP_OVERHEAD=768
+# 9800 (not ADR-0052's 9500) keeps 200B of margin under the hard 10,000 threshold
+# and is what makes a cap-compliant 2048B hot page fit WHOLE — the product
+# contract, asserted end-to-end in tests/hooks/test-composer-assembly.sh.
+BSP_ENVELOPE_BUDGET=9800
+# The 10,000 threshold counts CHARACTERS OF THE ESCAPED STRING, and escaping is
+# expansive: a page dense in newlines/quotes/backslashes nearly doubles, and a
+# C0 control byte becomes 6 chars (\u00XX). BSP_ENVELOPE_BUDGET counts RAW bytes
+# and cannot see that, so the escaped string is measured for real at the boundary
+# and the hot page gives back the excess (see the correction pass below).
+# 9800 chars, same 200-char margin under the hard threshold.
+BSP_HARD_CHAR_CAP=9800
+# Reserved bytes on the beads side that the mex allowance does NOT count: the
+# wrapper joins ("\n\n<beads-context>\n" … "\n</beads-context>" ≈ 37B) plus plain
+# headroom for JSON-escaping expansion. It does NOT cover the composer's fixed
+# frame (header + router line + truncation marker, 192B measured) — that is
+# reserved separately as the 256B in the allowance arithmetic below, so counting
+# it here too would charge the hot page twice. Oversizing this constant comes
+# straight out of the hot page.
+# Enforced by the overflow fixture in tests/hooks/test-bootstrap-budget.sh.
+BSP_WRAP_OVERHEAD=384
 
-# Selection input is `bd memories --json`: one `"key": "body"` entry per line
-# (verified shape, bd v1.1.0) with the FULL body inline — immune to the plain
-# listing's preview truncation, which can hide a late @salience token.
-# Emits "<salience>\t<key>" for @salience=4|5 entries. Anchored to the
-# `@type=…` header run (before the first `\n`) so a body mention of
-# `@salience=` cannot false-select.
-bsp_select_memory_keys() {
-    sed -n 's/^[[:space:]]*"\([^"]*\)":[[:space:]]*"@type=[^\\]*@salience=\([45]\).*/\2\t\1/p'
-}
-
-# Lexically-latest continuation-* key from the same JSON listing (dates sort lexically).
-bsp_latest_continuation() {
-    sed -n 's/^[[:space:]]*"\(continuation-[^"]*\)":.*/\1/p' | sort | tail -1
-}
-
-# Two-tier memory-backlog escalation (ADR-0052). Tier 2 (>= ESCALATE_AT) injects a
-# file-ONE-deduped-bead directive; tier 1 is the soft sweep nudge. if/elif => never stack.
-bsp_backlog_lines() {
-    local count="$1" nudge_at="${BSP_MEM_NUDGE_AT:-150}" escalate_at="${BSP_MEM_ESCALATE_AT:-300}"
-    if [ "$count" -ge "$escalate_at" ]; then
-        # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
-        printf 'memory store at %s (>= %s): check for an open memory-curation bead (`bd query "status=open"`, titles matching "memory-curator sweep"); if none exists, file ONE chore bead — `bd create "Run memory-curator sweep: store at %s memories" -t chore` with the agent-filed stamp — then continue with the current work. Never file a duplicate.\n' "$count" "$escalate_at" "$count"
-    elif [ "$count" -ge "$nudge_at" ]; then
-        # shellcheck disable=SC2016
-        printf 'store at %s memories (>= %s) — run the memory-curator sweep to consolidate/route.\n' "$count" "$nudge_at"
-    fi
-}
-
-# Compose the memories section under a byte ceiling.
-# $1 = ceiling bytes. Uses `bd memories --json` (selection) + `bd recall` (bodies).
-bsp_compose_memories() {
-    local ceiling="$1" listing total_count selected cont section="" used=0 skipped=0 injected=0
-    listing=$(bd memories --json 2>/dev/null) || listing=""
-    [ -z "$listing" ] && return 0
-    total_count=$(printf '%s\n' "$listing" | grep -cE '^[[:space:]]*"[^"]+":' || true)
-
-    # Pure-bash probe — a `printf | grep -q` pipeline here SIGPIPEs under
-    # pipefail when the listing exceeds the 64KB pipe buffer and matches early
-    # (grep exits, printf's next write dies 141), misfiring this branch.
-    if [[ "$listing" != *"@salience="* ]]; then
-        printf '## Persistent Memories\n\n%s memories stored, none curated yet — ' "$total_count"
-        printf 'run the memory-curator curation sweep to choose what is ambient. '
-        # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
-        printf 'Search: `bd memories <keyword>` · fetch: `bd recall <key>`\n'
-        bsp_backlog_lines "$total_count"
+# Compose the durable-knowledge (mex) section: a router pointer plus the
+# .mex/lessons.md hot page, capped in BYTES.
+# $1 = lessons byte ceiling (default BSP_MEX_CEILING); the caller clamps it down
+# when the envelope allowance is tighter than the ceiling.
+# File reads only — this hook never shells out to `mex`: routing and ranking are
+# the agent's job at retrieval time, not session-start policy.
+bsp_compose_mex() {
+    local ceiling="${1:-$BSP_MEX_CEILING}" size
+    if [ ! -d .mex ]; then
+        # In-context (not stderr): the agent is the actor who can fix this.
+        printf 'No .mex/ found — run the project-init skill to set up mex.\n'
         return 0
     fi
-
-    cont=$(printf '%s\n' "$listing" | bsp_latest_continuation)
-    selected=$(printf '%s\n' "$listing" | bsp_select_memory_keys)
-    [ -n "$cont" ] && selected=$(printf '9\t%s\n%s' "$cont" "$selected" | awk '!seen[$2]++')
-
-    local sal key body entry len
-    while IFS=$'\t' read -r sal key; do
-        [ -z "$key" ] && continue
-        body=$(bd recall "$key" 2>/dev/null) || continue
-        entry="### ${key}
-${body}
-
-"
-        len=$(printf '%s' "$entry" | wc -c)  # FULL section BYTES: header+body+scaffolding (ADR-0052); not ${#var} — UTF-8
-        if [ $((used + len)) -gt "$ceiling" ]; then
-            if [ "$sal" = "9" ]; then
-                # continuation: first claim on the allowance, but no bypass —
-                # degrade to a pointer line that preserves the key (ADR-0052)
-                # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
-                entry="continuation over budget — \`bd recall ${key}\`
-"
-                section="${section}${entry}"
-                used=$((used + $(printf '%s' "$entry" | wc -c)))
-            fi
-            skipped=$((skipped + 1)); continue
-        fi
-        section="${section}${entry}"
-        used=$((used + len)); injected=$((injected + 1))
-    done <<<"$(printf '%s\n' "$selected" | sort -t$'\t' -k1,1nr)"
-
-    printf '## Persistent Memories (core)\n\n%s' "$section"
-    [ "$skipped" -gt 0 ] && printf 'full digest: run the getting-up-to-speed skill\n'
-    # shellcheck disable=SC2016  # backticks are literal markdown code-format markers, not expansions
-    printf 'core memories: %s of %s injected (salience>=4 + latest continuation, %s-byte budget) — search the rest: `bd memories <keyword>` · fetch: `bd recall <key>`\n' \
-        "$injected" "$total_count" "$ceiling"
-    bsp_backlog_lines "$total_count"
+    printf '## Durable Knowledge (mex)\n\n'
+    printf 'Router: read .mex/ROUTER.md for task-scoped pages. Retrieval: mex graph scope "<task>".\n'
+    [ -f .mex/lessons.md ] || return 0
+    size=$(LC_ALL=C wc -c < .mex/lessons.md)   # BYTES, not chars — a UTF-8 page must clip on the byte cap
+    [ "$size" -eq 0 ] && return 0              # empty page: pointer only, no empty block
+    printf '\n'
+    LC_ALL=C head -c "$ceiling" .mex/lessons.md
+    # The marker is the loss disclosure — a clipped page must never look complete.
+    [ "$size" -gt "$ceiling" ] && printf '\n[truncated — lessons.md exceeds the 2 KB hot-page cap; run mex-curator]\n'
+    return 0
 }
 
 # Static bd workflow pointer (onboard-style; ~250 tok)
@@ -128,9 +77,9 @@ bsp_bd_pointer() {
 This workspace uses **bd (beads)**. Core commands:
 - `bd ready -n 10` — unblocked work · `bd show --short <id>` — skim an issue
 - `bd create "Title" -t task -p 2` — create · `bd close <id> --reason "..."` — complete
-- `bd query "status=open"` — search · `bd remember "insight"` — persist a memory
+- `bd query "status=open"` — search · durable knowledge lives in `.mex/`, never in beads
 - `bd batch` / `bd import` — many writes, one call
-- Before proposing any design, query the knowledge store: `mex graph scope "<task summary>"` — then **read the routed pages, not just the envelope**: routed hits are pointers, not knowledge. Open every `.mex/` page that plausibly bears on this work in full (pages are distilled by design; reading them whole is sanctioned spend). 0 relevant pages does not mean none exist — re-angle the scope query once (different nouns, the component name instead of the feature name) before concluding none. Emit `mex retrieval: N pages routed, K read` (or `mex retrieval: none`) plus a one-line disposition per read page — folded in (what it changed) or ruled out (why). The check is complete when every plausibly-relevant page is dispositioned. If `.mex/context/decisions.md` or a `docs/decisions/` ADR already covers this, surface it rather than re-litigating. Where the code graph covers the project's language (TS/JS/Python/Rust at baseline), run `mex impact <symbol|file>` before modifying code that a grounded page cites and fold the affected pages into the check; on uncovered languages, pages/router/retrieval remain the working surface.
+- Retrieval: `mex graph scope "<task>"` routes `.mex/` pages — read routed pages in full (routed hits are pointers, not knowledge); full contract in any process skill.
 - starting work on a bead: process skills come first — brainstorming → writing-plans → only then implementation (test-driven-development, ...); a bead with an existing spec/plan proceeds straight to its planned skill
 Commands: `bd human` · syntax: `bd <cmd> --help` on first use — the binary is SSOT. If beads context was not injected this session: `bd prime`.
 PTR
@@ -190,8 +139,8 @@ fi
 
 # --- bd prime safety net: lean override where the composer owns injection ---
 if command -v bd >/dev/null 2>&1 && [ -d .beads ] && [ ! -e .beads/PRIME.md ] && [ ! -L .beads/PRIME.md ]; then
-    # Same class as the salience probe: `<output> | grep -q` under pipefail is
-    # SIGPIPE-prone — capture then match in bash (same ERE, no pipe).
+    # `<output> | grep -q` under pipefail is SIGPIPE-prone — capture the output,
+    # then match it in bash (same ERE, no pipe).
     bsp_cfg=$(bd config show 2>/dev/null) || bsp_cfg=""
     bsp_net_off='custom\.prime-safety-net[[:space:]]*=[[:space:]]*false'
     if ! [[ "$bsp_cfg" =~ $bsp_net_off ]]; then
@@ -204,7 +153,7 @@ if command -v bd >/dev/null 2>&1 && [ -d .beads ] && [ ! -e .beads/PRIME.md ] &&
 # Beads Workflow (lean pointer)
 Session context is injected by the beads-superpowers hook.
 - Work queue: `bd ready -n 10` · commands: `bd human` · syntax: `bd <cmd> --help` first (the binary is SSOT)
-- Memories: `bd memories <keyword>` · one memory: `bd recall <key>`
+- Durable knowledge: read `.mex/ROUTER.md` · retrieval: `mex graph scope "<task>"`
 - Full default prime content: `bd prime --export`
 NET
     fi
@@ -237,13 +186,25 @@ done
 using_superpowers_content=$(cat "${PLUGIN_ROOT}/skills/using-superpowers/SKILL.md" 2>/dev/null) || using_superpowers_content="beads-superpowers: using-superpowers skill unreadable"
 
 # Escape string for JSON embedding using bash parameter substitution.
+# Applied EXACTLY ONCE, at the output boundary. Backslash first, then the
+# structural characters, then every remaining C0 control byte: JSON forbids raw
+# U+0000–U+001F inside a string, and a lessons.md carrying a pasted transcript
+# can easily hold 0x0C or 0x1B — one such byte would make the whole hook output
+# unparseable and silently cost the session ALL of its context.
+# 0x00 cannot reach here (command substitution drops NUL); 0x7F is legal raw.
 escape_for_json() {
-    local s="$1"
+    local s="$1" c ch
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
     s="${s//$'\t'/\\t}"
+    # The \n/\r/\t forms above are already emitted, so this list skips 09/0a/0d.
+    for c in 01 02 03 04 05 06 07 08 0b 0c 0e 0f \
+             10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f; do
+        printf -v ch "\\x$c"
+        s="${s//"$ch"/\\u00$c}"
+    done
     printf '%s' "$s"
 }
 
@@ -259,30 +220,67 @@ ${using_superpowers_content}
 ${warning_message_raw}
 </EXTREMELY_IMPORTANT>"
 
-# Compose beads section AFTER measuring the bootstrap side — the beads side gets
-# exactly the remainder of the total envelope budget (ADR-0052). min() lives HERE,
-# in the caller; bsp_compose_memories keeps its plain <ceiling> signature.
-# (Skipped if an external bd prime hook owns injection.)
-beads_context=""
-if [ "$bd_prime_already_hooked" -eq 0 ] && command -v bd &>/dev/null && bd memories --json >/dev/null 2>&1; then
-    bsp_pointer="$(bsp_bd_pointer)"
-    bsp_allowance=$(( BSP_ENVELOPE_BUDGET - $(printf '%s' "$session_context_raw" | wc -c) \
-                      - $(printf '%s' "$bsp_pointer" | wc -c) - BSP_WRAP_OVERHEAD ))
-    [ "$bsp_allowance" -lt 0 ] && bsp_allowance=0
-    bsp_mem_ceiling=$(( bsp_allowance < BSP_MEM_CEILING ? bsp_allowance : BSP_MEM_CEILING ))
-    beads_context="${bsp_pointer}
+# Compose the injected section AFTER measuring the bootstrap side — it gets exactly
+# the remainder of the total envelope budget (ADR-0052). min() lives HERE, in the
+# caller; bsp_compose_mex keeps its plain <ceiling> signature.
+# The bd POINTER is gated on bd being installed; the mex section is NOT — durable
+# knowledge is a .mex/ store, not a beads feature, so it composes with or without bd
+# and only its byte cost in the allowance changes. The whole block still yields to an
+# external `bd prime` hook, which owns injection outright (tests/hooks/test-bd-prime-dedup.sh).
+bsp_bootstrap_raw="$session_context_raw"
 
-$(bsp_compose_memories "$bsp_mem_ceiling")"
-fi
+# Rebuild session_context_raw from the bootstrap at a given mex ceiling.
+# A function because the escaped-length correction below re-runs it.
+# $1 = mex lessons byte ceiling.
+bsp_assemble() {
+    local section ctx
+    session_context_raw="$bsp_bootstrap_raw"
+    [ "$bd_prime_already_hooked" -eq 0 ] || return 0
+    section="$(bsp_compose_mex "$1")"
+    ctx="$section"
+    [ -n "$bsp_pointer" ] && ctx="${bsp_pointer}
 
-# Append beads context if available
-if [ -n "$beads_context" ]; then
+${section}"
     session_context_raw="${session_context_raw}
 
 <beads-context>
-${beads_context}
+${ctx}
 </beads-context>"
+    return 0
+}
+
+bsp_pointer=""
+bsp_mex_ceiling=0
+if [ "$bd_prime_already_hooked" -eq 0 ]; then
+    if command -v bd &>/dev/null; then
+        bsp_pointer="$(bsp_bd_pointer)"
+    fi
+    bsp_allowance=$(( BSP_ENVELOPE_BUDGET - $(printf '%s' "$bsp_bootstrap_raw" | wc -c) \
+                      - $(printf '%s' "$bsp_pointer" | wc -c) - BSP_WRAP_OVERHEAD ))
+    [ "$bsp_allowance" -lt 0 ] && bsp_allowance=0
+    # Section budget = hot page + 256B for the header/router/marker frame (192B
+    # measured), clamped to whatever the envelope actually has left. The clamp
+    # lands on the lessons page — the frame and its truncation marker survive.
+    bsp_mex_budget=$(( bsp_allowance < BSP_MEX_CEILING + 256 ? bsp_allowance : BSP_MEX_CEILING + 256 ))
+    bsp_mex_ceiling=$(( bsp_mex_budget - 256 ))
+    [ "$bsp_mex_ceiling" -lt 0 ] && bsp_mex_ceiling=0
 fi
+bsp_assemble "$bsp_mex_ceiling"
+
+# Escaped-length correction: the arithmetic above counts RAW bytes, but the hard
+# 10,000-char threshold applies to the ESCAPED string. Measure the real escaped
+# string and hand the excess back out of the hot page.
+# Terminates: each raw byte dropped from the page removes at least one escaped
+# char, and the ceiling floors at 0; bounded at 3 passes regardless of input.
+# The +128 covers the truncation marker a fresh clip may newly append.
+for _ in 1 2 3; do
+    bsp_escaped="$(escape_for_json "$session_context_raw")"
+    bsp_over=$(( ${#bsp_escaped} - BSP_HARD_CHAR_CAP ))
+    if [ "$bsp_over" -le 0 ] || [ "$bsp_mex_ceiling" -eq 0 ]; then break; fi
+    bsp_mex_ceiling=$(( bsp_mex_ceiling - bsp_over - 128 ))
+    [ "$bsp_mex_ceiling" -lt 0 ] && bsp_mex_ceiling=0
+    bsp_assemble "$bsp_mex_ceiling"
+done
 
 # Output context injection.
 # --emit-plain: raw text, no JSON envelope (consumed by OpenCode plugin / install.sh shims).

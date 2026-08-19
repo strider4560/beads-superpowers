@@ -729,9 +729,9 @@ do_install() {
 # (hooks/session-start) is copied to a durable root and HOOK_SCRIPT becomes a
 # thin exec shim of it — one source of truth (bead bb6x).
 # The npx tier has no checkout to copy from: HOOK_SCRIPT becomes a policy-free
-# minimal fallback — skill injection plus static bd pointers only. All
-# composition policy (bd prime capture, memory selection) lives ONLY in
-# hooks/session-start.
+# minimal fallback — skill injection, static bd pointers, and the capped mex hot
+# page only. All composition policy (bd prime capture, envelope budgeting,
+# routing/curation) lives ONLY in hooks/session-start.
 write_hook_script() {
   local source_root="${1:-}"
 
@@ -762,8 +762,9 @@ HOOKEOF
 # beads-superpowers SessionStart hook — minimal fallback (npx tier).
 # npx installs skills only (no repo checkout), so the canonical
 # hooks/session-start composer is not available to exec. This fallback is
-# policy-free by design: skill injection plus static bd pointers — no bd prime
-# capture, no memory selection. That logic lives in hooks/session-start.
+# policy-free by design: skill injection, static bd pointers, and the 2 KB-capped
+# mex hot page — no bd prime capture, no envelope budgeting, no routing or
+# curation. That logic lives in hooks/session-start.
 set -euo pipefail
 
 SKILL_CONTENT=""
@@ -781,32 +782,61 @@ fi
 
 BEADS_CONTEXT=""
 if command -v bd >/dev/null 2>&1; then
-  MEMORY_LINE=$({ bd memories 2>/dev/null || true; } | head -1)
   BEADS_CONTEXT=$(cat <<'PTR'
 ## Issue Tracking (bd)
 
 This workspace uses **bd (beads)**. Core commands:
 - `bd ready -n 10` — unblocked work · `bd show --short <id>` — skim an issue
 - `bd create "Title" -t task -p 2` — create · `bd close <id> --reason "..."` — complete
-- `bd query "status=open"` — search · `bd remember "insight"` — persist a memory
-- knowledge store: `bd list --label <topic> --status all` — prior decisions/research/design (deferred beads)
+- `bd query "status=open"` — search · durable knowledge lives in `.mex/`, never in beads
 Full reference: `bd human`. If beads context was not injected this session: `bd prime`.
-
-## Persistent Memories
 PTR
 )
-  BEADS_CONTEXT="${BEADS_CONTEXT}
-${MEMORY_LINE}
-"'Search: `bd memories <keyword>` · fetch: `bd recall <key>`'
 fi
 
+# Durable knowledge: the router pointer plus the lessons hot page under the same
+# 2048-byte cap the canonical composer uses. Reading two files is not policy —
+# routing, ranking and curation stay in hooks/session-start and the mex skills.
+# Composed independently of bd: a .mex/ store is not a beads feature.
+if [ -d .mex ]; then
+  MEX_SECTION='## Durable Knowledge (mex)
+
+Router: read .mex/ROUTER.md for task-scoped pages. Retrieval: mex graph scope "<task>".'
+  if [ -s .mex/lessons.md ]; then
+    MEX_SECTION="${MEX_SECTION}
+
+$(head -c 2048 .mex/lessons.md)"
+    if [ "$(wc -c < .mex/lessons.md)" -gt 2048 ]; then
+      MEX_SECTION="${MEX_SECTION}
+[truncated — lessons.md exceeds the 2 KB hot-page cap; run mex-curator]"
+    fi
+  fi
+else
+  MEX_SECTION='No .mex/ found — run the project-init skill to set up mex.'
+fi
+if [ -n "$BEADS_CONTEXT" ]; then
+  BEADS_CONTEXT="${BEADS_CONTEXT}
+
+${MEX_SECTION}"
+else
+  BEADS_CONTEXT="$MEX_SECTION"
+fi
+
+# JSON forbids raw C0 control bytes inside a string: one 0x0C or 0x1B pasted into
+# a lessons.md would make this whole hook's output unparseable. Mirrors the
+# canonical hook's escape_for_json (0x00 cannot reach here, 0x7F is legal raw).
 escape_json() {
-  local s="$1"
+  local s="$1" c ch
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
+  for c in 01 02 03 04 05 06 07 08 0b 0c 0e 0f \
+           10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f; do
+    printf -v ch "\\x$c"
+    s="${s//"$ch"/\\u00$c}"
+  done
   printf '%s' "$s"
 }
 
