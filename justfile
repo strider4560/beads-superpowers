@@ -5,13 +5,19 @@
 default: check
 
 # Fast deterministic set (fresh-clone deps: bash + python3 + just)
-check: guards hooks manifests contracts shape
+check: guards hooks manifests contracts shape pipeline
 
 guards:
     bash scripts/run-guards.sh
 
 hooks:
     bash scripts/run-hook-tests.sh
+
+# Pipeline gates and lints (scripts/pipeline/)
+pipeline:
+    bash tests/pipeline/test-tier-gate.sh
+    bash tests/pipeline/test-graph-lint.sh 2>/dev/null || true   # Task 5 de-stubs this line
+    bash tests/pipeline/test-pipeline-guard.sh 2>/dev/null || true   # Task 4 de-stubs this line
 
 manifests:
     bash tests/manifests/test-manifest-validation.sh

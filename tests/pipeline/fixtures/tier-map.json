@@ -1,0 +1,14 @@
+{
+  "tiers": {
+    "planning": {"models": ["model-plan-1"], "session_effort": "high"},
+    "implementation-orchestration": {"models": ["model-orch-1"], "session_effort": "default"},
+    "implementation": {"models": ["model-impl-1", "model-impl-2"], "session_effort": "default"},
+    "review": {"models": ["model-orch-1"], "session_effort": "default"}
+  },
+  "roles": {
+    "planning-reviewer": {"tier": "planning", "effort": "xhigh"},
+    "group-reviewer": {"tier": "review", "effort": "high"},
+    "epic-reviewer": {"tier": "review", "effort": "xhigh"},
+    "implementer": {"tier": "implementation", "effort": "default"}
+  }
+}

@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# test-tier-gate.sh — contract for scripts/pipeline/tier-gate.sh.
+# Every case runs the gate inside a mktemp working dir with HOME pointed at a
+# mktemp home, so neither the real bundle root nor this repo's own session state
+# file is ever read.
+set -uo pipefail
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+gate="$root/scripts/pipeline/tier-gate.sh"
+fixture="$root/tests/pipeline/fixtures/tier-map.json"
+fails=0
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+
+# --- sandbox builders -------------------------------------------------------
+
+make_home() { # <name> -> path to an empty HOME (no bundle root)
+  local home="$TMP/home-$1"; mkdir -p "$home"; printf '%s' "$home"
+}
+add_bundle() { # <home> <version> — bundle root with a package.json
+  mkdir -p "$1/.agents/great_cto"
+  printf '{"version":"%s"}\n' "$2" > "$1/.agents/great_cto/package.json"
+}
+add_tier_map() { # <home> — the fixture tier-map inside that bundle root
+  mkdir -p "$1/.agents/great_cto/shared"
+  cp -f "$fixture" "$1/.agents/great_cto/shared/tier-map.json"
+}
+make_cwd() { # <name> [model] [effort] -> path to a working dir
+  local cwd="$TMP/cwd-$1" effort="null"; mkdir -p "$cwd"
+  if [ -n "${2:-}" ]; then
+    [ -n "${3:-}" ] && effort="\"$3\""
+    mkdir -p "$cwd/.internal/pipeline"
+    printf '{"model_id":"%s","effort":%s,"source":"hook","timestamp":"t"}\n' \
+      "$2" "$effort" > "$cwd/.internal/pipeline/session.json"
+  fi
+  printf '%s' "$cwd"
+}
+
+# --- runner + assertion -----------------------------------------------------
+
+run() { # <cwd> <home> <prog> [args...] — sets rc, out (stdout), err (stderr)
+  local cwd="$1" home="$2" prog="$3"; shift 3
+  out="$(cd "$cwd" && HOME="$home" bash "$prog" "$@" 2>"$TMP/stderr")"
+  rc=$?
+  err="$(cat "$TMP/stderr")"
+}
+
+check() { # <name> <want-exit> [<ere-pattern> [stdout|stderr]] — one PASS/FAIL line
+  local name="$1" want="$2" pattern="${3:-}" stream="${4:-stdout}" detail="" hay=""
+  if [ "$rc" -ne "$want" ]; then
+    detail="exit $rc want $want"
+  elif [ -n "$pattern" ]; then
+    case "$stream" in stderr) hay="$err" ;; *) hay="$out" ;; esac
+    printf '%s' "$hay" | grep -qE -- "$pattern" || detail="no /$pattern/ on $stream: $hay"
+  fi
+  if [ -z "$detail" ]; then
+    echo "PASS $name"
+  else
+    echo "FAIL $name: $detail"
+    fails=$((fails+1))
+  fi
+}
+
+# --- fixtures ---------------------------------------------------------------
+
+h_full="$(make_home full)";         add_bundle "$h_full" "3.0.0"; add_tier_map "$h_full"
+h_nobundle="$(make_home nobundle)"
+h_nomap="$(make_home nomap)";       add_bundle "$h_nomap" "3.0.0"
+
+c_plan="$(make_cwd plan model-plan-1)"                       # effort null
+c_eff_ok="$(make_cwd eff-ok model-plan-1 high)"
+c_eff_bad="$(make_cwd eff-bad model-plan-1 low)"
+c_unknown="$(make_cwd unknown model-not-in-map)"
+c_none="$(make_cwd none)"                                    # no session state file
+c_assert="$(make_cwd assert)"
+
+# A copy of the scripts with the minimum version raised, so the shipped
+# GREAT_CTO_MIN_VERSION stays at great_cto's current version.
+stale="$TMP/stale-scripts"; mkdir -p "$stale"
+cp -f "$root/scripts/pipeline/bundle-root.sh" "$root/scripts/pipeline/tier-gate.sh" "$stale/" 2>/dev/null
+sed -i 's/^GREAT_CTO_MIN_VERSION=.*/GREAT_CTO_MIN_VERSION="999.0.0"/' "$stale/bundle-root.sh" 2>/dev/null
+
+# --- usage ------------------------------------------------------------------
+
+run "$c_none" "$h_full" "$gate"
+check "usage-no-args-exits-2" 2
+
+run "$c_none" "$h_full" "$gate" --stage bogus
+check "usage-unknown-stage-exits-2" 2
+
+run "$c_none" "$h_full" "$gate" --assert bogus
+check "usage-unknown-assert-tier-exits-2" 2
+
+# --- secondary harness ------------------------------------------------------
+
+export BEADS_SP_HARNESS=secondary
+run "$c_plan" "$h_full" "$gate" --stage planning
+check "secondary-harness-exits-4" 4
+check "secondary-harness-stdout-starts-with-SKIP" 4 '^SKIP'
+unset BEADS_SP_HARNESS
+
+# --- bundle root ------------------------------------------------------------
+
+run "$c_plan" "$h_nobundle" "$gate" --stage planning
+check "missing-bundle-root-exits-1" 1
+check "missing-bundle-root-names-install-command" 1 'great_cto/scripts/install\.sh --host all' stderr
+
+run "$c_plan" "$h_full" "$stale/tier-gate.sh" --stage planning
+check "bundle-below-min-version-exits-1" 1
+check "bundle-below-min-version-says-update-great_cto" 1 'Update great_cto' stderr
+
+run "$c_plan" "$h_nomap" "$gate" --stage planning
+check "missing-tier-map-exits-1" 1
+check "missing-tier-map-names-the-tier-map" 1 'tier-map missing' stderr
+
+# --- session tier resolution ------------------------------------------------
+
+run "$c_none" "$h_full" "$gate" --stage planning
+check "no-session-and-no-tier-assert-exits-1" 1
+check "no-session-tells-user-to-run-assert" 1 'tier-gate\.sh --assert' stderr
+
+run "$c_assert" "$h_full" "$gate" --assert planning
+check "assert-exits-0" 0
+run "$c_assert" "$h_full" "$gate" --stage planning
+check "tier-assert-file-unblocks-stage-entry" 0
+
+run "$c_unknown" "$h_full" "$gate" --stage planning
+check "model-absent-from-tier-map-exits-1" 1
+check "model-absent-from-tier-map-names-the-model" 1 "model 'model-not-in-map' not in tier-map" stderr
+
+# --- stage -> tier mapping --------------------------------------------------
+
+run "$c_plan" "$h_full" "$gate" --stage planning
+check "stage-planning-matches-planning-tier" 0
+check "null-effort-prints-human-set-convention-advisory" 0 'intended session effort: high .* human-set convention'
+
+run "$c_plan" "$h_full" "$gate" --stage implementing
+check "stage-implementing-mismatch-exits-1" 1
+check "stage-implementing-requires-implementation-orchestration-tier" 1 "requires tier 'implementation-orchestration'" stderr
+check "stage-implementing-mismatch-names-found-tier" 1 "is 'planning'" stderr
+
+run "$c_plan" "$h_full" "$gate" --stage reviewing
+check "stage-reviewing-mismatch-exits-1" 1
+check "stage-reviewing-requires-review-tier" 1 "requires tier 'review'" stderr
+
+# --- session effort ---------------------------------------------------------
+
+run "$c_eff_ok" "$h_full" "$gate" --stage planning
+check "effort-matching-tier-map-exits-0" 0
+
+run "$c_eff_bad" "$h_full" "$gate" --stage planning
+check "effort-mismatch-exits-1" 1
+check "effort-mismatch-names-found-effort" 1 "is 'low'" stderr
+check "effort-mismatch-names-required-effort" 1 "requires session effort 'high'" stderr
+
+# --- summary ----------------------------------------------------------------
+
+if [ "$fails" -ne 0 ]; then echo "FAIL: tier-gate ($fails failing)"; exit 1; fi
+echo "PASS: tier-gate"
