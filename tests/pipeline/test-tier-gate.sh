@@ -84,9 +84,16 @@ check() { # <name> <want-exit> [<ere-pattern> [stdout|stderr]] — one PASS/FAIL
 
 # --- fixtures ---------------------------------------------------------------
 
-h_full="$(make_home full)";         add_bundle "$h_full" "3.0.0"; add_tier_map "$h_full"
+# The satisfied-bundle version is READ from the shipped bundle-root.sh, never
+# written as a literal: raising GREAT_CTO_MIN_VERSION would otherwise turn every
+# case below into a version-check failure that still looks red for the wrong
+# reason. Same precaution as tests/install-shape/selftest.sh.
+minver="$(sed -n 's/^GREAT_CTO_MIN_VERSION="\([0-9][0-9.]*\)".*/\1/p' "$root/scripts/pipeline/bundle-root.sh")"
+[ -n "$minver" ] || { echo "FAIL: cannot read GREAT_CTO_MIN_VERSION from bundle-root.sh" >&2; exit 1; }
+
+h_full="$(make_home full)";         add_bundle "$h_full" "$minver"; add_tier_map "$h_full"
 h_nobundle="$(make_home nobundle)"
-h_nomap="$(make_home nomap)";       add_bundle "$h_nomap" "3.0.0"
+h_nomap="$(make_home nomap)";       add_bundle "$h_nomap" "$minver"
 
 c_plan="$(make_cwd plan model-plan-1)"                       # effort null
 c_eff_ok="$(make_cwd eff-ok model-plan-1 high)"

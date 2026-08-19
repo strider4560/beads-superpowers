@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Sourced lib. resolve_bundle_root: echo the great_cto bundle root or fail
 # with the install instruction. The hard dependency check of the pipeline.
-# Task 14 raises GREAT_CTO_MIN_VERSION to the rework release.
-GREAT_CTO_MIN_VERSION="3.0.0"
+# GREAT_CTO_MIN_VERSION is the great_cto rework release: the pipeline needs
+# planning-with-reviews without its wrapper role, implementing-epics without
+# plan import, and shared/tier-map.json. great_cto ships that as a minor over
+# 3.0.0. If it cuts the rework at a different version, this constant moves
+# with it — nothing reconciles the two repos automatically.
+GREAT_CTO_MIN_VERSION="3.1.0"
 resolve_bundle_root() {
   local root="${HOME}/.agents/great_cto"
   if [ ! -d "$root" ]; then
