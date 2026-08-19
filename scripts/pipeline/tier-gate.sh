@@ -50,31 +50,18 @@ map="$bundle/shared/tier-map.json"
 [ -f "$map" ] || { echo "ERROR: tier-map missing at $map — update great_cto (see handoff doc)" >&2; exit 1; }
 
 session="$state_dir/session.json"
+# Tier resolution is shared with hooks/pipeline-guard — one implementation in
+# bundle-root.sh, two callers.
+tiers="$(resolve_session_tier "$state_dir" "$map")" || exit 1
 got=""        # every tier this session's model is listed in, joined on one line
 in_want=0     # 1 once the session is known to belong to the wanted tier
+while IFS= read -r tier; do
+  [ -n "$tier" ] || continue
+  [ "$tier" = "$want" ] && in_want=1
+  got="${got:+$got, }$tier"
+done <<< "$tiers"
 effort=""
-if [ -f "$session" ]; then
-  jq -e . "$session" >/dev/null 2>&1 || {
-    echo "ERROR: session state file '$session' is not valid JSON. Delete it and start a new session so the hook rewrites it." >&2
-    exit 1
-  }
-  model="$(jq -r '.model_id // empty' "$session")"
-  effort="$(jq -r '.effort // empty' "$session")"
-  if [ -n "$model" ]; then
-    # A model may legitimately sit in more than one tier (orchestration and
-    # review can share one), so entry is membership in the wanted tier — not
-    # equality against a resolved tier name.
-    got="$(jq -r --arg m "$model" \
-      '[.tiers | to_entries[] | select(.value.models | index($m)) | .key] | join(", ")' "$map")"
-    [ -n "$got" ] || { echo "ERROR: model '$model' not in tier-map — update $map" >&2; exit 1; }
-    jq -e --arg m "$model" --arg t "$want" '(.tiers[$t].models // []) | index($m)' "$map" >/dev/null &&
-      in_want=1
-  fi
-fi
-if [ -z "$got" ] && [ -f "$state_dir/tier-assert" ]; then
-  got="$(cat "$state_dir/tier-assert")"
-  [ "$got" = "$want" ] && in_want=1
-fi
+[ -f "$session" ] && effort="$(jq -r '.effort // empty' "$session")"
 if [ -z "$got" ]; then
   echo "ERROR: session tier unknown. Ask the user to run: bash scripts/pipeline/tier-gate.sh --assert <tier>" >&2
   exit 1

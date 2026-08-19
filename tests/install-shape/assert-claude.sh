@@ -24,6 +24,13 @@ fi
 assert_file "$SANDBOX/.claude/settings.json"
 assert_json "$SANDBOX/.claude/settings.json" "'SessionStart' in d.get('hooks', {})"
 assert_json "$SANDBOX/.claude/settings.json" "'UserPromptSubmit' not in d.get('hooks', {})"
+# PreToolUse pipeline-guard registration (bead e4v). The guard ships through the
+# PLUGIN channel — hooks/hooks.json, auto-discovered by Claude Code — so its
+# registration shape is asserted on the manifest, not on the sandbox settings.json.
+# install.sh's register_hook writes SessionStart only; wiring PreToolUse into the
+# scripted channel is an install.sh change and is NOT covered here.
+assert_json "$REPO_ROOT/hooks/hooks.json" \
+  "any(e.get('matcher') == 'Bash|Write|Edit' and any('run-hook.cmd' in h.get('command', '') and h.get('command', '').endswith('pipeline-guard') for h in e.get('hooks', [])) for e in d['hooks'].get('PreToolUse', []))"
 assert_no_file "$SANDBOX/.claude/hooks/beads-superpowers-reminder.sh"
 # Default install must NOT place the yegge agent (opt-in via --with-yegge, bead 3krn)
 assert_no_file "$SANDBOX/.claude/agents/yegge.md"

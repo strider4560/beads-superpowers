@@ -19,3 +19,32 @@ resolve_bundle_root() {
   fi
   echo "$root"
 }
+
+# resolve_session_tier <state-dir> <tier-map> — which tier(s) this session is in.
+# The session state file's model is authoritative; the human-asserted tier file is
+# the fallback for a session whose model the harness did not report. Prints one
+# tier name per line on stdout. Empty output means "unresolved", which is not an
+# error — the caller decides what an unknown tier costs it.
+# Returns 1 only on broken state: an unparsable session file, or a model the
+# tier-map does not list. Callers: tier-gate.sh, hooks/pipeline-guard.
+resolve_session_tier() {
+  local state_dir="$1" map="$2" session="$1/session.json" model tiers
+  if [ -f "$session" ]; then
+    jq -e . "$session" >/dev/null 2>&1 || {
+      echo "ERROR: session state file '$session' is not valid JSON. Delete it and start a new session so the hook rewrites it." >&2
+      return 1
+    }
+    model="$(jq -r '.model_id // empty' "$session")"
+    if [ -n "$model" ]; then
+      # A model may legitimately sit in more than one tier (orchestration and
+      # review can share one), so this is membership, not a single resolved name.
+      tiers="$(jq -r --arg m "$model" \
+        '[.tiers | to_entries[] | select(.value.models | index($m)) | .key] | .[]' "$map")"
+      [ -n "$tiers" ] || { echo "ERROR: model '$model' not in tier-map — update $map" >&2; return 1; }
+      printf '%s\n' "$tiers"
+      return 0
+    fi
+  fi
+  [ -f "$state_dir/tier-assert" ] && cat "$state_dir/tier-assert"
+  return 0
+}

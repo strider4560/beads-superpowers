@@ -17,7 +17,7 @@ hooks:
 pipeline:
     bash tests/pipeline/test-tier-gate.sh
     bash tests/pipeline/test-graph-lint.sh
-    bash tests/pipeline/test-pipeline-guard.sh 2>/dev/null || true   # Task 4 de-stubs this line
+    bash tests/pipeline/test-pipeline-guard.sh
 
 manifests:
     bash tests/manifests/test-manifest-validation.sh

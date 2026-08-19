@@ -15,6 +15,9 @@ assert_no_file "$SANDBOX/.codex/skills/auditing-upstream-drift/SKILL.md"
 assert_in_log "Codex: installed"
 # Codex activation guidance printed (config.toml features block)
 assert_in_log "codex_hooks = true"
+# Codex mirrors the Claude PreToolUse pipeline-guard registration (bead e4v).
+assert_json "$REPO_ROOT/hooks/codex-hooks.json" \
+  "any(e.get('matcher') == 'Bash|Write|Edit' and any('run-hook.cmd' in h.get('command', '') and h.get('command', '').endswith('pipeline-guard') for h in e.get('hooks', [])) for e in d['hooks'].get('PreToolUse', []))"
 assert_mex_advertised
 assert_npm_untouched
 assert_shims_never_invoked

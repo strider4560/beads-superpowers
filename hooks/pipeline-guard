@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -u
+# pipeline-guard — PreToolUse hard deny for Bash|Write|Edit.
+# Exit 2 with a one-line stderr reason blocks the tool call; exit 0 allows it.
+#
+# Two phases, and the ordering is the design:
+#
+#   Phase 1 — activation. Dependency-free: pure file-existence tests, no jq, no
+#   bundle root, no tier-map, stdin not even read. This hook fires on EVERY
+#   Bash, Write and Edit call in every project that installs the plugin, so a
+#   project that does not use the pipeline must cost nothing and must never be
+#   blocked by a missing dependency.
+#
+#   Phase 2 — armed. Strict fail-closed: a missing dependency, unreadable stdin
+#   or broken state denies the call rather than waving it through.
+
+state_dir=".internal/pipeline"
+
+# --- Phase 1 ----------------------------------------------------------------
+[ -f "$state_dir/session.json" ] || [ -f "$state_dir/tier-assert" ] || exit 0
+
+# --- Phase 2 ----------------------------------------------------------------
+deny() { echo "pipeline-guard: $1" >&2; exit 2; }
+
+command -v jq >/dev/null || deny "jq is required once the pipeline is active"
+
+payload="$(cat)" || deny "cannot read the PreToolUse payload"
+jq -e . >/dev/null 2>&1 <<< "$payload" || deny "PreToolUse payload is not valid JSON"
+
+tool="$(jq -r '.tool_name // empty' <<< "$payload")"
+cmd="$(jq -r '.tool_input.command // empty' <<< "$payload")"
+path="$(jq -r '.tool_input.file_path // empty' <<< "$payload")"
+
+# --- Rule C: --assert is human-only (D13, D13a) -----------------------------
+# tier-gate.sh's own `[ -t 0 ]` check is a heuristic a model can defeat by
+# wrapping the call in `script`. This is the control. The pattern is matched
+# anywhere in the command string so a nested invocation is caught too, and it
+# applies at every tier.
+if [ "$tool" = "Bash" ] && [[ "$cmd" =~ tier-gate\.sh[[:space:]]+--assert ]]; then
+  deny "--assert is human-only; ask the user to run it (Rule C)"
+fi
+
+# --- Rule D: the pipeline state directory is not model-writable (D13b) ------
+# Anything that can write the tier assert file or the session state file can
+# self-authorize any tier without ever running --assert, so this is denied at
+# every tier and BEFORE Rule B's `.internal/` allowance, which would otherwise
+# swallow it.
+# The Write/Edit half is the reliable one: it inspects a single path the harness
+# hands us. The Bash half is a substring test over a shell command string and is
+# therefore best-effort only — an adversarial command can reach the directory
+# without the literal path ever appearing (variables, encoding, a helper script).
+# Do not read the Bash half as a boundary; it catches the obvious redirect.
+case "$tool" in
+  Write|Edit) case "$path" in *".internal/pipeline"*)
+    deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
+  Bash) case "$cmd" in *".internal/pipeline"*)
+    deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
+esac
+
+# --- session tier -----------------------------------------------------------
+# shellcheck source=scripts/pipeline/bundle-root.sh
+. "$(dirname "$0")/../scripts/pipeline/bundle-root.sh" 2>/dev/null ||
+  deny "cannot load scripts/pipeline/bundle-root.sh"
+bundle="$(resolve_bundle_root 2>/dev/null)" || deny "great_cto bundle root missing or below the required version"
+map="$bundle/shared/tier-map.json"
+[ -f "$map" ] || deny "tier-map missing at $map — update great_cto"
+tiers="$(resolve_session_tier "$state_dir" "$map" 2>/dev/null)" ||
+  deny "session tier could not be resolved from $state_dir"
+
+# An unresolved tier (a session state file with a null model and no asserted
+# tier) leaves Rules A and B inert — they are tier-scoped by definition. Rules C
+# and D above already ran, and tier-gate.sh still fails closed at stage entry.
+has_tier=0
+is_planning=0
+while IFS= read -r tier; do
+  [ -n "$tier" ] || continue
+  has_tier=1
+  [ "$tier" = "planning" ] && is_planning=1
+done <<< "$tiers"
+
+# --- Rule A: only a planning-tier session mutates the plan graph ------------
+# Substring matches over a command string, so they over-deny: a `bd create -t
+# task` whose description quotes "-t epic", or a `git log --grep="bd import"`,
+# is denied off the planning tier. That is the safe direction for a plan-graph
+# mutation guard — do not anchor the patterns to make a false positive pass.
+if [ "$tool" = "Bash" ] && [ "$has_tier" -eq 1 ] && [ "$is_planning" -eq 0 ]; then
+  if [[ "$cmd" =~ bd[[:space:]]+create[[:space:]].*-t[[:space:]]+epic ]] ||
+     [[ "$cmd" =~ bd[[:space:]]+import ]]; then
+    deny "only a planning-tier session mutates the plan graph (Rule A)"
+  fi
+fi
+
+# --- Rule B: a planning-tier session cannot write source files -------------
+if [ "$is_planning" -eq 1 ]; then
+  case "$tool" in
+    Write|Edit)
+      [[ "$path" =~ ^(\.internal/|\.mex/|docs/) ]] ||
+        deny "planning-tier session cannot write source files (Rule B)" ;;
+  esac
+fi
+
+exit 0
