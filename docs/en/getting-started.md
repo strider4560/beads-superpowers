@@ -10,13 +10,21 @@ description: Install beads-superpowers via the native plugin system, curl, or np
 
 ## Prerequisites
 
-**`bd` must be installed before the plugin will work.** The plugin registers hooks that call `bd` on every session start; if `bd` isn't present, those hooks fail silently and you lose persistent memory.
+**`bd` must be installed before the plugin will work.** The plugin registers a hook that injects `bd` context on every session start; without `bd`, that half is skipped and you lose persistent task tracking.
 
 ```bash
 brew install beads          # macOS / Linux
 # or
 npm install -g @beads/bd    # any platform
 ```
+
+**mex is the second half.** Durable knowledge lives in a repo-local `.mex/` store rather than in beads, and the skills call the `mex` CLI directly. It is pinned at 0.7.1 and needs Node 22.5.0 or newer.
+
+```bash
+npm install -g mex-agent@0.7.1
+```
+
+Per project, the `project-init` skill sets up both stores - `bd init` for the tracker, and the `.mex/` scaffold plus the pages this plugin adds on top of it.
 
 Verify with `bd version`. Then install the plugin (see below), then run `bd init` in each project.
 
@@ -203,13 +211,13 @@ If skills aren't showing, the plugin may not be installed for your CLI. If `bd r
 
 ## Your first session
 
-When that session starts, the SessionStart hook fires automatically: it injects the skills bootstrap alongside a composed beads context - curated core memories plus a pointer into the knowledge store - so the agent starts oriented instead of blank. You don't have to trigger this yourself; it happens before the agent's first reply.
+When that session starts, the SessionStart hook fires automatically: it injects the skills bootstrap alongside a short `bd` command pointer and a durable-knowledge block - a router line plus the hot page of lessons from `.mex/lessons.md` - so the agent starts oriented instead of blank. You don't have to trigger this yourself; it happens before the agent's first reply.
 
-See [Memory & Sessions](memory.md) for what gets curated and how the knowledge store persists across sessions.
+See [Memory & Sessions](memory.md) for how knowledge is captured, retrieved, and kept from drifting.
 
 ## How the hooks work
 
-Claude Code and Codex share one hook script - **SessionStart** - registered via `hooks/hooks.json` for Claude Code and wired by `install.sh` for Codex. It fires on every session start, clear, and compact: it reads the `using-superpowers` skill, then composes the beads context described above. If `bd prime` is already registered as a hook elsewhere, the beads half is skipped automatically to avoid injecting it twice.
+Claude Code and Codex share one hook script - **SessionStart** - registered via `hooks/hooks.json` for Claude Code and wired by `install.sh` for Codex. It fires on every session start, clear, and compact: it reads the `using-superpowers` skill, then composes the context described above. Reading `.mex/` is a file read, so the durable-knowledge block appears whether or not `bd` is installed. If `bd prime` is already registered as a hook elsewhere, the injected block is skipped automatically to avoid injecting it twice.
 
 ```mermaid
 sequenceDiagram
@@ -219,14 +227,14 @@ sequenceDiagram
 
   CC->>SH: Session begins
   SH->>SH: Read using-superpowers skill
-  SH->>SH: Compose beads context (bd pointer + core memories)
-  SH-->>Agent: Inject skills context + beads state
+  SH->>SH: Compose bd pointer + router line + .mex hot page
+  SH-->>Agent: Inject skills context + work and knowledge context
   Note over Agent: Agent is now skill-aware
 ```
 
 OpenCode uses its own JavaScript plugin (`.opencode/plugins/beads-superpowers.js`) instead of `hooks/hooks.json`, with three in-process hooks: a `config` hook auto-registers the skills, an `experimental.chat.messages.transform` hook injects the same bootstrap into the first user message once per session, and an `experimental.session.compacting` hook re-injects beads context after the context window compacts.
 
-For the curation rules behind that context - salience thresholds, byte budget, what gets dropped - see [Memory & Sessions](memory.md).
+For the rules behind that context - the injection budget, the 2 KB hot-page cap, and what gets routed on demand instead of injected - see [Memory & Sessions](memory.md).
 
 ## Configuration
 

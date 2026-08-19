@@ -58,7 +58,7 @@ Using a different agent? Jump to install for [Codex CLI](#codex-cli), [OpenCode]
 
 10. **finishing-a-development-branch** - Presents merge/PR options and lands the plane: close the beads, sync, push.
 
-The agent checks for relevant skills before any task - these are mandatory workflows, not suggestions. And because every task, decision, and lesson lives in `bd`'s Dolt database, the next session starts where this one ended: type "where are we" and the agent picks the thread back up.
+The agent checks for relevant skills before any task - these are mandatory workflows, not suggestions. And because every task lives in `bd`'s Dolt database while every decision and lesson lives in the `.mex/` knowledge store, the next session starts where this one ended: type "where are we" and the agent picks the thread back up.
 
 ## What's Inside
 
@@ -109,16 +109,16 @@ The agent checks for relevant skills before any task - these are mandatory workf
 | Skill | What it does |
 |-------|-------------|
 | `getting-up-to-speed` | Session orientation - loads `bd` context and produces a current-state summary |
-| `memory-curator` | Consolidates, deduplicates, and prunes the persistent memory store |
+| `mex-curator` | Distills a session's durable knowledge into the repo-local `.mex/` store - routing, dedup, hot-page cap |
 | `session-handoff` | Writes a grounded handoff doc so the next session resumes mid-flight work |
 | `research-driven-development` | Parallel research agents → verified, persistent knowledge base |
-| `project-init` | Sets up, bootstraps, and recovers the beads/Dolt database behind persistent memory |
+| `project-init` | Sets up, bootstraps, and recovers the beads/Dolt database and the `.mex/` knowledge store |
 
 **[Full skills reference →](https://algocents.com/beads-superpowers/skills/)**
 
 ## How it works
 
-When you start a task, the agent runs **brainstorming** to nail down requirements before touching code, then **writing-plans** to break the work into `bd`-tracked steps that survive session restarts. During implementation it follows **test-driven-development** (failing test first, always) and can fan out to parallel subagents via **subagent-driven-development** - each agent working in its own git worktree. `bd` stores every task, decision, and note in a local Dolt database, so the agent picks up exactly where it left off next session without relying on chat history.
+When you start a task, the agent runs **brainstorming** to nail down requirements before touching code, then **writing-plans** to break the work into `bd`-tracked steps that survive session restarts. During implementation it follows **test-driven-development** (failing test first, always) and can fan out to parallel subagents via **subagent-driven-development** - each agent working in its own git worktree. `bd` stores every task in a local Dolt database and mex keeps the project's durable knowledge - requirements, architecture, conventions, decisions, lessons - as routed Markdown pages under `.mex/`, so the agent picks up exactly where it left off next session without relying on chat history.
 
 Underneath all of it is a production-grade standard: the agent treats every task as if real users depend on it, so it won't quietly cut a corner, drop a requirement, or weaken a security control to move faster.
 
@@ -128,7 +128,7 @@ Underneath all of it is a production-grade standard: the agent treats every task
 - **TDD is an Iron Law** - no implementation without a failing test
 - **Systematic over ad-hoc** - debugging follows a root-cause process, never guess-and-check
 - **Evidence before claims** - "done" requires a command that proves it
-- **Memory over chat history** - tasks, decisions, and lessons persist in `bd`, not in a scroll buffer
+- **Memory over chat history** - `bd` tracks work; mex holds knowledge. Tasks, decisions, and lessons persist on disk, not in a scroll buffer
 
 The long form lives in [Methodology](https://algocents.com/beads-superpowers/methodology/).
 
@@ -146,7 +146,9 @@ The long form lives in [Methodology](https://algocents.com/beads-superpowers/met
 
 ### Prerequisites
 
-**Install `bd` before the plugin.** Its hooks call `bd` on every session start; without it they fail silently and you lose persistent memory. Use Homebrew (`brew install beads`) or `npm install -g @beads/bd` on any platform. Verify with `bd version`.
+**Install `bd` before the plugin.** Its hook injects `bd` context on every session start; without `bd` that half is skipped and you lose persistent task tracking. Use Homebrew (`brew install beads`) or `npm install -g @beads/bd` on any platform. Verify with `bd version`.
+
+**Install mex too.** Durable knowledge lives in a repo-local `.mex/` store, not in beads, and the skills call the `mex` CLI directly: `npm install -g mex-agent@0.7.1` (pinned at 0.7.1, needs Node 22.5.0+). Verify with `mex --version`.
 
 **Note:** Native plugin install installs skills and hooks, but not `bd init` - run that yourself per project.
 
@@ -281,6 +283,7 @@ Contributions are welcome - see [`CONTRIBUTING.md`](CONTRIBUTING.md). PRs target
 
 - **[Superpowers](https://github.com/obra/superpowers)** by Jesse Vincent - the skill system and development practices
 - **[Beads](https://github.com/gastownhall/beads)** by Steve Yegge - persistent issue tracking with cross-session memory
+- **mex** (`mex-agent`) - the repo-local durable-knowledge store behind `.mex/`
 
 Individual skills adapted from:
 

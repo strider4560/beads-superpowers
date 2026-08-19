@@ -20,7 +20,9 @@ Two projects attacked each half of this.
 
 ### Persistent memory
 
-Superpowers tracked tasks with `TodoWrite`, which vanishes when a session ends. [Beads](https://github.com/gastownhall/beads) (Steve Yegge) replaced that with a Dolt-backed issue tracker where every task is a bead with a hash-based ID that survives session boundaries. Beads handles dependency tracking, cell-level merges for conflict-free multi-agent work, a full audit trail via the events table, and `bd remember` for persistent learnings. At every session start, the plugin's hook injects a composed beads context — a task-state pointer plus curated memories — so the agent picks up where it left off. The hook does that job in the same pass as injecting the skills bootstrap, because firing beads' own standalone `bd setup claude` hook alongside it would inject duplicate context and waste tokens; if that standalone hook is already registered, this hook skips its own beads section instead of injecting a second copy.
+Superpowers tracked tasks with `TodoWrite`, which vanishes when a session ends. [Beads](https://github.com/gastownhall/beads) (Steve Yegge) replaced that with a Dolt-backed issue tracker where every task is a bead with a hash-based ID that survives session boundaries. Beads handles dependency tracking, cell-level merges for conflict-free multi-agent work, and a full audit trail via the events table.
+
+Work state is only half of what a session needs to keep, so the plugin splits the job: **`bd` tracks work; mex holds knowledge.** Requirements, architecture, conventions, decisions, and lessons live as Markdown pages in a repo-local `.mex/` store, retrieved by a router rather than dumped into every session. At session start the hook injects the skills bootstrap, a short `bd` command pointer, and one durable-knowledge block: a router line plus the 2 KB hot page of lessons. It does that in a single pass because firing beads' own standalone `bd setup claude` hook alongside it would inject duplicate context and waste tokens; if that standalone hook is already registered, this hook yields instead of injecting a second copy.
 
 !!! info "Go deeper — upstream Beads docs"
     - [Core concepts](https://gastownhall.github.io/beads/core-concepts) — issues, dependencies, hash IDs, and the memory model
@@ -120,7 +122,7 @@ graph TD
 
 **Step 2 — Research.** The `research-driven-development` skill decomposes the topic into sub-questions and dispatches one researcher per sub-question in parallel — plus an `@explore` agent that maps the affected code when the topic touches the codebase. Running them concurrently cuts research time sharply, and each agent returns a verbatim quote for every load-bearing claim, which a separate blinded verifier then double-checks by independently re-fetching the source, so findings are grounded in what the sources actually say rather than taken on trust.
 
-**Step 3 — Knowledge capture.** Findings are written to a persistent document; key learnings go into `bd remember` so they surface in future sessions.
+**Step 3 — Knowledge capture.** Findings are written to a persistent document, then distilled into `.mex/`: requirements, architecture, and convention conclusions onto their matching pages, and every load-bearing conclusion logged with `mex log --type decision`. The document is the long form; the pages are what a later session actually retrieves.
 
 **Step 4 — Brainstorming.** The `brainstorming` skill walks through context, clarifying questions, 2–3 approaches with trade-offs, and a design spec committed to git. It ends by invoking `writing-plans` — not by jumping to code. The spec-review gate offers a `stress-test` every time, to interrogate the design adversarially before planning.
 
@@ -134,15 +136,17 @@ graph TD
 
 **Step 9 — Documentation.** `document-release` scans the diff against existing docs for stale references, missing entries, and outdated examples. When the audit flags sections needing major prose rewrites, `write-documentation` fires for those sections.
 
-**Step 10 — Close branch.** `finishing-a-development-branch` detects the current environment — normal repository, named-branch worktree, or detached HEAD — and presents context-aware options: 4 choices for normal and worktree contexts, 3 for detached HEAD where merge is unavailable. Provenance-based cleanup only removes worktrees inside `.worktrees/`, leaving externally created worktrees alone. The skill ends with the Land the Plane protocol: if the session produced several new memories, offer a `memory-curator` pass before `bd dolt push`; then `bd close` → `bd dolt push` → `git push` → `git status`. Branch paths terminate here — work is not done until both task state and code reach the remote. The ritual lives inside this skill rather than a separate one so every branch path ends here structurally, instead of depending on a router remembering to invoke a second skill; non-branch sessions reach the same ritual through Step 11's session-close path below.
+**Step 10 — Close branch.** `finishing-a-development-branch` detects the current environment — normal repository, named-branch worktree, or detached HEAD — and presents context-aware options: 4 choices for normal and worktree contexts, 3 for detached HEAD where merge is unavailable. Provenance-based cleanup only removes worktrees inside `.worktrees/`, leaving externally created worktrees alone. The skill ends with the Land the Plane protocol: if the session captured roughly three or more new durables into `.mex/`, or the hot page came in truncated, offer a `mex-curator` pass first; then `bd close` → `mex check` → `bd dolt push` → `git push` → `git status`. Branch paths terminate here — work is not done until both task state and code reach the remote. The ritual lives inside this skill rather than a separate one so every branch path ends here structurally, instead of depending on a router remembering to invoke a second skill; non-branch sessions reach the same ritual through Step 11's session-close path below.
 
-**Step 11 — Session close.** Fires only on non-branch paths (research queries, quick tasks that didn't create a branch). Runs the same close ritual as Step 10's Land the Plane: close beads, offer a `memory-curator` pass if the session produced several new memories, push to remotes, verify clean state. The next session's start-hook injection restores the full picture.
+**Step 11 — Session close.** Fires only on non-branch paths (research queries, quick tasks that didn't create a branch). Runs the same close ritual as Step 10's Land the Plane: close beads, offer a `mex-curator` pass when the session produced curation-worthy volume, run `mex check`, push to remotes, verify clean state. The next session's start-hook injection restores the full picture.
 
 ## Agent memory
 
-Because beads tracks every process step, the memory types agents need are populated as a side effect of following the workflow. Most of the {{ skill_count }} skills prompt for `bd remember` at their natural completion points: root causes after debugging, design decisions after brainstorming, review insights after code review. That keeps memory capture inside the skill workflow instead of a separate step.
+Knowledge accumulates as a side effect of following the workflow. Most of the {{ skill_count }} skills carry the same capture contract at their natural completion points: root causes after debugging, design rationale after brainstorming, review insights after code review, each recorded as an evidence-backed entry on the `.mex/` page its class routes to. Capture stays inside the skill workflow instead of becoming a separate step, and the `mex-curator` skill is the enforcement pass over what those skills wrote.
 
-See [Memory & Sessions](memory.md) for what gets injected at session start, how a raw note becomes a durable memory or a knowledge-bead, and how to query the store.
+The retrieval half is symmetrical: before proposing a design, a process skill queries the store with `mex graph scope "<task>"`, reads the routed pages in full, and reports what it found. A routed hit is a pointer, not knowledge.
+
+See [Memory & Sessions](memory.md) for what gets injected at session start, where each class of durable is written, and how retrieval and drift checks work.
 
 ## Where the rest lives
 

@@ -31,7 +31,7 @@ The `using-superpowers` bootstrap, injected at session start, tells the agent wh
 | Received review feedback | `receiving-code-review` |
 | Writing human-facing prose | `write-documentation` |
 | Branch complete | `finishing-a-development-branch` |
-| Consolidate or dedup memories | `memory-curator` |
+| Distill durable knowledge into `.mex/` | `mex-curator` |
 | Hand work to the next session | `session-handoff` (human-invoked) |
 
 Also available: `document-release`, `getting-up-to-speed`, `dispatching-parallel-agents`, `project-init`
@@ -46,7 +46,7 @@ Also available: `document-release`, `getting-up-to-speed`, `dispatching-parallel
 | **Design & planning** | [brainstorming](#brainstorming), [stress-test](#stress-test), [writing-plans](#writing-plans) |
 | **Execution** | [subagent-driven-development](#subagent-driven-development), [executing-plans](#executing-plans), [dispatching-parallel-agents](#dispatching-parallel-agents), [using-git-worktrees](#using-git-worktrees), [requesting-code-review](#requesting-code-review), [receiving-code-review](#receiving-code-review), [finishing-a-development-branch](#finishing-a-development-branch) |
 | **Documentation** | [write-documentation](#write-documentation), [document-release](#document-release) |
-| **Memory & orientation** | [getting-up-to-speed](#getting-up-to-speed), [memory-curator](#memory-curator), [session-handoff](#session-handoff), [research-driven-development](#research-driven-development), [project-init](#project-init) |
+| **Memory & orientation** | [getting-up-to-speed](#getting-up-to-speed), [mex-curator](#mex-curator), [session-handoff](#session-handoff), [research-driven-development](#research-driven-development), [project-init](#project-init) |
 
 ```mermaid
 ---
@@ -86,7 +86,7 @@ graph TD
   end
   subgraph Memory ["Memory & orientation"]
     GUS["getting-up-to-speed"]
-    MC["memory-curator"]
+    MC["mex-curator"]
     SH["session-handoff"]
     RDD["research-driven-dev"]
     PI["project-init"]
@@ -112,7 +112,7 @@ graph TD
 
 ### using-superpowers
 
-Bootstrap skill injected at every session start. Routes the agent to the correct skill for the current task, and carries the production-grade doctrine that holds every session to a no-shortcuts, no-silent-descope, never-a-security-regression standard. It also carries the decision-capture convention: when a choice is hard to reverse, surprising, and a genuine trade-off, the agent offers to record an ADR in `docs/decisions/`. All other skills depend on this one having loaded first.
+Bootstrap skill injected at every session start. Routes the agent to the correct skill for the current task, and carries the production-grade doctrine that holds every session to a no-shortcuts, no-silent-descope, never-a-security-regression standard. It also carries two conventions every other skill leans on: the decision-capture rule - when a choice is hard to reverse, surprising, and a genuine trade-off, the agent offers to record an ADR in `docs/decisions/` - and the storage doctrine, `bd` tracks work while mex holds knowledge, which decides where anything worth keeping is written. All other skills depend on this one having loaded first.
 
 ### test-driven-development
 
@@ -208,17 +208,17 @@ Walks through README, CHANGELOG, CLAUDE.md, CONTRIBUTING, and other docs to find
 
 **Trigger:** Session start, after compaction, or "catch me up" / "where are we".
 
-Gathers beads state and the newest handoff in one `orient.sh` call, deep-dives the codebase (sub-agent fan-out scales to repo size across `<40` / `40-150` / `>150` tracked-file bands), and produces a structured current-state summary. It reads the newest `.internal/handoff/` doc - written by its counterpart `session-handoff` - as an unread inbox, folding it into the summary and then archiving it at close so a later session doesn't re-read it; a HEAD-recency backstop flags a handoff as stale when `HEAD` has moved past the commit it recorded. A pre-emit verification gate holds every claim in the summary to a command actually run in the session, a beads-versus-git check flags work that shipped but was left open, and superseded `continuation-*` memories are pruned at close.
+Gathers beads state and the newest handoff in one `orient.sh` call, deep-dives the codebase (sub-agent fan-out scales to repo size across `<40` / `40-150` / `>150` tracked-file bands), and produces a structured current-state summary. It reads the newest `.internal/handoff/` doc - written by its counterpart `session-handoff` - as an unread inbox, folding it into the summary and then archiving it at close so a later session doesn't re-read it; a HEAD-recency backstop flags a handoff as stale when `HEAD` has moved past the commit it recorded. A pre-emit verification gate holds every claim in the summary to a command actually run in the session, a beads-versus-git check flags work that shipped but was left open, and superseded continuation pointers on the `.mex/` hot page are pruned to one at close. Its `orient.sh` call also reports whether `.mex/` is present, what `mex check` returned, and the head of the hot page.
 
-### memory-curator
+### mex-curator
 
-**Trigger:** At session-close when several new memories were captured, or on-demand for a full sweep.
+**Trigger:** At session-close when the session produced durable knowledge, or on-demand for a full `.mex/` sweep.
 
-Turns a session's raw `bd remember` notes into well-structured, deduplicated, consolidated memories using the in-session agent - no runtime, key, or embeddings. The scope is deliberately evidence-led: quality-gated capture, reflection-consolidation, and pruning, not structural richness. It never mutates the store silently - it proposes a reviewed command list, and you approve before anything is written.
+Distills a session's durable knowledge into the repo-local `.mex/` store using the in-session agent - no runtime, key, or embeddings. Each durable is routed to exactly one destination: requirements, architecture, conventions, patterns, and compliance pages by file edit; decisions through `mex log --type decision`; lessons onto the 2 KB hot page, demoting the coldest entries to `.mex/lessons-archive.md` when the cap fills. Procedural how-tos are banned from the store - they belong in a skill. The bar for storing anything is cited evidence, secrets are never written to any page including the gitignored `.mex/private/`, and supersession is write-verify-then-remove. It never mutates the store silently: it proposes a reviewed change list, and you approve before anything is written.
 
 ### session-handoff
 
-**Human-invoked only.** Writes a grounded session-handoff document and stores a `bd remember` continuation note so the next session can pick up in-progress work without relying on chat history. Its counterpart `getting-up-to-speed` consumes that document on the next session's orientation, then archives it.
+**Human-invoked only.** Writes a grounded session-handoff document and appends a one-line continuation pointer to the `.mex/lessons.md` hot page - within its 2 KB cap - so the next session can pick up in-progress work without relying on chat history. Its counterpart `getting-up-to-speed` consumes that document on the next session's orientation, then archives it.
 
 ### research-driven-development
 
@@ -228,9 +228,9 @@ Decomposes the topic into sub-questions, dispatches one researcher per sub-quest
 
 ### project-init
 
-**Trigger:** When `bd` commands fail, setting up beads in a new project, or recovering from diverged Dolt history.
+**Trigger:** When `bd` commands fail, setting up beads or `.mex/` in a new project, or recovering from diverged Dolt history.
 
-Three paths: fresh init, bootstrap from remote, or recovery when Dolt history has diverged.
+Covers the beads paths - fresh init, bootstrap from remote, recovery when Dolt history has diverged - and the knowledge-store setup beside them: the `.mex/` scaffold plus the pages this product adds on top of it (`.mex/lessons.md`, `.mex/lessons-archive.md`, `.mex/private/`), which mex itself neither creates nor reads. It also owns the migration path off the retired knowledge-bead store.
 
 ## Beads commands
 
@@ -248,13 +248,24 @@ Skills use `bd` commands to track work. Only the orchestrating agent manages bea
 | Compound query | `bd query "status=open AND priority<=1"` | getting-up-to-speed (replaces `bd list` + jq) |
 | Grouped counts | `bd count --by-status` | getting-up-to-speed (also `--by-priority`/`--by-type`) |
 | Add dependency | `bd dep add <child> <parent>` | SDD, writing-plans |
-| Store learning | `bd remember "insight"` | most of the {{ skill_count }} skills prompt for this |
 | Attach evidence | `bd note <id> "context"` | verification |
 | Explain dependencies | `bd ready --explain` | systematic-debugging, executing-plans |
 | Sync to remote | `bd dolt push` | finishing-a-development-branch |
 
 !!! info "Go deeper - upstream Beads docs"
     - [CLI reference](https://gastownhall.github.io/beads/cli-reference) - the full `bd` command surface beyond the workflow-core set above (`batch`, `lint`, `defer`, `human`, `swarm`, `-C`, …)
+
+## Durable-knowledge commands
+
+Learnings never go into beads. `bd` tracks work; mex holds knowledge, in a repo-local `.mex/` store of Markdown pages.
+
+| Action | Command | Used in |
+|---|---|---|
+| Route the store for a task | `mex graph scope "<task>"` | brainstorming, research-driven-development, getting-up-to-speed |
+| Record a decision | `mex log --type decision "<conclusion>"` | any skill that settles one (bare `mex log` records a note, not a decision) |
+| Check the store for drift | `mex check` | mex-curator, finishing-a-development-branch (gate on the exit code) |
+| Repair after a failed check | `mex sync`, then `mex check` again | mex-curator (sync's own exit code is not evidence) |
+| Capture a lesson | An entry on `.mex/lessons.md`, kind-prefixed, evidence named | most of the {{ skill_count }} skills carry this capture contract |
 
 ## How skills chain
 

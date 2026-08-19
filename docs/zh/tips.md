@@ -32,15 +32,27 @@ description: 快速参考 bd 命令速查表、技能路由表、常见问题故
 | `bd close <id> --reason "..."` | 附带证据完成任务 |
 | `bd dep add <child> <depends-on>` | 添加依赖关系 |
 | `bd note <id> "context"` | 向 bead 追加证据 |
-| `bd remember "insight"` / `bd memories <kw>` / `bd forget <id>` | 持久化 / 搜索 / 删除学习内容 |
-| `bd list --label <topic> --status all` / `bd search "<kw>" --status all` | 搜索知识库——已标记 `kb` 标签的延迟 `research`/`design`/`decision` beads（正文词条：`--desc-contains "<kw>"`；然后用 `bd show <id1> <id2>` 或 `--flat --long -n 10` 读取命中）。 |
 | `bd dolt push` / `pull` | 将 beads 数据库同步到/从你的 beads 远端 |
 
 !!! info "深入了解 — 上游 Beads 文档"
     - [CLI 参考](https://gastownhall.github.io/beads/cli-reference) — 每个 `bd` 命令及其全部参数，包括本表精简掉的维护与协调命令（`list`、`stats`、`doctor`、`lint`、`stale`、`find-duplicates`、`defer`、`human`、`swarm`、`batch`、`merge-slot`、`github`、`-C`）
     - [恢复指南](https://gastownhall.github.io/beads/recovery) — Dolt 历史分叉、同步失败
 
-**Land the Plane：** 每次会话结束时执行 `bd close` → `bd dolt push`（同步到你的 beads 远端） → `git push`（推送到你的代码仓库）。`finishing-a-development-branch` 技能负责强制执行此流程。
+## mex 速查表
+
+持久知识存放在仓库本地的 `.mex/` 库中，绝不进入 beads。`bd` 追踪工作；mex 保存知识。
+
+| 命令 | 作用 |
+|---------|------|
+| `mex graph scope "<task>"` | 为当前任务路由知识库——随后完整读完被路由的页面；一次路由命中只是指针，不是知识 |
+| `mex log --type decision "<conclusion>"` | 记录一条决策。裸的 `mex log` 记录的类别是 `note`，那不是决策 |
+| `mex check` | 校验知识库。以退出码为准：退出码为 0 时的告警属于出厂基线（全新脚手架得分 79/100） |
+| `mex sync` | 检查失败后的修复——之后要再跑一次 `mex check`，因为即便什么都没修好，`sync` 也会以 0 退出 |
+| `mex timeline` | 按时间倒序回读决策日志（`.mex/events/decisions.jsonl`） |
+
+有三个文件值得记住名字：`.mex/lessons.md` 是每次会话开始时被注入的热页面，硬上限 2048 字节；`.mex/lessons-archive.md` 存放被降级的经验，仍可被路由但不再被注入；`.mex/private/` 存放敏感类内容并被 gitignore，因此永远不会同步到另一台机器。
+
+**Land the Plane：** 每次会话结束时执行 `bd close` → `mex check` → `bd dolt push`（同步到你的 beads 远端） → `git push`（推送到你的代码仓库）。`finishing-a-development-branch` 技能负责强制执行此流程。
 
 ## 技能路由
 
@@ -62,7 +74,7 @@ description: 快速参考 bd 命令速查表、技能路由表、常见问题故
 | 发布后更新文档 | `document-release` |
 | 研究某个主题 | `research-driven-development` |
 | 编写面向用户的文档 | `write-documentation` |
-| 整合或去重记忆 | `memory-curator` |
+| 把持久知识蒸馏进 `.mex/` | `mex-curator` |
 
 `using-superpowers` 引导技能（会话开始时自动加载）包含完整的路由逻辑；如有疑问，请让 Claude Code 读取它。
 
@@ -78,6 +90,8 @@ description: 快速参考 bd 命令速查表、技能路由表、常见问题故
 
 **`bd dolt push` 失败** — 未配置 beads 远端。如果不需要远程同步，此错误无害。
 
+**会话启动时出现 `No .mex/ found`** — 本项目还没有搭建知识库。请运行 `project-init` 技能；它会创建脚手架以及本插件在其之上追加的页面。
+
 ## Windows
 
 SessionStart hook（`hooks/session-start`）是 bash 脚本。在 Windows 上，多格式包装器 `hooks/run-hook.cmd` 通过 Git Bash 调用它。该 `.cmd` 文件同时是有效的批处理文件和 bash 脚本：在 Windows 上，`cmd.exe` 找到 Git Bash 并重新执行；在 Unix 上，`:` 命令是空操作，bash 运行其余部分。只要安装了 Git for Windows，无需 WSL 即可正常工作。
@@ -90,3 +104,4 @@ SessionStart hook（`hooks/session-start`）是 bash 脚本。在 Windows 上，
 |--------|----------|----------|
 | [obra/superpowers](https://github.com/obra/superpowers) | v6.2.0 | 技能内容、新技能、hooks |
 | [gastownhall/beads](https://github.com/gastownhall/beads) | v1.1.2 | CLI 命令、`bd prime` 格式 |
+| mex（npm 上的 `mex-agent`） | 0.7.1 | CLI 命令、`.mex/` 布局、路由器格式 |
