@@ -37,8 +37,10 @@ make_cwd() { # <name> [model] [effort] -> path to a working dir
 # --- runner + assertion -----------------------------------------------------
 
 run() { # <cwd> <home> <prog> [args...] — sets rc, out (stdout), err (stderr)
+  # PATH_OVERRIDE, when set, replaces PATH for the gate only (jq-absence cases).
   local cwd="$1" home="$2" prog="$3"; shift 3
-  out="$(cd "$cwd" && HOME="$home" bash "$prog" "$@" 2>"$TMP/stderr")"
+  out="$(cd "$cwd" && HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" \
+    "$BASH" "$prog" "$@" 2>"$TMP/stderr")"
   rc=$?
   err="$(cat "$TMP/stderr")"
 }
@@ -71,17 +73,31 @@ c_eff_bad="$(make_cwd eff-bad model-plan-1 low)"
 c_unknown="$(make_cwd unknown model-not-in-map)"
 c_none="$(make_cwd none)"                                    # no session state file
 c_assert="$(make_cwd assert)"
+c_orch_only="$(make_cwd orch-only model-orch-only)"
+c_review_only="$(make_cwd review-only model-review-only)"
+c_multi="$(make_cwd multi model-orch-1)"                     # listed in two tiers
+c_broken="$TMP/cwd-broken"; mkdir -p "$c_broken/.internal/pipeline"
+printf '{"model_id": "model-plan-1",\n' > "$c_broken/.internal/pipeline/session.json"
+
+# A PATH with no jq on it, for the missing-jq diagnosis case.
+nojq="$TMP/bin-nojq"; mkdir -p "$nojq"
+for b in bash dirname sort head cat mkdir; do ln -sf "$(command -v "$b")" "$nojq/$b"; done
+
+# tier-gate.sh with no bundle-root.sh beside it, for the failed-source case.
+orphan="$TMP/orphan"; mkdir -p "$orphan"
+cp -f "$root/scripts/pipeline/tier-gate.sh" "$orphan/tier-gate.sh"
 
 # A copy of the scripts with the minimum version raised, so the shipped
 # GREAT_CTO_MIN_VERSION stays at great_cto's current version.
 stale="$TMP/stale-scripts"; mkdir -p "$stale"
-cp -f "$root/scripts/pipeline/bundle-root.sh" "$root/scripts/pipeline/tier-gate.sh" "$stale/" 2>/dev/null
-sed -i 's/^GREAT_CTO_MIN_VERSION=.*/GREAT_CTO_MIN_VERSION="999.0.0"/' "$stale/bundle-root.sh" 2>/dev/null
+cp -f "$root/scripts/pipeline/bundle-root.sh" "$root/scripts/pipeline/tier-gate.sh" "$stale/"
+sed -i 's/^GREAT_CTO_MIN_VERSION=.*/GREAT_CTO_MIN_VERSION="999.0.0"/' "$stale/bundle-root.sh"
 
 # --- usage ------------------------------------------------------------------
 
 run "$c_none" "$h_full" "$gate"
 check "usage-no-args-exits-2" 2
+check "usage-says-run-from-the-repo-root" 2 'run from the repo root' stderr
 
 run "$c_none" "$h_full" "$gate" --stage bogus
 check "usage-unknown-stage-exits-2" 2
@@ -111,6 +127,18 @@ run "$c_plan" "$h_nomap" "$gate" --stage planning
 check "missing-tier-map-exits-1" 1
 check "missing-tier-map-names-the-tier-map" 1 'tier-map missing' stderr
 
+# --- dependency diagnosis ---------------------------------------------------
+
+PATH_OVERRIDE="$nojq"
+run "$c_plan" "$h_nomap" "$gate" --stage planning
+check "missing-jq-exits-1" 1
+check "missing-jq-is-diagnosed-as-jq-not-as-a-stale-bundle" 1 'jq required' stderr
+unset PATH_OVERRIDE
+
+run "$c_plan" "$h_full" "$orphan/tier-gate.sh" --stage planning
+check "unloadable-bundle-root-lib-exits-1" 1
+check "unloadable-bundle-root-lib-names-the-lib" 1 'cannot load bundle-root\.sh' stderr
+
 # --- session tier resolution ------------------------------------------------
 
 run "$c_none" "$h_full" "$gate" --stage planning
@@ -126,6 +154,15 @@ run "$c_unknown" "$h_full" "$gate" --stage planning
 check "model-absent-from-tier-map-exits-1" 1
 check "model-absent-from-tier-map-names-the-model" 1 "model 'model-not-in-map' not in tier-map" stderr
 
+run "$c_broken" "$h_full" "$gate" --stage planning
+check "unparsable-session-json-exits-1" 1
+check "unparsable-session-json-names-the-file" 1 'session\.json' stderr
+if printf '%s' "$err" | grep -q -- '--assert'; then
+  echo "FAIL unparsable-session-json-does-not-offer-the---assert-remedy: $err"; fails=$((fails+1))
+else
+  echo "PASS unparsable-session-json-does-not-offer-the---assert-remedy"
+fi
+
 # --- stage -> tier mapping --------------------------------------------------
 
 run "$c_plan" "$h_full" "$gate" --stage planning
@@ -140,6 +177,26 @@ check "stage-implementing-mismatch-names-found-tier" 1 "is 'planning'" stderr
 run "$c_plan" "$h_full" "$gate" --stage reviewing
 check "stage-reviewing-mismatch-exits-1" 1
 check "stage-reviewing-requires-review-tier" 1 "requires tier 'review'" stderr
+
+run "$c_orch_only" "$h_full" "$gate" --stage implementing
+check "stage-implementing-passes-for-an-implementation-orchestration-model" 0
+
+run "$c_review_only" "$h_full" "$gate" --stage reviewing
+check "stage-reviewing-passes-for-a-review-model" 0
+
+# A model listed in two tiers is in the wanted tier for both of them.
+run "$c_multi" "$h_full" "$gate" --stage implementing
+check "multi-tier-model-passes-implementing" 0
+check "multi-tier-ok-line-names-one-tier" 0 '^tier-gate OK: implementation-orchestration \('
+
+run "$c_multi" "$h_full" "$gate" --stage reviewing
+check "multi-tier-model-passes-reviewing" 0
+check "multi-tier-ok-line-names-one-tier-reviewing" 0 '^tier-gate OK: review \('
+
+run "$c_multi" "$h_full" "$gate" --stage planning
+check "multi-tier-model-still-fails-a-tier-it-is-not-in" 1
+check "multi-tier-mismatch-lists-found-tiers-on-one-line" 1 \
+  "is 'implementation-orchestration, review'" stderr
 
 # --- session effort ---------------------------------------------------------
 
