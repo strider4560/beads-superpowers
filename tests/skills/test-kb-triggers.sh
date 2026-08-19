@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Pins Trigger A (ADR-0056): brainstorming's Phase-1 context-gathering step must
-# query the beads-native KB before a design is proposed.
+# query the knowledge store before a design is proposed.
 #
 # Also pins Trigger D (ADR-0056): systematic-debugging's Phase-1 evidence-gathering
-# step must be store-aware — querying BOTH `bd memories` (prior root-cause/lesson
-# memories) AND `bd list --label` (prior decision/design knowledge-beads) before
-# re-debugging a symptom — with a visible `KB check` result line.
+# step must be store-aware before re-debugging a symptom.
+#
+# Both are now the CB-R retrieval contract: the `mex graph scope` query, the
+# read-the-routed-pages mandate, and a visible `mex retrieval:` result line.
 #
 # Assertion policy: behavioral (executes the artifact) or absence-of-defect pins only.
 # Presence-of-prose assertions are forbidden here — see
@@ -31,16 +32,16 @@ fi
 # CHANGE-DETECTOR — retained until cc-eval covers Trigger A (brainstorming queries
 # the KB before proposing a design). Do NOT "fix" a failure here by re-pinning the
 # new prose; either convert it to behavioral or delete it under the bar above.
-if grep -qF -- 'bd list --label' "$SKILL"; then
-  echo "PASS: KB query command present (bd list --label)"
+if grep -qF -- 'mex graph scope' "$SKILL"; then
+  echo "PASS: KB query command present (mex graph scope)"
 else
-  echo "FAIL: KB query command missing (bd list --label) in $SKILL"; fail=1
+  echo "FAIL: KB query command missing (mex graph scope) in $SKILL"; fail=1
 fi
 
-if grep -qF -- 'KB check' "$SKILL"; then
-  echo "PASS: visible KB check result present (KB check)"
+if grep -qF -- 'mex retrieval:' "$SKILL"; then
+  echo "PASS: visible KB check result present (mex retrieval:)"
 else
-  echo "FAIL: visible KB check result missing (KB check) in $SKILL"; fail=1
+  echo "FAIL: visible KB check result missing (mex retrieval:) in $SKILL"; fail=1
 fi
 
 [ "$fail" -eq 0 ] && echo "PASS: KB trigger markers present in brainstorming/SKILL.md" || fail=1
@@ -49,25 +50,26 @@ if [ ! -f "$DEBUG_SKILL" ]; then
   echo "FAIL: missing $DEBUG_SKILL"; fail=1
 else
   # CHANGE-DETECTOR — retained until cc-eval covers Trigger D (systematic-debugging
-  # queries both bd memories and bd list --label, with a visible KB check line,
-  # before re-debugging a symptom). Do NOT "fix" a failure here by re-pinning the new
-  # prose; either convert it to behavioral or delete it under the bar above.
-  if grep -qF -- 'bd memories' "$DEBUG_SKILL"; then
-    echo "PASS: memory-store query present (bd memories)"
+  # queries the knowledge store and reads the routed pages, with a visible
+  # `mex retrieval:` line, before re-debugging a symptom). Do NOT "fix" a failure here
+  # by re-pinning the new prose; either convert it to behavioral or delete it under the
+  # bar above.
+  if grep -qF -- 'read the routed pages' "$DEBUG_SKILL"; then
+    echo "PASS: routed-pages read mandate present (read the routed pages)"
   else
-    echo "FAIL: memory-store query missing (bd memories) in $DEBUG_SKILL"; fail=1
+    echo "FAIL: routed-pages read mandate missing (read the routed pages) in $DEBUG_SKILL"; fail=1
   fi
 
-  if grep -qF -- 'bd list --label' "$DEBUG_SKILL"; then
-    echo "PASS: KB query command present (bd list --label)"
+  if grep -qF -- 'mex graph scope' "$DEBUG_SKILL"; then
+    echo "PASS: KB query command present (mex graph scope)"
   else
-    echo "FAIL: KB query command missing (bd list --label) in $DEBUG_SKILL"; fail=1
+    echo "FAIL: KB query command missing (mex graph scope) in $DEBUG_SKILL"; fail=1
   fi
 
-  if grep -qF -- 'KB check' "$DEBUG_SKILL"; then
-    echo "PASS: visible KB check result present (KB check)"
+  if grep -qF -- 'mex retrieval:' "$DEBUG_SKILL"; then
+    echo "PASS: visible KB check result present (mex retrieval:)"
   else
-    echo "FAIL: visible KB check result missing (KB check) in $DEBUG_SKILL"; fail=1
+    echo "FAIL: visible KB check result missing (mex retrieval:) in $DEBUG_SKILL"; fail=1
   fi
 fi
 
