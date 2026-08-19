@@ -14,7 +14,7 @@ fail=0
 pattern='bd remember|bd memories|bd forget|bd recall|-l kb\b|--label kb'
 ALLOW_FILE='skills/project-init/SKILL.md'
 ALLOW_HEADING='## Migrating from knowledge-beads'
-roots=(skills/ .claude/skills/ example-workflow/ hooks/session-start)
+roots=(skills/ .claude/skills/ example-workflow/ .opencode/ hooks/session-start)
 for r in "${roots[@]}"; do
   [ -e "$r" ] || { echo "FAIL: scan root missing: $r"; exit 1; }
 done

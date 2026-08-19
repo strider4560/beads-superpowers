@@ -31,8 +31,9 @@ Two commands lie by default; treat both as named below:
   code proves nothing; only a second `mex check` does.
 
 `.mex/lessons.md`, `.mex/lessons-archive.md`, and `.mex/private/` are this product's pages —
-mex 0.7.1 neither creates nor reads them; `project-init` creates them. If they are missing, run
-`project-init`. Do not improvise a different layout.
+mex 0.7.1 neither creates nor reads them. `project-init` seeds `.mex/lessons.md` and creates
+`.mex/private/`; `.mex/lessons-archive.md` is created by this skill on the first demotion. If
+`.mex/lessons.md` or `.mex/private/` is missing, run `project-init`. Do not improvise a different layout.
 
 ## Routing table
 **The destination is the routing decision.** Classify each durable once; the row sets where it is

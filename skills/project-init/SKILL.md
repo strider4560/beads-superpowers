@@ -289,7 +289,12 @@ never overwrite an existing page.
 [ -f .mex/lessons.md ] || printf '<!-- hot page: one bullet per lesson, hard-capped at 2048 bytes -->\n' > .mex/lessons.md
 mkdir -p .mex/private
 grep -qxF '.mex/private/' .gitignore 2>/dev/null || printf '.mex/private/\n' >> .gitignore
+grep -qxF '.mex/graph.db' .gitignore 2>/dev/null || printf '.mex/graph.db\n' >> .gitignore
 ```
+
+`.mex/graph.db` is a rebuildable binary index, not source: a fresh clone regenerates it with
+`mex graph`, and a missing graph fails silently — `mex graph scope` and `mex impact` return
+`GRAPH_UNAVAILABLE` at exit 0 and `mex check` still exits 0 — so run `mex graph` after clone.
 
 `.mex/lessons-archive.md` is NOT seeded here — `mex-curator` creates it on the first
 demotion. Decisions have two homes, both already provided by mex: the prose page
@@ -297,8 +302,8 @@ demotion. Decisions have two homes, both already provided by mex: the prose page
 `.mex/events/decisions.jsonl`, created lazily by the first `mex log`. Record one with
 `mex log --type decision "<one-line decision>"` — bare `mex log` records kind `note`.
 
-Done when: `.mex/lessons.md` and `.mex/private/` exist, and `.gitignore` carries the
-`.mex/private/` entry.
+Done when: `.mex/lessons.md` and `.mex/private/` exist, and `.gitignore` carries both the
+`.mex/private/` and `.mex/graph.db` entries.
 
 ## Migrating from knowledge-beads
 

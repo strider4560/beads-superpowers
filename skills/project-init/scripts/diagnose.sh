@@ -48,6 +48,12 @@ if command -v mex >/dev/null 2>&1; then
 else
   echo "mex: UNAVAILABLE (needs Node >= 22.5.0; npm i -g mex-agent@0.7.1)"
 fi
+# `node --version` prints a bare `vX.Y.Z` with no program name — label it here.
+if command -v node >/dev/null 2>&1; then
+  printf 'node: %s\n' "$(node --version 2>/dev/null | head -1)"
+else
+  echo "node: UNAVAILABLE (mex needs Node >= 22.5.0)"
+fi
 if [ -d .mex ]; then b ls -la .mex/; else echo ".mex/: ABSENT"; fi
 if command -v mex >/dev/null 2>&1; then
   MEX_OUT=$(mex check 2>&1)
