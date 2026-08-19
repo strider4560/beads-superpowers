@@ -19,7 +19,6 @@ case "$1" in
   count)     printf 'Total: 3\nopen: 3\n' ;;
   query)     printf 'No issues found\n' ;;
   blocked)   printf 'No blocked issues\n' ;;
-  memories)  printf 'Memories (3):\n' ;;
   *) exit 0 ;;
 esac
 FAKE
@@ -47,4 +46,14 @@ echo "$out" | grep -qiE 'fresh|stale|consistent|verdict' && { echo "FAIL: verdic
 # bd absent: visible SKIP, still exits 0
 out2=$(PATH="/usr/bin:/bin" bash "$SCRIPT")
 echo "$out2" | grep -q "SKIP" || { echo "FAIL: no visible SKIP without bd"; exit 1; }
+# mex is independent of bd: the section prints even when bd is absent
+echo "$out2" | grep -q "== mex ==" || { echo "FAIL: mex section missing without bd"; exit 1; }
+
+# read-side redaction: credential shapes in the lessons head never reach stdout
+mkdir -p .mex
+printf 'lesson: rotated token sk-abcdefghijklmnopqrstuvwxyz123456 today\n' > .mex/lessons.md
+out3=$(PATH="$TMP/bin:$PATH" bash "$SCRIPT")
+echo "$out3" | grep -q "sk-abcdefghijklmnopqrstuvwxyz123456" \
+  && { echo "FAIL: credential shape reached stdout unredacted"; exit 1; }
+echo "$out3" | grep -q "REDACTED" || { echo "FAIL: redaction marker missing"; exit 1; }
 echo "PASS: orient.sh"

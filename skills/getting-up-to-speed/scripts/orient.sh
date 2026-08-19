@@ -37,11 +37,21 @@ else
         # warnings, so the code alone under-reports and the text alone
         # over-reports. The agent reads both; this script judges neither.
         mex_out=$(mex check 2>&1); mex_rc=$?
-        echo "check: exit=$mex_rc $(printf '%s\n' "$mex_out" | head -1)"
+        mex_first=$(printf '%s\n' "$mex_out" | head -1)
+        echo "check: exit=$mex_rc${mex_first:+ $mex_first}"
     else
         echo "check: exit=127 (mex not on PATH)"
     fi
-    head -20 .mex/lessons.md 2>/dev/null
+    # Read-side defence in depth: the write-side scan (mex-curator / session-handoff
+    # capture) is the primary control, but this script echoes hot-page excerpts, so
+    # redact high-confidence credential shapes before printing. PEM keys are redacted
+    # as a BEGIN..END range; with no END line the range runs to end of input, so key
+    # bytes can never survive merely because the block was truncated by head.
+    head -20 .mex/lessons.md 2>/dev/null | sed -E \
+        -e '/-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----END [A-Z ]*PRIVATE KEY-----/s/.*/[REDACTED]/' \
+        -e 's/sk-[A-Za-z0-9]{20,}/[REDACTED]/g' \
+        -e 's/ghp_[A-Za-z0-9]{20,}/[REDACTED]/g' \
+        -e 's/AKIA[0-9A-Z]{16}/[REDACTED]/g'
 fi
 
 echo "== handoff =="

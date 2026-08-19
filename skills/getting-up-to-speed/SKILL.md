@@ -30,7 +30,7 @@ Copy this checklist into your working response and tick as you go:
 Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled sections: `scale` (tracked=N, git=0|1), `ledger`, `ready`, `in-progress`, `blocked`, `mex` (`ABSENT`, or `PRESENT` + a `check:` line carrying `mex check`'s exit code and first output line + the first 20 lines of `.mex/lessons.md`), `handoff` (`path=`, `head_sha=`, `doc_sha=`, `doc_mtime=`, `last_commit_time=`, `inbox_count=`). It never runs `bd dolt` commands — orientation stays read-only. If `== handoff ==` has a `path=` line, `Read` that file (the second call); quote only its short headline — never echo doc body sections that could carry secrets. The handoff is a synthesized narrative → cross-check it in step 4 and tag it ⚠️, never "verified".
 
 - No `<beads-context>` block visible this session → run `bd prime` once before the script.
-- bd missing / `.beads` absent → the script's bd branch reads SKIP (the `mex` section included): skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped", and read `.mex/lessons.md` directly if `.mex/` exists.
+- bd missing / `.beads` absent → the script's bd branch reads SKIP: skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped".
 
 Done when: every orient.sh section is read, and the handoff is read or recorded as "none".
 
@@ -53,7 +53,7 @@ Done when: 3 beads drilled (or step skipped with reason).
 ### 4 — Close
 
 1. Capture durable, evidence-backed insights per the capture contract (`mex-curator`): one `<kind>: <insight>` bullet appended to `.mex/lessons.md`, the evidence named. The hot page is hard-capped at 2048 bytes — if the append would exceed it, demote the coldest entries to `.mex/lessons-archive.md` first. A stale Phase-1 entry is updated in place, never left beside its replacement.
-2. Prune continuation pointers in `.mex/lessons.md` to one: keep the entry paired with the doc read; remove the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
+2. Prune continuation pointers in `.mex/lessons.md` to one: keep the entry paired with the doc read; remove the rest whose line starts `lesson: continuation` — match that **line prefix** only; a mex entry carries no separate key prefix. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<entry>`."
 3. Archive the consumed doc (only if one was read; AFTER the prune):
    `mkdir -p .internal/handoff/archive && mv -f "<doc>" .internal/handoff/archive/`
    Report "Archived consumed handoff `<name>` → `archive/`." — or on failure "⚠️ could not archive (<reason>); left in inbox" and continue (it self-heals next session). This mv is the skill's only local mutation.

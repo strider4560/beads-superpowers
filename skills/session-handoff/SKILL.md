@@ -51,7 +51,8 @@ tailor Work In Progress / Loose Threads / Suggested Skills.
    capture contract (`mex-curator` owns the store; this skill only appends):
    `lesson: continuation — <one-line pointer to doc path + headline state>; see .internal/handoff/<file>`
    One entry per handoff, named for its doc (`continuation-<date>-<topic>`), so
-   `getting-up-to-speed` can prune superseded ones by the `continuation-` prefix.
+   `getting-up-to-speed` can prune superseded ones by the `lesson: continuation`
+   line prefix.
    **Cap-aware:** the hot page is hard-capped at 2048 bytes. Check first
    (`wc -c .mex/lessons.md`); if the append would exceed the cap, demote the coldest
    entries to `.mex/lessons-archive.md` until it fits — demote, never delete.
