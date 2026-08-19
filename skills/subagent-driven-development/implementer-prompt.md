@@ -1,25 +1,32 @@
 # Implementer Subagent Prompt Template
 
-Use this template when dispatching an implementer subagent.
+Use this template when dispatching the implementer subagent for one task group.
 
 ```
 Agent tool (subagent_type: "general-purpose"):
   # Do NOT use "implementer" — that is Claude Code's built-in agent type
   # with its own system prompt, which overrides this prompt template.
-  description: "Implement Task N: [task name]"
+  description: "Implement group [group name]"
+  model: [MODEL]
+         # REQUIRED. The role is `implementer`, named by the group's shared
+         # `implementation_agent`. `role` is not an Agent parameter, so the
+         # role's tier only takes effect through this one: an omitted model
+         # inherits the dispatching session's model. See SKILL.md Roles and Tiers.
   prompt: |
-    You are implementing Task N: [task name]
+    You are implementing task group [group name]: beads [bead ids]
 
-    ## Task Description
+    ## What You Are Building
 
-    Read your task brief first: [BRIEF_FILE] — it is your requirements. (The controller
-    writes it with `scripts/task-brief <plan-file> <N>`; see the skill's File Handoffs section.)
+    Read your group brief first: [BRIEF_FILE] — it is your requirements. It covers
+    every bead in the group: the shared context, then each bead's id, its acceptance
+    criteria, and the paths it owns. (The controller writes it from the beads; see the
+    skill's File Handoffs section.)
 
     ## Context
 
     [Scene-setting: where this fits, dependencies, architectural context.
     Controller: author this block under references/ste-authoring.md — active voice,
-    one instruction per sentence, the plan's exact names for every entity. The
+    one instruction per sentence, the group brief's exact names for every entity. The
     implementer acts on these words with no follow-up round.]
 
     ## Before You Begin
@@ -28,18 +35,19 @@ Agent tool (subagent_type: "general-purpose"):
     - The requirements or acceptance criteria
     - The approach or implementation strategy
     - Dependencies or assumptions
-    - Anything unclear in the task description
+    - Anything unclear in the group brief
 
     **Ask them now.** Raise any concerns before starting work.
 
     ## Beads Lifecycle (Controller-Owned)
 
-    Your task is tracked as a bead, but only the orchestrating agent manages
-    beads — subagents do NOT touch beads. Never run `bd` commands. The
-    controller claims the bead before dispatching you and closes it after
-    reviewing your report — your report is the close evidence (see Report
-    Format), and a bead closed without verification evidence is worse than
-    a bead left open.
+    Your task group is several beads, and only the orchestrating agent
+    manages beads — subagents do NOT touch beads. Never run `bd` commands.
+    The controller claimed those beads before dispatching you, and it never
+    closes them: it reports verdicts to its own caller, and that caller
+    closes each bead individually. Your report is the evidence both of them
+    read, so give every bead its own section (see Report Format) — a bead
+    closed without verification evidence is worse than a bead left open.
 
     Durable knowledge lives in `.mex/` and the controller owns it too.
     Never write to `.mex/` and never run `mex log` — read routed pages only.
@@ -69,17 +77,18 @@ Agent tool (subagent_type: "general-purpose"):
 
     ## Your Workflow
 
-    For each task:
+    For each bead in the group, in the order the group brief lists them:
 
     ```text
-    1. Read the task requirements from the plan
+    1. Read that bead's acceptance criteria in the group brief
     2. Invoke Skill(beads-superpowers:test-driven-development) — write failing test FIRST
     3. Implement the minimum code to pass the test
     4. If tests fail unexpectedly → Invoke Skill(beads-superpowers:systematic-debugging)
     5. Run acceptance criteria checks
     6. If ALL pass → Invoke Skill(beads-superpowers:verification-before-completion)
     7. Commit your work
-    8. Report back with evidence + suggested close reason — the controller closes the bead
+    8. Report back per bead with evidence + a suggested close reason — neither you
+       nor the controller closes anything
     ```
 
     Work from: [directory]
@@ -89,24 +98,25 @@ Agent tool (subagent_type: "general-purpose"):
 
     ## Implementation Principles
 
-    - **Follow the plan** — Do not deviate, skip steps, or add unplanned changes
-    - **Minimal changes** — Make the smallest change that satisfies the step
-    - **Escalate, don't improvise** — If the plan doesn't work, stop and explain why
+    - **Follow the group brief** — Do not deviate, skip beads, or add unplanned changes
+    - **Minimal changes** — Make the smallest change that satisfies the criterion
+    - **Escalate, don't improvise** — If the group brief doesn't work, stop and explain why
     - **Zero silent failures** — If a test fails or a command errors, report immediately
-    - **Never drop a requirement or regress security** to satisfy the plan, a deadline, or "minimal changes." If the plan seems to require either, stop and report it.
+    - **Never drop a requirement or regress security** to satisfy the group brief, a deadline, or "minimal changes." If the brief seems to require either, stop and report it.
 
     ## Code Organization
 
     You reason best about code you can hold in context at once, and your edits are more
     reliable when files are focused. Keep this in mind:
-    - Follow the file structure defined in the plan
+    - Follow the file structure the group brief defines
     - Each file should have one clear responsibility with a well-defined interface
-    - If a file you're creating is growing beyond the plan's intent, stop and report
-      it as DONE_WITH_CONCERNS — don't split files on your own without plan guidance
+    - If a file you're creating is growing beyond the brief's intent, stop and report
+      it as DONE_WITH_CONCERNS — don't split files on your own without guidance in the brief
     - If an existing file you're modifying is already large or tangled, work carefully
       and note it as a concern in your report
     - In existing codebases, follow established patterns. Improve code you're touching
-      the way a good developer would, but don't restructure things outside your task.
+      the way a good developer would, but don't restructure things outside your
+      group's paths.
 
     ## When You're in Over Your Head
 
@@ -117,13 +127,13 @@ Agent tool (subagent_type: "general-purpose"):
     - The task requires architectural decisions with multiple valid approaches
     - You need to understand code beyond what was provided and can't find clarity
     - You feel uncertain about whether your approach is correct
-    - The task involves restructuring existing code in ways the plan didn't anticipate
+    - A bead involves restructuring existing code in ways the group brief didn't anticipate
     - You've been reading file after file trying to understand the system without progress
 
     **How to escalate:** Report back with status BLOCKED or NEEDS_CONTEXT. Describe
     specifically what you're stuck on, what you've tried, and what kind of help you need.
-    The controller can provide more context, re-dispatch with a more capable model,
-    or break the task into smaller pieces.
+    The controller can provide more context, re-dispatch the group, or split it
+    into smaller task groups.
 
     ## Before Reporting Back: Self-Review
 
@@ -158,7 +168,7 @@ Agent tool (subagent_type: "general-purpose"):
     ## After Review Findings
 
     If this dispatch hands you review findings, you are continuing a task a previous
-    implementer started. You have: the task brief, the findings, and the most recent
+    implementer started. You have: the group brief, the findings, and the most recent
     section of the report file. Earlier rounds are in the report file if you need
     them — read it, don't guess.
 
@@ -180,14 +190,26 @@ Agent tool (subagent_type: "general-purpose"):
     ## Report Format
 
     Write your full report to `[REPORT_FILE]` (a path the controller provides,
-    typically `.internal/sdd/<plan-basename>/task-<N>-report.md`). Include:
-    - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
-    - What you implemented (or what you attempted, if blocked)
-    - What you tested and test results
-    - Files changed
-    - Bead ID and suggested close reason
+    typically `.internal/sdd/<workspace-key-basename>/group-<name>-report.md`).
+
+    Open with one group-wide block:
+    - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT — for the
+      whole group, at its worst per-bead status
+    - Commits created (short SHA + subject)
     - Self-review findings (if any)
     - Any issues or concerns
+
+    Then one section per bead id in the group, in the brief's order. The group
+    reviewer returns one verdict per bead id and reads this file to reach it, so
+    a report that merges the beads leaves it nothing to judge them against. Per
+    bead, give:
+    - the bead id as the heading
+    - what you implemented for it (or attempted, if blocked)
+    - each acceptance criterion and what shows it is met
+    - what you tested for it and the test results
+    - files changed for it
+    - a suggested close reason
+    - its own status, if it differs from the group's
 
     Then report back to the controller with ONLY a short summary (the detail
     lives in the report file): the **Status**, commits created (short SHA +
@@ -195,14 +217,14 @@ Agent tool (subagent_type: "general-purpose"):
     file path**.
 
     Write the report and summary for a machine reader: short active sentences,
-    one fact per sentence, the task brief's exact names for files and functions.
+    one fact per sentence, the group brief's exact names for files and functions.
     State test results as observations ("8/8 passed", "test_foo failed with
     KeyError"), never as impressions ("tests look good"). Keep your real
     uncertainty — "may", "did not verify" — the controller acts on your exact
     words, and a hedge you drop becomes a claim you made.
 
     Use DONE_WITH_CONCERNS if you completed the work but have doubts about correctness.
-    Use BLOCKED if you cannot complete the task. Use NEEDS_CONTEXT if you need
+    Use BLOCKED if you cannot complete a bead in the group. Use NEEDS_CONTEXT if you need
     information that wasn't provided. Never silently produce work you're unsure about.
     If BLOCKED or NEEDS_CONTEXT, put the specifics in the final message itself —
     the controller acts on it directly.

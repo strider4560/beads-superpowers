@@ -1,279 +1,204 @@
 ---
 name: subagent-driven-development
-description: Use when executing implementation plans with independent tasks in the current session
+description: Use when an orchestrator hands you task groups to build, or when the user directs in-session execution of task beads that writing-plans already captured
 ---
 
 # Subagent-Driven Development
 
-Execute plan by dispatching fresh subagent per task, with a single read-only task review after each — one reviewer returns a spec-compliance verdict and a code-quality verdict in one pass.
+This skill is the task engine. A caller hands it work that is already captured as beads; it builds that work through fresh subagents, reviews it, and reports verdicts back.
 
-**Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+## The Contract
 
-**Core principle:** Fresh subagent per task + a single read-only task review (spec + quality verdicts in one pass) = high quality, fast iteration
+| Part | Value |
+| --- | --- |
+| Input | One or more **task groups**. Each carries its task bead ids, the one `implementation_agent` those beads share, the non-overlapping paths they touch, and the path of a worktree the caller already created. The caller also passes one **workspace key** for the whole invocation — the path of a file that already exists, whose basename names the review workspace. |
+| Behavior | Per task group: one STE brief, one implementer subagent, one group review over the combined diff, then fix rounds under the five-round breaker. |
+| Output | Verified commits on each group's branch, plus that group's review verdicts, reported per task bead id. |
+| Worktrees and branches | The caller owns both. It creates each group's worktree, merges the group branch when it accepts the verdicts, and removes the worktree. This engine works inside the worktree it was handed and **NEVER** merges a branch or removes a worktree. |
+| Bead closing | The caller closes each task bead individually. This engine **NEVER** closes a task bead. |
 
-**Continuous execution:** Do not pause to check in with your human partner between tasks. Execute all tasks from the plan without stopping. The only reasons to stop are: BLOCKED status you cannot resolve, ambiguity that genuinely prevents progress, or all tasks complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the plan, so execute it.
+**Task group.** A set of task beads that one implementer subagent builds, in one worktree, under one review. Two constraints define it:
 
-## When to Use
+1. Every bead in the set names the same `implementation_agent` in its metadata.
+2. No two beads in the set touch the same path.
 
-```dot
-digraph when_to_use {
-    "Have implementation plan?" [shape=diamond];
-    "Tasks mostly independent?" [shape=diamond];
-    "Stay in this session?" [shape=diamond];
-    "subagent-driven-development" [shape=box];
-    "executing-plans" [shape=box];
-    "Manual execution or brainstorm first" [shape=box];
+A set that breaks either constraint is not a task group — split it until both constraints hold. **Always** call this thing a task group, in the brief, in the bead text, in the report, and in anything you say to the caller. A second name for it is how a subagent ends up thinking there are two things.
 
-    "Have implementation plan?" -> "Tasks mostly independent?" [label="yes"];
-    "Have implementation plan?" -> "Manual execution or brainstorm first" [label="no"];
-    "Tasks mostly independent?" -> "Stay in this session?" [label="yes"];
-    "Tasks mostly independent?" -> "Manual execution or brainstorm first" [label="no - tightly coupled"];
-    "Stay in this session?" -> "subagent-driven-development" [label="yes"];
-    "Stay in this session?" -> "executing-plans" [label="no - parallel session"];
-}
-```
+**This engine operates on existing beads.** `writing-plans` creates the initiative, the epics, and the task beads, and lints the graph before it hands off. This skill creates no task beads and parses no plan file (the breaker files blocker beads for discovered work, and nothing else). Each task bead's `## Acceptance Criteria` section is the requirement of record, and its `metadata` names the implementing role.
 
-**vs. Executing Plans (parallel session):**
-- Same session (no context switch)
-- Fresh subagent per task (no context pollution)
-- One task review after each task: spec-compliance and code-quality verdicts in a single read-only pass
-- Faster iteration (no human-in-loop between tasks)
+**Callers.** great_cto's `implementing-epics` is the normal caller: it forms the groups, invokes this engine, and closes the beads afterwards. The other entry is the user directing in-session execution after `writing-plans` presents its handoff — then you form the groups yourself, under the same two constraints, from `bd ready --parent <epic-id>`. On that path you hold both jobs: you create the worktrees, you choose the workspace key, and you merge. The walkthrough below marks each step `[caller]` or `[engine]` so the two jobs stay distinguishable when one agent does both.
 
-## Pre-Flight Plan Review
+**Why subagents:** You delegate a task group to a specialized agent with isolated context. By precisely crafting its instructions and context, you ensure it stays focused and succeeds. It should never inherit your session's context or history — you construct exactly what it needs. This also preserves your own context for coordination work.
 
-Before dispatching Task 1, scan the plan once for conflicts:
+**Continuous execution:** Do not pause to check in with your human partner between task groups. Execute every group you were handed without stopping. The only reasons to stop are: BLOCKED status you cannot resolve, ambiguity that genuinely prevents progress, or all groups complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the work, so execute it.
 
-- tasks that contradict each other or the plan's Global Constraints
-- anything the plan explicitly mandates that the review rubric treats as a defect (a test that asserts nothing, verbatim duplication of a logic block)
+## Pre-Flight Group Review
 
-Present everything you find to your human partner as **one batched structured question** — each finding beside the plan text that mandates it, asking which governs — before execution begins, not one interrupt per discovery mid-plan. If the scan is clean, proceed without comment. The review loop remains the net for conflicts that only emerge from implementation.
+Before dispatching a group's implementer, read every bead in the group once and scan for conflicts:
 
-## The Process (Sequential Mode)
+- acceptance criteria that contradict each other or the epic's `## Success Criteria`
+- anything a bead mandates that the review rubric treats as a defect (a test that asserts nothing, verbatim duplication of a logic block)
+- a path claimed by two beads in the same group — that breaks the second grouping constraint, and the group has to be split before dispatch
 
-> This section describes **sequential execution** — one task at a time in a shared epic worktree. This is the default when tasks have dependencies or only one task is unblocked. For parallel execution of independent tasks, see **Parallel Batch Mode** below.
+Present everything you find to your human partner as **one combined structured question** — each finding beside the bead text that mandates it, asking which governs — before execution begins, not one interrupt per discovery mid-group. If the scan is clean, proceed without comment. The review loop remains the net for conflicts that only emerge from implementation.
+
+## The Process
 
 ```dot
-digraph process {
+digraph group_engine {
     rankdir=TB;
 
-    subgraph cluster_per_task {
-        label="Per Task";
-        "Dispatch implementer subagent (./implementer-prompt.md)" [shape=box];
+    subgraph cluster_per_group {
+        label="Per Task Group";
+        "Read the group's beads, write the group brief" [shape=box];
+        "Dispatch implementer subagent (role: implementer)" [shape=box];
         "Implementer subagent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
-        "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" [shape=box];
-        "Task reviewer: spec compliant AND quality approved?" [shape=diamond];
+        "Dispatch group reviewer (role: group-reviewer) over the combined diff" [shape=box];
+        "Every acceptance criterion met AND quality approved?" [shape=diamond];
         "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [shape=box];
         "Re-review PASS and full suite green?" [shape=diamond];
-        "Breaker: file findings, block task (references/breaker-trip.md)" [shape=box];
-        "bd close <task-id> --reason 'Completed'" [shape=box];
+        "Breaker: file findings, block the group's beads (references/breaker-trip.md)" [shape=box];
+        "Report per-bead verdicts and the commit range" [shape=box];
     }
 
-    "Read plan, extract all tasks, create epic bead + child beads (bd create)" [shape=box];
-    "More tasks remain?" [shape=diamond];
-    "Dispatch final code reviewer subagent for entire implementation" [shape=box];
-    "Use beads-superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
+    "More groups remain?" [shape=diamond];
+    "Hand the verified branches and verdicts back to the caller" [shape=box style=filled fillcolor=lightgreen];
 
-    "Read plan, extract all tasks, create epic bead + child beads (bd create)" -> "Dispatch implementer subagent (./implementer-prompt.md)";
-    "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
+    "Read the group's beads, write the group brief" -> "Dispatch implementer subagent (role: implementer)";
+    "Dispatch implementer subagent (role: implementer)" -> "Implementer subagent asks questions?";
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
-    "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
+    "Answer questions, provide context" -> "Dispatch implementer subagent (role: implementer)";
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch task reviewer subagent (./task-reviewer-prompt.md)";
-    "Dispatch task reviewer subagent (./task-reviewer-prompt.md)" -> "Task reviewer: spec compliant AND quality approved?";
-    "Task reviewer: spec compliant AND quality approved?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no"];
+    "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch group reviewer (role: group-reviewer) over the combined diff";
+    "Dispatch group reviewer (role: group-reviewer) over the combined diff" -> "Every acceptance criterion met AND quality approved?";
+    "Every acceptance criterion met AND quality approved?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no"];
     "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" -> "Re-review PASS and full suite green?";
-    "Re-review PASS and full suite green?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
+    "Re-review PASS and full suite green?" -> "Report per-bead verdicts and the commit range" [label="yes"];
     "Re-review PASS and full suite green?" -> "Fix round (max 5): FRESH implementer + scoped re-review (./re-review-prompt.md)" [label="no - round < 5"];
-    "Re-review PASS and full suite green?" -> "Breaker: file findings, block task (references/breaker-trip.md)" [label="no - round 5 closed"];
-    "Task reviewer: spec compliant AND quality approved?" -> "bd close <task-id> --reason 'Completed'" [label="yes"];
-    "bd close <task-id> --reason 'Completed'" -> "More tasks remain?";
-    "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
-    "More tasks remain?" -> "Dispatch final code reviewer subagent for entire implementation" [label="no"];
-    "Dispatch final code reviewer subagent for entire implementation" -> "Use beads-superpowers:finishing-a-development-branch";
+    "Re-review PASS and full suite green?" -> "Breaker: file findings, block the group's beads (references/breaker-trip.md)" [label="no - round 5 closed"];
+    "Every acceptance criterion met AND quality approved?" -> "Report per-bead verdicts and the commit range" [label="yes"];
+    "Report per-bead verdicts and the commit range" -> "More groups remain?";
+    "More groups remain?" -> "Read the group's beads, write the group brief" [label="yes"];
+    "More groups remain?" -> "Hand the verified branches and verdicts back to the caller" [label="no"];
 }
 ```
 
-**Checking for remaining tasks:** Use `bd ready --parent <epic-id>` to see remaining unblocked child tasks. Use `bd epic status <epic-id>` for a summary view of completion percentage. When `bd ready` returns no results for the epic, all tasks are complete.
+**Reading the group's state:** `bd show <task-id>` gives you a bead's acceptance criteria and metadata. On the in-session path, `bd ready --parent <epic-id>` gives you the unblocked task beads to form groups from, and `bd epic status <epic-id>` summarizes completion. Closing stays with the caller either way.
 
-> **`--claim` consent boundary.** This skill's autonomous take-next / batch-dispatch flow is the one place `bd ready --claim` is legitimate. That autonomous `--claim` is FORBIDDEN wherever the user picks the work (orientation, brainstorming, session close) — the consent gate binds even when this skill is not loaded.
+> **`--claim` consent boundary.** This skill's autonomous take-next / group-dispatch flow is the one place `bd ready --claim` is legitimate. That autonomous `--claim` is FORBIDDEN wherever the user picks the work (orientation, brainstorming, session close) — the consent gate binds even when this skill is not loaded.
 
-## Parallel Batch Mode
+## Running Groups Concurrently
 
-When `bd ready --parent <epic-id>` returns multiple unblocked tasks, those tasks have no dependencies between them and can execute in parallel — each in its own isolated `bd worktree`.
+Task groups do not share paths, so two groups can run at the same time without colliding — each in its own isolated `bd worktree`.
 
-**Core principle:** One `bd worktree` per task + parallel dispatch = safe concurrency with per-task rollback.
+**Core principle:** One `bd worktree` per task group + concurrent dispatch = safe concurrency with per-group rollback.
 
-**Parallel cap:** Maximum 5 subagents per batch. If more tasks are unblocked, split into batches of 5.
+**Concurrency cap:** at most five task groups in flight at once. If the caller hands you more, run the rest in a later **wave** — one wave is one set of task groups dispatched together, the same unit `bd swarm validate` reports. A wave holds groups; it is not another word for a group.
 
 ### Before you fan out (orchestrator-only)
 
-Worktrees isolate *files*, not *assumptions* — parallel agents on different files can still diverge on an un-prescribed shared decision (MAST FC2). Before dispatching:
+Worktrees isolate *files*, not *assumptions* — implementers on different files can still diverge on an un-prescribed shared decision (MAST FC2). Before dispatching:
 
-1. **Front-load shared decisions** — list every decision ≥2 agents depend on (schemas, naming, interfaces, conventions); decide each once and write it verbatim into *every* agent prompt.
-2. **Share full context, not summaries** — give each agent the relevant traces/facts, not a lossy digest.
+1. **Front-load shared decisions** — list every decision two or more groups depend on (schemas, naming, interfaces, conventions); decide each once and write it verbatim into *every* group brief.
+2. **Share full context, not summaries** — give each implementer the relevant traces and facts, not a lossy digest.
 
 This is orchestrator discipline applied before dispatch; do not ask subagents to coordinate with each other.
 
-### Batch Execution Flow
+### Concurrent Walkthrough
 
-```dot
-digraph parallel_batch {
-    rankdir=TB;
-
-    "bd swarm validate <epic-id>" [shape=box];
-    "bd ready --parent <epic-id>" [shape=box];
-    "How many unblocked?" [shape=diamond];
-    "0: All done → finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
-    "1: Sequential mode (run in epic worktree)" [shape=box];
-    ">1: Parallel batch" [shape=box];
-    "Create bd worktree per task (max 5)" [shape=box];
-    "Dispatch subagents in parallel (one Agent call per task, all in one message)" [shape=box];
-    "Task review per task (single reviewer)" [shape=box];
-    "All reviews pass?" [shape=diamond];
-    "Merge passed task branches into epic worktree" [shape=box];
-    "bd worktree remove completed tasks" [shape=box];
-    "Run full test suite on epic worktree" [shape=box];
-    "Integration tests pass?" [shape=diamond];
-    "systematic-debugging → fix" [shape=box];
-    "Handle failed tasks" [shape=box];
-
-    "bd swarm validate <epic-id>" -> "bd ready --parent <epic-id>";
-    "bd ready --parent <epic-id>" -> "How many unblocked?";
-    "How many unblocked?" -> "0: All done → finishing-a-development-branch" [label="0"];
-    "How many unblocked?" -> "1: Sequential mode (run in epic worktree)" [label="1"];
-    "1: Sequential mode (run in epic worktree)" -> "bd ready --parent <epic-id>" [label="after task completes"];
-    "How many unblocked?" -> ">1: Parallel batch" [label="2-5+"];
-    ">1: Parallel batch" -> "Create bd worktree per task (max 5)";
-    "Create bd worktree per task (max 5)" -> "Dispatch subagents in parallel (one Agent call per task, all in one message)";
-    "Dispatch subagents in parallel (one Agent call per task, all in one message)" -> "Task review per task (single reviewer)";
-    "Task review per task (single reviewer)" -> "All reviews pass?";
-    "All reviews pass?" -> "Merge passed task branches into epic worktree" [label="yes"];
-    "All reviews pass?" -> "Handle failed tasks" [label="some failed"];
-    "Handle failed tasks" -> "Merge passed task branches into epic worktree" [label="merge passing tasks"];
-    "Merge passed task branches into epic worktree" -> "bd worktree remove completed tasks";
-    "bd worktree remove completed tasks" -> "Run full test suite on epic worktree";
-    "Run full test suite on epic worktree" -> "Integration tests pass?";
-    "Integration tests pass?" -> "bd ready --parent <epic-id>" [label="yes → next batch"];
-    "Integration tests pass?" -> "systematic-debugging → fix" [label="no"];
-    "systematic-debugging → fix" -> "Run full test suite on epic worktree";
-}
-```
-
-### Parallel Batch Walkthrough
+Each step is marked with the job that owns it. On the in-session path you do both.
 
 ```
-1. Orchestrator creates epic worktree (once, at the start):
-     bd worktree create .worktrees/<epic-name>
+1. [caller] Create the shared worktree once, at the start:
+     bd worktree create .worktrees/<initiative-name>
 
-2. Analyze the work graph before dispatching:
+2. [caller] Check the work graph before dispatching:
      bd swarm validate <epic-id>
-     → Shows wave structure (which tasks can run concurrently vs sequentially),
+     → Shows wave structure (which work can run concurrently vs sequentially),
        max parallelism, estimated worker-sessions, and dependency warnings.
-     Use this to plan batch sizes and catch missing dependencies before
-     wasting subagent runs on tasks that will block.
+     Use it to catch missing dependencies before spending subagent runs on
+     groups that will block.
 
-3. Get unblocked tasks:
-     bd ready --parent <epic-id>
-     → Returns N tasks with no unresolved dependencies
+3. [caller] For each task group in the wave (at most five), create the worktree
+   the engine will be handed:
+     bd worktree create .worktrees/<group-name> --branch feature/<epic>/<group>
 
-4. If N > 1 (parallel batch, cap at 5 per batch):
-   For each task in the batch:
-     bd worktree create .worktrees/<task-name> --branch feature/<epic>/<task>
-
-5. Dispatch all subagents in parallel:
-   Read ./implementer-prompt.md, then one Agent tool call per task, ALL in the same message:
+4. [engine] Dispatch the implementers concurrently:
+   Read ./implementer-prompt.md, then one Agent tool call per task group,
+   ALL in the same message:
      Agent({
-       description: "Implement Task N: <name>",
-       prompt: "<implementer-prompt content with 'Work from: <task-worktree-path>'>",
-       subagent_type: "general-purpose"
+       description: "Implement group <name>",
+       prompt: "<implementer-prompt content with 'Work from: <group-worktree-path>'>",
+       subagent_type: "general-purpose",
+       model: "<the model the role runs on — see Roles and Tiers>"
      })
 
-6. Task review per task (can also run in parallel):
-   Dispatch the single task reviewer (./task-reviewer-prompt.md) with the task
-   brief, the implementer's report file, and the review-package diff. It returns
-   a spec-compliance verdict (✅/❌/⚠️) and a code-quality verdict in one pass.
+5. [engine] Group review per group (these can also run concurrently):
+   Dispatch the group reviewer (./task-reviewer-prompt.md) with the group brief,
+   the implementer's report file, and the review-package diff of the group's
+   combined range. It returns one spec-compliance verdict per task bead id
+   (✅/❌/⚠️) and one code-quality verdict for the group.
 
-7. For each task that passes review:
-     cd .worktrees/<epic-name>
-     git merge feature/<epic>/<task>
-     bd worktree remove .worktrees/<task-name>
-     bd close <task-id> --reason "Completed: reviews passed"
+6. [engine] Report each group's per-bead verdicts and commit range. The verified
+   commits stay on feature/<epic>/<group>. Stop here: merging and removing the
+   worktree are the caller's, and so is closing the beads.
 
-8. Run full test suite on epic worktree (integration check):
-   If fail → invoke systematic-debugging → fix before next batch
+7. [caller] For each group whose verdicts you accept:
+     cd .worktrees/<initiative-name>
+     git merge feature/<epic>/<group>
+     bd worktree remove .worktrees/<group-name>
 
-9. Re-run bd ready --parent <epic-id>
-   Repeat from step 3 until no tasks remain
+8. [caller] Run the full test suite on the shared worktree (integration check):
+   If it fails → invoke systematic-debugging → fix before the next wave.
 
-9. If N == 1 at any point:
-   Sequential mode — run in epic worktree directly, no per-task worktree needed
+9. Repeat from step 3 until no groups remain.
 ```
 
-> **Tip:** Use `bd -C .worktrees/<task> ready` to check task status across worktrees without changing directory.
+> **Tip:** Use `bd -C .worktrees/<group> ready` to check bead status across worktrees without changing directory.
 
-> **Concurrent orchestrators (optional — `bd merge-slot`):** Step 7's merges run through a single orchestrator, one at a time, so the normal flow has no merge race and needs no coordination. The exception is when **two or more orchestrators or sessions** run SDD concurrently against the same repo (overlapping epics) — their merges into the shared base could collide. For that case only, serialize merges with the beads v1.0.5 merge slot: `bd merge-slot create` once for the repo, then wrap each task merge as `bd merge-slot acquire` → `git merge feature/<epic>/<task>` → `bd merge-slot release`, so only one orchestrator resolves conflicts at a time. Pairs with the `bd swarm validate` pre-step above.
+> **Concurrent orchestrators (optional — `bd merge-slot`):** Step 7's merges run through a single caller, one at a time, so the normal flow has no merge race and needs no coordination. The exception is when **two or more orchestrators or sessions** run this engine concurrently against the same repo — their merges into the shared base could collide. For that case only, serialize merges with the beads v1.0.5 merge slot: `bd merge-slot create` once for the repo, then wrap each merge as `bd merge-slot acquire` → `git merge feature/<epic>/<group>` → `bd merge-slot release`, so only one orchestrator resolves conflicts at a time. Pairs with the `bd swarm validate` pre-step above.
 
-### Failed Task Handling
+### Failed Group Handling
 
-When a parallel task fails review:
+When a task group fails review:
 
-1. **Do not merge** its task branch into the epic branch.
-2. **Option A — Fix rounds:** Keep the task worktree and run **`## Fix Rounds` / `## The Breaker`** below, unchanged: five-round cap, a FRESH implementer every round, scoped re-review via `./re-review-prompt.md`, PASS gated on a green full suite. Parallel mode gets no unbounded loop.
-3. **Option B — Discard:** not a controller call. Discarding a failed task's branch (`bd worktree remove .worktrees/<task-name>`) is a disposition **the user** decides — surface it per `references/breaker-trip.md`; never adjudicate it yourself.
-4. Other parallel tasks that passed review are still merged independently — one failure does not block the batch.
+1. **Do not merge** its branch, and report to the caller that it must not merge it either.
+2. **Option A — Fix rounds:** Keep the group's worktree and run **`## Fix Rounds` / `## The Breaker`** below, unchanged: five-round cap, a FRESH implementer every round, scoped re-review via `./re-review-prompt.md`, PASS gated on a green full suite. Concurrent execution gets no unbounded loop.
+3. **Option B — Discard:** not a controller call. Discarding a failed group's branch (`bd worktree remove .worktrees/<group-name>`) is a disposition **the user** decides — surface it per `references/breaker-trip.md`; never adjudicate it yourself.
+4. Groups that passed review are still reported independently, and the caller merges them — one failure does not block the others.
 
-### Mode Selection
+## Roles and Tiers
 
-```
-tasks = bd ready --parent <epic-id>
+**Name the role, never choose the model yourself.** Every subagent this engine dispatches is named by a role:
 
-if len(tasks) == 0:
-    All done → invoke finishing-a-development-branch
-elif len(tasks) == 1:
-    Sequential mode (run in epic worktree, existing behavior)
-elif len(tasks) <= 5:
-    Parallel batch (one bd worktree per task)
-else:
-    Take first 5 → parallel batch, remaining wait for next iteration
-```
+| Role | Where the name comes from | What it does | Runs at |
+| --- | --- | --- | --- |
+| `implementer` | the `implementation_agent` shared by the group's beads | builds the whole task group in the group's worktree | the implementation tier |
+| `group-reviewer` | fixed for this engine | reviews the group's combined diff against every acceptance criterion in the group | the review tier, at high effort |
 
-Mode selection is automatic. The orchestrator checks after every batch or sequential task completes.
+**A role is not a dispatch parameter.** The `Agent` tool takes `description`, `prompt`, `subagent_type` and `model`. It has no `role` field, and `$HOME/.agents/great_cto/shared/tier-map.json` lists which models belong to each tier rather than naming one model per role, so there is nothing here to look the role up in. The role names what the subagent is; the `model` parameter is what actually decides where it runs. Both must be right, and they are set differently on the two entry paths:
 
-## Model Selection
+- **A caller supplied the groups.** The caller resolves each role to its tier's model and passes that model in the dispatch. Write the role name in the brief and the review prompt, and pass through the model the caller gave you.
+- **The user directed in-session execution.** No resolver exists on this path. **Always** set the dispatch's `model` explicitly, and ask the user which model the review tier runs on if you do not already know — one question covers the whole session. An omitted `model` makes the subagent inherit your session's model, silently, and a `group-reviewer` that inherited an implementation-tier session is not a review-tier review. If the user does not answer, dispatch with no `model` — inheriting your session's — and record in your report that the group review ran at an unverified tier. **Do not** report it as a review-tier review.
 
-Use the least powerful model that can handle each role to conserve cost and increase speed.
+**Never** invent a model name, and never pass an effort value with one. Task beads carry no `effort` field: effort is set in the agent definition's frontmatter, so there is nothing to choose at dispatch time.
 
-**Always specify the model explicitly when dispatching a subagent.** An omitted model inherits your session's model — often the most expensive — which silently defeats this section.
-
-**Mechanical implementation tasks** (isolated functions, clear specs, 1-2 files): use a fast, cheap model. Most implementation tasks are mechanical when the plan is well-specified.
-
-**Integration and judgment tasks** (multi-file coordination, pattern matching, debugging): use a standard model.
-
-**Architecture and design tasks**: use the most capable available model.
-
-**Review tasks (task review, re-review, final review) default to the most capable tier** — that default is not a cost target to negotiate down. The one narrow exception: reviewing a genuinely small, mechanical diff (1-2 files, low complexity and risk, no design judgment) may use the standard tier — the scaling is by diff size, never by convenience or to cut cost (Production-Grade Doctrine).
-
-**Fix-loop escalation:** when a fix round's re-review still leaves findings open, escalate the next round's implementer to a more capable tier before you simply run another round at the same tier — an extra round costs more turns than a tier bump costs tokens.
-
-**Task complexity signals:**
-- Touches 1-2 files with a complete spec → cheap model
-- Touches multiple files with integration concerns → standard model
-- Requires design judgment or broad codebase understanding → most capable model
+**The role is fixed for the group.** Fix rounds dispatch a fresh `implementer` — the same role, every round. There is no cheaper substitution and no escalation to a different agent: if the role the bead names is wrong for the work, say so and stop, rather than swap in another one.
 
 ## Handling Reviewer ⚠️ Items
 
-The task reviewer returns a Spec Compliance verdict of ✅, ❌, or ⚠️. A ⚠️ "cannot verify from diff" item does **not** block the task on its own — but you (the controller) must resolve it, because it usually needs cross-task context the reviewer lacks. Check the named requirement against the broader implementation. If the ⚠️ turns out to be a real gap, treat it as a failed spec review and re-dispatch the implementer to close it; if it's actually satisfied elsewhere, record that and proceed.
+The group reviewer returns a spec-compliance verdict of ✅, ❌, or ⚠️ per task bead. A ⚠️ "cannot verify from diff" item does **not** block that bead on its own — but you (the controller) must resolve it, because it usually needs context beyond the group that the reviewer lacks. Check the named requirement against the broader implementation. If the ⚠️ turns out to be a real gap, treat it as a failed spec review and re-dispatch the implementer to close it; if it is actually satisfied elsewhere, record that and proceed.
 
 ## Fix Rounds
 
 A review returning findings starts a fix round: dispatch a **fresh implementer**
-(never resume) with the task brief, the current findings, and only the **most
+(never resume) with the group brief, the current findings, and only the **most
 recent** section of the report file. **Record `ROUND0_HEAD` (round 0's final
 commit, not `BASE`) before dispatching fix round 1** — it is round 1's `<fix-base>`.
 Then dispatch a scoped re-review filling `re-review-prompt.md` against
-`scripts/review-package <plan-file> <fix-base> HEAD`.
+`scripts/review-package <workspace-key> <fix-base> HEAD`.
 
 **A re-review PASS requires the reviewer's verdict AND a green full test suite** —
 **you (the controller) run the suite** and report it in `[SUITE_STATUS]`. What the
@@ -284,53 +209,57 @@ counter increments.
 
 ## The Breaker
 
-The fix loop runs at most **five rounds**. If round five closes with findings still
-open, the breaker trips — follow `references/breaker-trip.md`.
+The fix loop runs at most **five rounds** per task group. If round five closes with
+findings still open, the breaker trips — follow `references/breaker-trip.md`.
 
-**Completion criterion:** every open finding has a bead ID, the task bead is
-`blocked`, and the round history is surfaced to the user.
+**Completion criterion:** every open finding has a bead ID, the group's task beads are
+`blocked`, and the round history is surfaced to the user. Filing findings and blocking
+are yours; closing a task bead is the caller's, in every outcome.
 
 Implementer status handling (BLOCKED / NEEDS_CONTEXT and friends): see `references/breaker-trip.md`.
 
 > **Blocker-bead stamp:** `bd create "[spec] <title>" -t task --parent <epic-id> --notes "Severity:/Confidence:/Evidence:"` — see `verification-before-completion` → Agent-Filed Bead Discipline.
 
-## Final Review
+## Whole-Branch Review
 
-Run `scripts/review-package <plan-file> <MERGE_BASE> HEAD` and dispatch a
-most-capable-tier reviewer over the whole branch — the only place the composite of
-all fix rounds is examined. Findings go to one fix subagent, then one scoped
-re-review; residuals follow the breaker rules.
+The group review covers one group's diff. A review of every group together is the caller's
+call: when `implementing-epics` supplied the groups, report that no whole-branch review has
+run and let it decide. On the in-session path, run one yourself once every group is merged —
+`scripts/review-package <workspace-key> <MERGE_BASE> HEAD` and the `group-reviewer` role over
+the whole branch, which is the only place the composite of all groups and all fix rounds is
+examined. Findings go to one fix subagent, then one scoped re-review; residuals follow the
+breaker rules.
 
-**Teardown:** remove the plan's workspace once the final review is clean **and**
-each task's outcome and any implementer-raised concerns are recorded in beads.
-Reports are the only non-regenerable artifact — delete once the record is durable.
+**Teardown:** remove the workspace once the reviews are clean **and** each group's outcome
+and any implementer-raised concerns are recorded in beads. Reports are the only
+non-regenerable artifact — delete once the record is durable.
 
 ## File Handoffs
 
-Hand task text and review diffs to subagents as **files**, not pasted context — this keeps large text out of your own context and gives subagents a single thing to read.
+Hand group text and review diffs to subagents as **files**, not pasted context — this keeps large text out of your own context and gives subagents a single thing to read.
 
-- Before dispatching an implementer, run `scripts/task-brief <plan-file> <N>` → writes `.internal/sdd/<plan-basename>/task-<N>-brief.md`. Pass that path to the implementer as "read this first — it is your requirements."
-- The implementer writes its full report to `.internal/sdd/<plan-basename>/task-<N>-report.md` (you name the path via `[REPORT_FILE]`); the reviewer reads it as a file. Fix rounds **append** to it.
-- Before dispatching the reviewer, run `scripts/review-package <plan-file> <BASE> <HEAD>` → writes `.internal/sdd/<plan-basename>/review-<base7>..<head7>.diff`. `BASE` is the commit recorded before the implementer ran — never `HEAD~1`.
+- **The group brief is yours to write.** Read each bead in the group (`bd show <id>`), then write one brief covering all of them: the shared scene-setting context, then, per bead, its id, its acceptance criteria copied verbatim, and the paths it owns. Author it under the STE rules below. Pass the path to the implementer as "read this first — it is your requirements."
+- The implementer writes its full report to the workspace (you name the path via `[REPORT_FILE]`); the reviewer reads it as a file. Fix rounds **append** to it.
+- Before dispatching the reviewer, run `scripts/review-package <workspace-key> <BASE> <HEAD>` → writes the group's combined diff into the workspace. `BASE` is the commit recorded before the implementer ran — never `HEAD~1`.
 - The reviewer is **read-only**: it must not mutate the working tree, the index, HEAD, or branch state.
-- The workspace is resolved **per plan, per working tree** (`scripts/sdd-workspace <plan-file>`). Two plans in one tree never share brief filenames, and in Parallel Batch Mode each `bd worktree` gets its own tree.
+- The workspace is resolved per working tree by `scripts/sdd-workspace <workspace-key>`. **The caller passes the workspace key** — it is in the Contract's Input row, because `sdd-workspace` exits 2 with `no such plan file` unless the key is a file that already exists. On the in-session path you choose it yourself: the plan file `writing-plans` wrote, or the spec path the initiative bead points at. Check the file exists before the first group review, not at the review. This engine never parses that file; it names the workspace and nothing else. Each `bd worktree` gets its own tree, so concurrent groups never share filenames.
 
 ## Authoring Text for Machine Readers (STE)
 
 Every string you author in this workflow is parsed by an agent that cannot ask what
-you meant: bead descriptions (`bd create`), scene-setting context in implementer
-prompts, answers to subagent questions, review-finding relays, close reasons, and
+you meant: group briefs, scene-setting context in implementer prompts, answers to
+subagent questions, review-finding relays, the verdicts you report to the caller, and
 the durable insights you write to `.mex/lessons.md` per the capture contract.
 Write them under the Simplified Technical English rules in
 `references/ste-authoring.md` — short active sentences, one instruction per sentence,
 one name per concept, hedges preserved.
 
-The two failure modes this prevents are expensive here: a misread task brief costs a
-full fix round, and synonym rotation across parallel task briefs makes independent
+The two failure modes this prevents are expensive here: a misread group brief costs a
+full fix round, and synonym rotation across concurrent group briefs makes independent
 implementers diverge on shared names (a divergence no worktree isolates). Run the
-reference's six-item scan checklist before `bd create` and before every dispatch.
-Close reasons and `.mex/` entries get the same treatment — they are re-parsed after
-compaction by an agent with no other context.
+reference's six-item scan checklist before every dispatch. What you report back to the
+caller gets the same treatment — it is re-parsed after compaction by an agent with no
+other context.
 
 ## Prompt Templates
 
@@ -339,30 +268,25 @@ Dispatch via the `Agent` tool:
 1. `Read` the prompt template file
 2. Use its content as the `prompt` parameter
 3. Use `subagent_type: "general-purpose"` (do NOT use `"implementer"` — that is Claude Code's built-in implementer agent with its own system prompt, which overrides the prompt template)
+4. Set `model` explicitly — the model the caller resolved for the role, or the one the user named. Omitting it inherits your session's model. See Roles and Tiers.
 
-- `./implementer-prompt.md` - Dispatch implementer subagent
-- `./task-reviewer-prompt.md` - Dispatch the single task reviewer subagent (returns spec-compliance + code-quality verdicts in one read-only pass)
+- `./implementer-prompt.md` - Dispatch the implementer subagent for one task group
+- `./task-reviewer-prompt.md` - Dispatch the group reviewer (one spec verdict per task bead plus one code-quality verdict, in one read-only pass over the group's combined diff)
 - `./re-review-prompt.md` - Scoped re-reviewer for fix rounds (checks the named findings only; PASS also requires a green suite)
 
-## Example Workflow
+## Example Walkthrough
 
 ```
-You: I'm using Subagent-Driven Development to execute this plan.
+Caller: implementing-epics hands over group A — beads bsp-a1, bsp-a2, bsp-a3,
+        implementation_agent senior-dev, paths src/hooks/**, the worktree
+        .worktrees/group-a it already created, and the workspace key
+        .internal/specs/hook-install.md. It names the model for each role.
 
-[Read plan file once: .internal/plans/feature-plan.md]
-[Extract all 5 tasks with full text and context]
-[Create epic + tasks via bd import (parent-child rides the import; blocks wired after):]
-[  bd create "Epic: <name>" -t epic -p 2 -d "<goal + '## Success Criteria' heading on its own line>"  -> note epic id]
-[  Author tasks as JSONL, one per line, id OMITTED, each with a parent-child dep to the epic]
-[    and "## Acceptance Criteria" in description; pipe to: bd import -]
-[    (schema: bd import --help / bd export <id>; confirm output has no "Skipped dependency")]
-[  Wire task ordering (blocks): bd ready --parent <epic-id> --json -> child ids, then]
-[  printf 'dep add <t3> <t1> blocks\ndep add <t3> <t2> blocks\n' | bd batch]
+[bd show bsp-a1 / bsp-a2 / bsp-a3 → acceptance criteria + metadata]
+[Pre-flight scan: no contradictions, no path claimed twice → proceed]
+[Write the group brief: shared context, then one section per bead]
 
-Task 1: Hook installation script
-
-[Get Task 1 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
+[Dispatch one implementer (role: implementer) with the group brief]
 
 Implementer: "Before I begin - should the hook be installed at user or system level?"
 
@@ -370,63 +294,36 @@ You: "User level (~/.config/superpowers/hooks/)"
 
 Implementer: "Got it. Implementing now..."
 [Later] Implementer:
-  - Implemented install-hook command
-  - Added tests, 5/5 passing
-  - Self-review: Found I missed --force flag, added it
+  - Implemented install-hook command, recovery modes, and the --force flag
+  - Added tests, 13/13 passing
+  - Self-review: found a missing progress report, added it
   - Committed
 
-[Generate review package: scripts/review-package PLAN_FILE BASE HEAD]
-[Dispatch single task reviewer with the brief, report file, and diff]
-Task reviewer:
-  Spec Compliance: ✅ Spec compliant - all requirements met, nothing extra
-  Strengths: Good test coverage, clean
-  Issues: None
-  Task quality: Approved
-
-[bd close <task-1-id> --reason "Completed: review clean, commits a1b2c3d..e4f5a6b"]
-
-Task 2: Recovery modes
-
-[Get Task 2 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
-
-Implementer: [No questions, proceeds]
-Implementer:
-  - Added verify/repair modes
-  - 8/8 tests passing
-  - Self-review: All good
-  - Committed
-
-[Generate review package + dispatch single task reviewer]
-Task reviewer:
-  Spec Compliance: ❌ Issues:
-    - Missing: Progress reporting (spec says "report every 100 items")
-    - Extra: Added --json flag (not requested)
-  Issues (Important): Magic number (100)
-  Task quality: Needs fixes
+[Generate the combined review package: scripts/review-package KEY BASE HEAD]
+[Dispatch the group reviewer with the group brief, report file, and diff]
+Group reviewer:
+  bsp-a1 Spec Compliance: ✅ all criteria met
+  bsp-a2 Spec Compliance: ❌ Missing: progress reporting every 100 items
+  bsp-a3 Spec Compliance: ✅ all criteria met
+  Group quality: Needs fixes — magic number (100)
 
 [Fix round 1 of max 5: dispatch a FRESH implementer with the findings — never resume]
-Implementer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
+Implementer: added progress reporting, extracted PROGRESS_INTERVAL constant
 
-[Re-generate review package + dispatch scoped re-reviewer (./re-review-prompt.md)]
+[Re-generate the review package + dispatch the scoped re-reviewer (./re-review-prompt.md)]
 Re-reviewer:
   Named findings: all resolved
   Full test suite: green → PASS
 
-[bd close <task-2-id> --reason "Completed: review clean, commits e4f5a6b..c7d8e9f"]
-
-...
-
-[After all tasks]
-[Dispatch final code-reviewer]
-Final reviewer: All requirements met, ready to merge
-
-Done!
+[Report to the caller: group A verified on feature/epic/group-a,
+ commits e4f5a6b..c7d8e9f, bsp-a1 ✅, bsp-a2 ✅, bsp-a3 ✅, quality approved]
+[The caller merges the branch, removes the worktree, and closes bsp-a1,
+ bsp-a2 and bsp-a3 individually]
 ```
 
 ## Durable Progress
 
-Conversation memory does not survive compaction, and a controller that loses its place can re-dispatch completed tasks. **Beads is your durable ledger** — it survives compaction and is reloaded by the session hook's composed beads context (or `bd prime` if that context is missing). After any interruption, run `bd ready --parent <epic-id>`: tasks still open are the remaining work; closed task beads are done — do not re-dispatch them. Record each task's commit range in its close reason so `git log` recovery works without a separate file, e.g. `bd close <task-id> --reason "Completed: commits <base7>..<head7>, review clean"`. Do **not** keep a separate markdown progress ledger — the beads DB is the single source of truth.
+Conversation memory does not survive compaction, and a controller that loses its place can re-dispatch work that is already built. **Beads is your durable ledger** — it survives compaction and is reloaded by the session hook's composed beads context (or `bd prime` if that context is missing). After any interruption, re-read the bead state: `bd ready --parent <epic-id>` shows what is still open, and a closed task bead is done — do not re-dispatch it. Report each group's commit range back with its verdicts, so the caller can record it in the close reason and `git log` recovery works without a separate file. Do **not** keep a separate markdown progress ledger — the beads DB is the single source of truth.
 
 **Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command) in `.mex/lessons.md`: one bullet per lesson, prefixed by kind (`lesson:` / `pattern:` / `root-cause:` / `correction:`), with the evidence named. Update an existing entry in place rather than adding a near-duplicate. The hot page is hard-capped at 2048 bytes — if an append would exceed it, demote the coldest entries to `.mex/lessons-archive.md` (retrievable via the router, not injected) until it fits. Decisions: `mex log --type decision "<one-line decision>"` always (bare `mex log` records kind "note", not a decision); add a full `docs/decisions/ADR-NNNN-<kebab>.md` (+ `INDEX.md`) only when the ADR bar is met (hard-to-reverse AND surprising-without-context AND genuine trade-off). Requirements, design rationale, and compliance durables: distill into the matching `.mex/` page. Durables that name an unmitigated risk, security gap, compliance exposure, or unreleased plan go to `.mex/private/` (gitignored), never to tracked pages. Never record guesses, one-offs, or secrets (tokens, keys, PII — the hot page is injected into all future sessions, and tracked `.mex/` pages are public in public repos); scan before writing.
 
@@ -435,44 +332,50 @@ Conversation memory does not survive compaction, and a controller that loses its
 | Rationalization | Reality |
 |---|---|
 | "It's a small change, I'll just start on main" | Never start implementation on main/master branch without your human partner's explicit consent — no exception for size. |
-| "The task review is basically a formality here" | Never skip the task review, and never accept a report missing either verdict — spec-compliance AND code-quality are both required. |
+| "The group review is basically a formality here" | Never skip the group review, and never accept a report missing either verdict — a spec verdict per task bead AND a code-quality verdict are both required. |
 | "Good enough, I'll move on" | Never proceed with unfixed issues. |
-| "Parallel subagents on different files won't collide" | Every parallel subagent MUST have its own `bd worktree` — never dispatch parallel subagents without per-task worktree isolation. |
-| "A few extra subagents this batch won't hurt" | Never dispatch more than 5 parallel subagents in a single batch (resource exhaustion). |
+| "I'll call it a chunk in this brief, everyone will follow" | One name per concept: it is a task group, everywhere. Rotating the name across briefs is what makes independent implementers diverge. |
+| "These two beads only overlap in one file" | A shared path means they are not one task group — split them. A single overlapping path is enough to make one implementer's work clobber the other's. |
+| "Parallel subagents on different files won't collide" | Every task group MUST have its own `bd worktree` — never dispatch concurrent implementers without per-group worktree isolation. |
+| "A few extra groups this wave won't hurt" | Never run more than five task groups at once (resource exhaustion). |
 | "Claude's built-in `isolation: \"worktree\"` is the same thing" | It bypasses beads DB sharing — `bd worktree` is not optional isolation, it's the only isolation this skill recognizes. **Never** substitute Claude's `isolation: "worktree"` parameter for it. |
-| "The subagent can just read the plan file itself" | Never make a subagent navigate the raw multi-task plan file — give it a focused, self-contained task brief instead (`scripts/task-brief` writes one, see File Handoffs). |
-| "It'll figure out where the task fits" | Never skip scene-setting context — the subagent needs to understand where its task fits. |
-| "It's prose for an LLM, it'll figure out what I meant" | A subagent parses your text with no follow-up round. Ambiguous bead text costs fix rounds — author it under `references/ste-authoring.md` (STE rules: one instruction per sentence, one name per concept). |
+| "The subagent can just read the beads itself" | Never make a subagent assemble its own requirements from the bead graph — give it a focused, self-contained group brief instead (see File Handoffs). |
+| "It'll figure out where the work fits" | Never skip scene-setting context — the subagent needs to understand where its task group fits. |
+| "It's prose for an LLM, it'll figure out what I meant" | A subagent parses your text with no follow-up round. Ambiguous brief text costs fix rounds — author it under `references/ste-authoring.md` (STE rules: one instruction per sentence, one name per concept). |
 | "Ignore subagent questions, keep it moving" | Answer clearly and completely, provide additional context if needed, and don't rush the subagent into implementation. |
 | "Close enough on spec compliance" / "Accept 'close enough' on spec compliance" | Reviewer found spec issues = not done. Fix it, or run out the five-round cap and let the breaker take over (`references/breaker-trip.md`) — those are the only exits. |
 | "Skip review loops (reviewer found issues = implementer fixes = review again)" / "The fix was small, skip the re-review" / "Don't skip the re-review" | Unreviewed fixes are how regressions land. Every fix round ends with a scoped re-review — no exception for a small diff. |
-| "Let implementer self-review replace the task review" | Both are needed — self-review never substitutes for the task review. |
-| "One more task while this review sits open won't hurt" | Never move to the next task while the review has open issues. |
+| "Let implementer self-review replace the group review" | Both are needed — self-review never substitutes for the group review. |
+| "One more group while this review sits open won't hurt" | Never move on to the next task group while its review has open issues. |
 | "Coach a reviewer to suppress findings" | Never instruct a reviewer to ignore or not flag an issue, or pre-rate a finding's severity. If your reviewer prompt contains "do not flag", "don't treat X as a defect", "at most Minor", or "the plan chose", stop: you are pre-judging. Let the reviewer raise it and adjudicate in the review loop. |
 | "I'll fix it myself, dispatching is overhead" / "Don't try to fix manually (context pollution)" | Controller fixes pollute your context and skip review. Dispatch a fresh implementer through the fix loop with the specific findings instead — never resume, never fix it yourself. |
-| "One more round will converge" / "Just one more fix round, it's nearly there" | Past the cap, rounds don't converge — the loop is capped at five rounds. At the cap, file the findings and surface them to the user (`references/breaker-trip.md`). |
+| "One more round will converge" / "Just one more fix round, it's nearly there" | Past the cap, rounds don't converge — the loop is capped at five rounds per task group. At the cap, file the findings and surface them to the user (`references/breaker-trip.md`). |
 | "The reviewer will just find something new anyway" | A scoped re-review verifies only the named findings in the fix diff; it cannot wander. New findings on code the fix diff didn't touch aren't this round's job — track them separately, they don't extend the loop. |
 | "This finding is obviously wrong, I'll drop it" | Never self-adjudicate a finding. At the round cap, file every open finding as a bead and surface both dispositions to the user — silent discards are forbidden. |
 | "Reviews slow the loop down" | The loop without reviews is just unverified churn — reviews are the loop's brakes and steering. |
-| "Recording progress in beads is overhead" | Beads is what survives compaction. Controllers that lose their place have re-dispatched entire completed task sequences — record each task's commit range in `bd close --reason` as you go. |
-| "Discard or defer a failed task to quietly descope a required deliverable" / "let Model-Selection cost-minimization accept weaker correctness/security review" | Surface the trade-off, never take it silently (Production-Grade Doctrine). |
+| "The dispatch will pick a sensible model on its own" | An omitted `model` inherits your session's model. A `group-reviewer` that inherited an implementation-tier session never ran at the review tier — set the model explicitly, or report the tier as unverified. Never claim a tier you did not set. |
+| "I'll merge the group branch, the caller would only do the same" | The caller owns merging, worktree removal, and closing. Merging here hides the verdicts it needed to decide with and leaves it holding a worktree it did not create. |
+| "The bead's agent is overkill for this, I'll dispatch a cheaper one" | The role is the bead's, not yours. Dispatch the `implementation_agent` the bead names, or stop and say why it is wrong — a substituted agent is an unreviewed change to what the plan decided. |
+| "I'll close the beads as I finish them, the caller can double-check" | The caller closes every task bead. Closing one here hides the verdict the caller needs and desynchronizes its view of the graph. |
+| "Recording progress in beads is overhead" / "Reporting progress to the caller is overhead" | Beads plus your report are what survive compaction. Controllers that lose their place have re-dispatched entire completed sequences — report each group's commit range with its verdicts as you go. |
+| "Discard or defer a failed group to quietly descope a required deliverable" / "let a cheaper role accept weaker correctness/security review" | Surface the trade-off, never take it silently (Production-Grade Doctrine). |
 
 ## Integration
 
+**Called by:**
+- **great_cto `implementing-epics`** - forms the task groups, invokes this engine, and closes each task bead individually
+- **beads-superpowers:writing-plans** - offers this engine as the in-session path when the user directs execution after the handoff
+
 **Required workflow skills:**
-- **beads-superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **beads-superpowers:writing-plans** - Creates the plan this skill executes
-- **beads-superpowers:requesting-code-review** - Code review template for reviewer subagents
-- **beads-superpowers:finishing-a-development-branch** - Complete development after all tasks
-- **beads-superpowers:dispatching-parallel-agents** - SDD's parallel batch mode uses this skill's dispatch pattern: when `bd ready --parent` returns multiple unblocked tasks, up to 5 are dispatched concurrently, each in its own worktree
-- **beads-superpowers:receiving-code-review** - When the task review produces feedback, this skill's anti-sycophancy protocol ensures technical evaluation rather than blind acceptance
+- **beads-superpowers:using-git-worktrees** - REQUIRED: set up isolated workspace before starting
+- **beads-superpowers:requesting-code-review** - code review template for reviewer subagents
+- **beads-superpowers:finishing-a-development-branch** - complete development after every group is verified
+- **beads-superpowers:dispatching-parallel-agents** - concurrent group execution uses this skill's dispatch pattern: up to five task groups dispatched at once, each in its own worktree
+- **beads-superpowers:receiving-code-review** - when the group review produces feedback, this skill's anti-sycophancy protocol ensures technical evaluation rather than blind acceptance
 
 **Subagents should use:**
-- **beads-superpowers:test-driven-development** - Subagents follow TDD for each task
+- **beads-superpowers:test-driven-development** - implementers follow TDD for every bead in the group
 
-**Parallel mode uses:**
-- **beads-superpowers:using-git-worktrees** - Multiple worktrees for parallel task isolation
-- **beads-superpowers:systematic-debugging** - Integration test failures after batch merge
-
-**Alternative workflow:**
-- **beads-superpowers:executing-plans** - Use for parallel session instead of same-session execution
+**Concurrent execution uses:**
+- **beads-superpowers:using-git-worktrees** - one worktree per task group
+- **beads-superpowers:systematic-debugging** - integration test failures after a merge
