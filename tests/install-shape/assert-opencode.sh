@@ -16,6 +16,8 @@ assert_no_file "$SANDBOX/.config/opencode/plugins/beads-superpowers.js"
 assert_no_file "$SANDBOX/.config/opencode/plugins/beads-superpowers-plugin.ts"
 assert_no_file "$SANDBOX/.config/opencode/skills/using-superpowers/SKILL.md"
 assert_no_file "$SANDBOX/.config/opencode/hooks/session-start"
+assert_mex_advertised
+assert_npm_untouched
 assert_shims_never_invoked
 
 # Legacy round-trip: pre-seed artifacts a pre-0.12 install.sh would have copied,

@@ -15,6 +15,8 @@ assert_no_file "$SANDBOX/.codex/skills/auditing-upstream-drift/SKILL.md"
 assert_in_log "Codex: installed"
 # Codex activation guidance printed (config.toml features block)
 assert_in_log "codex_hooks = true"
+assert_mex_advertised
+assert_npm_untouched
 assert_shims_never_invoked
 
 shape_uninstall

@@ -29,6 +29,10 @@ assert_no_file "$SANDBOX/.claude/hooks/beads-superpowers-reminder.sh"
 assert_no_file "$SANDBOX/.claude/agents/yegge.md"
 assert_file "$SANDBOX/skills/.beads-superpowers-version"
 grep -q ":local$" "$SANDBOX/skills/.beads-superpowers-version" || _fail "version file tier != local"
+# mex is a hard dependency: the pin is stated to the user, and a satisfied mex
+# means the installer touches nobody's global npm packages.
+assert_mex_advertised
+assert_npm_untouched
 assert_shims_never_invoked
 
 # Round-trip: uninstall removes artifacts; designed settings backup MUST remain.
@@ -51,9 +55,36 @@ fi
 shape_install --with-yegge
 assert_file "$SANDBOX/.claude/agents/yegge.md"
 assert_all_skills "$SANDBOX/skills"
+assert_mex_advertised
+assert_npm_untouched
 assert_shims_never_invoked
 shape_uninstall
 assert_no_file "$SANDBOX/.claude/agents/yegge.md"
 
 shape_sandbox_teardown
+
+# Negative sub-case A: mex absent, node at the floor — the installer must attempt
+# the PINNED npm install and abort loudly when it fails (npm stub always fails).
+# Fresh sandbox: the npm-invocations log must belong to this case alone.
+shape_sandbox_setup claude
+rm -f "$SHIM_DIR/mex"
+shape_install_expect_abort
+assert_npm_attempted_pinned
+assert_in_log "npm install -g mex-agent@$SHAPE_MEX_PIN failed."
+assert_in_log "Install it manually, then re-run this installer:"
+shape_sandbox_teardown
+
+# Negative sub-case B: mex absent AND node below mex-agent's floor — unsatisfiable,
+# so the abort must come BEFORE consent and npm must never be reached.
+shape_sandbox_setup claude
+rm -f "$SHIM_DIR/mex"
+shape_stub_node "v20.0.0"
+shape_install_expect_abort
+assert_in_log "node 20.0.0 is below mex-agent@$SHAPE_MEX_PIN's Node floor 22.5.0."
+assert_in_log "Install Node >= 22.5.0, then re-run this installer."
+# Pre-consent: the consent banner never printed, and nothing was mutated.
+assert_not_in_log "This script installs the beads-superpowers skill suite"
+assert_npm_untouched
+shape_sandbox_teardown
+
 fail_count

@@ -275,4 +275,61 @@ else
 fi
 rm -rf "$SB18"
 
+# Mutation 19: the mex consent line deleted from install.sh — the user is no longer
+# told which mex the install depends on, so assert_mex_advertised must fail RED.
+# Same rig as Mutation 1 (mutated copy as install source, real checkout as the
+# skills yardstick), running the REAL assert-claude.sh. Setup failures are rig
+# breakage, NOT a caught mutation.
+MUT19=$(mktemp -d)
+if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
+        "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT19/"; then
+  echo "SELFTEST FAIL: mutation-19 setup copy failed (rig broken, not a caught mutation)"; rc=1
+elif ! { mkdir -p "$MUT19/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT19/tests/install-shape"; }; then
+  echo "SELFTEST FAIL: mutation-19 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
+else
+  grep -v 'Installs mex-agent@' "$MUT19/install.sh" > "$MUT19/install.sh.tmp" \
+    && mv -f "$MUT19/install.sh.tmp" "$MUT19/install.sh"
+  if cmp -s "$MUT19/install.sh" "$REPO_ROOT/install.sh"; then
+    echo "SELFTEST FAIL: mutation-19 changed nothing (stale consent-line text, not a caught mutation)"; rc=1
+  fi
+  out19=$(env SHAPE_REPO_ROOT="$MUT19" SHAPE_EXPECTED_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/tests/install-shape/assert-claude.sh" 2>&1); ec19=$?
+  if [ "$ec19" -eq 0 ]; then
+    echo "SELFTEST FAIL: 'mex consent line deleted' should have gone RED but passed"; rc=1
+  elif ! printf '%s\n' "$out19" | grep -qF "log missing: mex-agent@0.7.1"; then
+    echo "SELFTEST FAIL: 'mex consent line deleted' failed for the wrong reason (no assert_mex_advertised message)"; rc=1
+  else
+    echo "SELFTEST ok: 'mex consent line deleted' correctly fails, naming the missing pin"
+  fi
+fi
+rm -rf "$MUT19"
+
+# Mutation 20: the npm invocation unpinned (mex-agent@latest) — the installer would
+# pull an arbitrary version, so assert_npm_attempted_pinned in the negative sub-case
+# must fail RED. The pin literal lives in lib.sh, never read from install.sh, which
+# is what lets this mutation be caught at all.
+MUT20=$(mktemp -d)
+if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
+        "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT20/"; then
+  echo "SELFTEST FAIL: mutation-20 setup copy failed (rig broken, not a caught mutation)"; rc=1
+elif ! { mkdir -p "$MUT20/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT20/tests/install-shape"; }; then
+  echo "SELFTEST FAIL: mutation-20 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
+else
+  sed 's|npm install -g "mex-agent@${MEX_PIN}"|npm install -g "mex-agent@latest"|' \
+    "$MUT20/install.sh" > "$MUT20/install.sh.tmp" && mv -f "$MUT20/install.sh.tmp" "$MUT20/install.sh"
+  if cmp -s "$MUT20/install.sh" "$REPO_ROOT/install.sh"; then
+    echo "SELFTEST FAIL: mutation-20 changed nothing (stale npm-invocation text, not a caught mutation)"; rc=1
+  fi
+  out20=$(env SHAPE_REPO_ROOT="$MUT20" SHAPE_EXPECTED_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/tests/install-shape/assert-claude.sh" 2>&1); ec20=$?
+  if [ "$ec20" -eq 0 ]; then
+    echo "SELFTEST FAIL: 'unpinned npm invocation' should have gone RED but passed"; rc=1
+  elif ! printf '%s\n' "$out20" | grep -qF "expected exactly one 'install -g mex-agent@0.7.1'"; then
+    echo "SELFTEST FAIL: 'unpinned npm invocation' failed for the wrong reason (no assert_npm_attempted_pinned message)"; rc=1
+  else
+    echo "SELFTEST ok: 'unpinned npm invocation' correctly fails, naming the pin mismatch"
+  fi
+fi
+rm -rf "$MUT20"
+
 exit "$rc"

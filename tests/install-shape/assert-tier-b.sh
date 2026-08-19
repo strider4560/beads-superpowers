@@ -12,12 +12,16 @@ row=$(awk -F'\t' -v h="$HARNESS" '$1==h' "$REPO_ROOT/tests/install-shape/tier-b.
 BIN=$(echo "$row" | cut -f2)
 MANIFEST=$(echo "$row" | cut -f3)
 HINT=$(echo "$row" | cut -f4)
+MEX_HINT=$(echo "$row" | cut -f5)
 
 shape_sandbox_setup "$BIN"
 trap 'shape_sandbox_teardown' EXIT
 shape_install
 
 assert_in_log "$HINT"
+# Tier B gets no files, but the mex dependency is stated to every harness alike.
+assert_in_log "$MEX_HINT"
+assert_npm_untouched
 assert_shims_never_invoked
 # Tier B receives no per-harness files from install.sh — prove we don't pretend otherwise:
 assert_no_file "$SANDBOX/.$HARNESS"

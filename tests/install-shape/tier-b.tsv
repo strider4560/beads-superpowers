@@ -1,7 +1,7 @@
-cursor	cursor-agent	.cursor-plugin/plugin.json	Cursor detected — native install: /add-plugin beads-superpowers
-copilot	copilot	-	Copilot CLI detected — native install: copilot plugin marketplace add strider4560/beads-superpowers
-kimi	kimi	.kimi-plugin/plugin.json	Kimi Code detected — native install: /plugins install https://github.com/strider4560/beads-superpowers
-antigravity	agy	-	Antigravity detected — native install: agy plugin install https://github.com/strider4560/beads-superpowers
-droid	droid	-	Factory Droid detected — native: droid plugin marketplace add https://github.com/strider4560/beads-superpowers
-pi	pi	-	Pi detected — native install: pi install git:github.com/strider4560/beads-superpowers
-gemini	gemini	gemini-extension.json	Gemini CLI detected — native install: gemini extensions install https://github.com/strider4560/beads-superpowers
+cursor	cursor-agent	.cursor-plugin/plugin.json	Cursor detected — native install: /add-plugin beads-superpowers	mex-agent@0.7.1
+copilot	copilot	-	Copilot CLI detected — native install: copilot plugin marketplace add strider4560/beads-superpowers	mex-agent@0.7.1
+kimi	kimi	.kimi-plugin/plugin.json	Kimi Code detected — native install: /plugins install https://github.com/strider4560/beads-superpowers	mex-agent@0.7.1
+antigravity	agy	-	Antigravity detected — native install: agy plugin install https://github.com/strider4560/beads-superpowers	mex-agent@0.7.1
+droid	droid	-	Factory Droid detected — native: droid plugin marketplace add https://github.com/strider4560/beads-superpowers	mex-agent@0.7.1
+pi	pi	-	Pi detected — native install: pi install git:github.com/strider4560/beads-superpowers	mex-agent@0.7.1
+gemini	gemini	gemini-extension.json	Gemini CLI detected — native install: gemini extensions install https://github.com/strider4560/beads-superpowers	mex-agent@0.7.1
