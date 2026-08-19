@@ -39,16 +39,7 @@ Agent tool (subagent_type: "general-purpose"):
        # Search the project research directory
        find .internal/research -name "*.md" -exec grep -li "<keyword>" {} \; 2>/dev/null
        ```
-       Also query the knowledge-beads (reference-class research lives there as
-       deferred `research`-labeled beads, not in the old kv store):
-       ```bash
-       bd list --label <topic> --status all
-       bd search "<keyword>" --status all
-       ```
-       Check it before researching from scratch — hits are pointers, not knowledge:
-       read the bodies (`bd show <id1> <id2> ...`, full) before deciding coverage
-       exists. If comprehensive coverage already exists, reference it — do not
-       duplicate.
+       Before proposing any design, query the knowledge store: `mex graph scope "<task summary>"` — then **read the routed pages, not just the envelope**: routed hits are pointers, not knowledge. Open every `.mex/` page that plausibly bears on this work in full (pages are distilled by design; reading them whole is sanctioned spend). 0 relevant pages does not mean none exist — re-angle the scope query once (different nouns, the component name instead of the feature name) before concluding none. Emit `mex retrieval: N pages routed, K read` (or `mex retrieval: none`) plus a one-line disposition per read page — folded in (what it changed) or ruled out (why). The check is complete when every plausibly-relevant page is dispositioned. If `.mex/decisions.md` or a `docs/decisions/` ADR already covers this, surface it rather than re-litigating. Where the code graph covers the project's language (TS/JS/Python/Rust at baseline), run `mex impact <symbol|file>` before modifying code that a grounded page cites and fold the affected pages into the check; on uncovered languages, pages/router/retrieval remain the working surface.
     2. **Search broadly** — Run 3-5 varied `WebSearch` queries, rewording the topic
        each time
     3. **Fetch primary sources** — Use `WebFetch` on official documentation and

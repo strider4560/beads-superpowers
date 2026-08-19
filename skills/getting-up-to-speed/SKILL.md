@@ -112,7 +112,7 @@ Then emit **exactly** this structure. Deterministic sections (`(verified)`) carr
 <3–5 commits as narrative · in-progress beads · prior thread from handoff. Degrades to "Fresh session — no prior in-session delta".>
 
 **Memory digest (verified):** <the orient.sh `== memories ==` lines, hazard-class first — these are the operational rules that bind this repo>
-**Relevant to ready work:** <keyword-scan the remainder against the top ready beads; then read — hits are pointers, not knowledge — quoting full bodies only for hits. Never echo credential-shaped content from a memory body — the same rule as the handoff doc above>
+**Relevant to ready work:** <keyword-scan the remainder against the top ready beads; then read — routed hits are pointers, not knowledge — quoting full bodies only for hits. Never echo credential-shaped content from a memory body — the same rule as the handoff doc above>
 **Remaining:** <total minus digest count> — search `bd memories <keyword>`, fetch `bd recall <key>`
 
 ---

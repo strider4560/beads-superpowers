@@ -6,7 +6,7 @@
 #   * Canonical BLOCKS — CB-3 (Capture gate) and CB-4 (memory convention) must be
 #     BYTE-IDENTICAL at every site: enforced by extract-and-diff (assert_block_identical /
 #     assert_line_identical), backstopped by an ASCII signature-presence grep.
-#   * Per-site FRAGMENT (KB read-depth) and KERNELS — only a fixed sentence / per-skill line
+#   * Per-site FRAGMENT (CB-R read-depth) and KERNELS — only a fixed sentence / per-skill line
 #     is shared, so signature-presence (`grep -qF`) is the correct check (the fragment IS the
 #     whole shared unit; kernels are per-site by design).
 # Any missing/divergent copy is DRIFT. Guard-the-guards: tests/install-shape/selftest.sh
@@ -58,10 +58,10 @@ CB5_SITES=(
   skills/subagent-driven-development/task-reviewer-prompt.md
   skills/subagent-driven-development/re-review-prompt.md
 )
-# KB read-depth fragment (ADR-0058): one byte-identical ASCII sentence at every
+# CB-R read-depth fragment (ADR-0058): one byte-identical ASCII sentence at every
 # retrieval instruction site; stripping the read mandate strips the fragment.
-KB_SIG="hits are pointers, not knowledge"
-KB_SITES=(
+CBR_SIG="routed hits are pointers, not knowledge"
+CBR_SITES=(
   skills/brainstorming/SKILL.md
   skills/systematic-debugging/SKILL.md
   skills/research-driven-development/SKILL.md
@@ -192,17 +192,17 @@ self_test() {
     fi
   fi
 
-  # KB-block self-test (ADR-0058): copy a real KB site, strip the fragment,
+  # CB-R block self-test (ADR-0058): copy a real CB-R site, strip the fragment,
   # and confirm the detector flags the mutation.
-  local kbsrc="skills/brainstorming/SKILL.md" kbsig="hits are pointers, not knowledge"
+  local kbsrc="skills/brainstorming/SKILL.md" kbsig="routed hits are pointers, not knowledge"
   if [ ! -f "$kbsrc" ]; then
-    echo "self-test FAIL: KB fixture source missing: $kbsrc"; ok=0
+    echo "self-test FAIL: CB-R fixture source missing: $kbsrc"; ok=0
   else
     cp -f "$kbsrc" "$tmp/kb-correct.md"
     grep -v -- "$kbsig" "$kbsrc" > "$tmp/kb-mutated.md"
-    grep -qF -- "$kbsig" "$tmp/kb-correct.md" || { echo "self-test FAIL: KB signature missing from unmutated copy"; ok=0; }
+    grep -qF -- "$kbsig" "$tmp/kb-correct.md" || { echo "self-test FAIL: CB-R signature missing from unmutated copy"; ok=0; }
     if grep -qF -- "$kbsig" "$tmp/kb-mutated.md"; then
-      echo "self-test FAIL: KB detector did NOT catch the stripped fragment"; ok=0
+      echo "self-test FAIL: CB-R detector did NOT catch the stripped fragment"; ok=0
     fi
   fi
 
@@ -218,7 +218,7 @@ check_block "CB-3 Capture gate"    "$CB3_SIG" "${CB3_SITES[@]}"
 check_block "CB-4 memory convention" "$CB4_SIG" "${CB4_SITES[@]}"
 assert_line_identical "CB-4 memory convention (byte-identity)" "$CB4_SIG" "${CB4_SITES[@]}"
 assert_block_identical "CB-3 Capture gate (byte-identity)" "$CB3_ANCHOR" '^```$' "${CB3_SITES[@]}"
-check_block "KB read-depth fragment" "$KB_SIG" "${KB_SITES[@]}"
+check_block "CB-R read-depth fragment" "$CBR_SIG" "${CBR_SITES[@]}"
 check_block "CB-5 Reviewer security floor" "$CB5_SIG" "${CB5_SITES[@]}"
 assert_block_identical "CB-5 Reviewer security floor (byte-identity)" "$CB5_ANCHOR" "$CB5_ENDRE" "${CB5_SITES[@]}"
 check_kernels

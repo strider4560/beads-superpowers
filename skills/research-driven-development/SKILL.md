@@ -72,18 +72,7 @@ bd update <id> --claim
 
 Before launching new research, search for existing coverage:
 
-```bash
-# Check beads memories for prior context
-bd memories <keyword>
-
-# Query the knowledge-beads — the primary dedup index now (reference-class
-# research lives here as deferred `research`-labeled beads, not in the old
-# kv store or as a doc-grep)
-bd list --label <topic> --status all
-bd search "<keywords>" --status all
-```
-
-Read before you verdict: `bd list --label <topic> --status all --flat --long -n 10` prints bodies inline (>10 hits: narrow the query, never triage truncated titles). hits are pointers, not knowledge — a "comprehensive coverage already exists" verdict may only be issued after reading the hit bodies; a verdict from titles alone is not a verdict.
+Before proposing any design, query the knowledge store: `mex graph scope "<task summary>"` — then **read the routed pages, not just the envelope**: routed hits are pointers, not knowledge. Open every `.mex/` page that plausibly bears on this work in full (pages are distilled by design; reading them whole is sanctioned spend). 0 relevant pages does not mean none exist — re-angle the scope query once (different nouns, the component name instead of the feature name) before concluding none. Emit `mex retrieval: N pages routed, K read` (or `mex retrieval: none`) plus a one-line disposition per read page — folded in (what it changed) or ruled out (why). The check is complete when every plausibly-relevant page is dispositioned. If `.mex/decisions.md` or a `docs/decisions/` ADR already covers this, surface it rather than re-litigating. Where the code graph covers the project's language (TS/JS/Python/Rust at baseline), run `mex impact <symbol|file>` before modifying code that a grounded page cites and fold the affected pages into the check; on uncovered languages, pages/router/retrieval remain the working surface.
 
 Same lookup researchers run; see the "Search the knowledge base first" step in `./researcher-prompt.md`.
 
@@ -211,11 +200,7 @@ You are **top-level** unless the caller passed a `nested` marker — that's call
 2. **Do further research** — run another round (Step 3 fan-out or a Step 4.5 gap-closing round).
 3. **Accept & close the bead** — continue below.
 
-**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command). Never record guesses, one-offs, or secrets (tokens, keys, PII — every memory is injected into all future sessions). Update in place (`bd remember --key <key>`) rather than adding a near-duplicate.
-
-```bash
-bd remember "<kind>: <durable, evidence-backed insight>"   # kind: lesson / pattern / design / root-cause / research
-```
+**Capture what you learned.** At close, record durable, evidence-backed insights (still true next month, tied to a file, test, or command) in `.mex/lessons.md`: one bullet per lesson, prefixed by kind (`lesson:` / `pattern:` / `root-cause:` / `correction:`), with the evidence named. Update an existing entry in place rather than adding a near-duplicate. The hot page is hard-capped at 2048 bytes — if an append would exceed it, demote the coldest entries to `.mex/lessons-archive.md` (retrievable via the router, not injected) until it fits. Decisions: `mex log "<one-line decision>"` always; add a full `docs/decisions/ADR-NNNN-<kebab>.md` (+ `INDEX.md`) only when the ADR bar is met (hard-to-reverse AND surprising-without-context AND genuine trade-off). Requirements, design rationale, and compliance durables: distill into the matching `.mex/` page. Durables that name an unmitigated risk, security gap, compliance exposure, or unreleased plan go to `.mex/private/` (gitignored), never to tracked pages. Never record guesses, one-offs, or secrets (tokens, keys, PII — the hot page is injected into all future sessions, and tracked `.mex/` pages are public in public repos); scan before writing.
 
 ```bash
 bd close <id> --reason "Research complete: <1-line summary of finding>"
