@@ -85,6 +85,22 @@ p_epic_dq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type \"
 p_epic_sq_short='{"tool_name":"Bash","tool_input":{"command":"bd create -t '"'"'epic'"'"' X"}}'
 p_epic_eq_sq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type='"'"'epic'"'"' \"X\""}}'
 p_import='{"tool_name":"Bash","tool_input":{"command":"bd import issues.jsonl"}}'
+# Cobra finds the subcommand PAST any leading global flag, and `create` is not
+# the only creation path: `bd create --help` prints `Aliases: create, new`, and
+# `bd q` is documented as "Quick capture creates an issue ... Designed for
+# scripting and AI agent integration". Each of these five was run against the
+# installed bd v1.1.2 and created an epic.
+p_epic_flag_before_subcmd='{"tool_name":"Bash","tool_input":{"command":"bd --type epic create \"X\""}}'
+p_epic_eqflag_before_subcmd='{"tool_name":"Bash","tool_input":{"command":"bd --type=epic create \"X\""}}'
+p_epic_global_dir='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db create -t epic \"X\""}}'
+p_epic_alias_new='{"tool_name":"Bash","tool_input":{"command":"bd new -t epic \"X\""}}'
+p_epic_quick='{"tool_name":"Bash","tool_input":{"command":"bd q -t epic \"Q1\""}}'
+p_import_global_dir='{"tool_name":"Bash","tool_input":{"command":"bd -C /tmp/db import issues.jsonl"}}'
+p_task_alias_new='{"tool_name":"Bash","tool_input":{"command":"bd new -t task \"X\""}}'
+# Not bd. The rule keys on a `bd` token at a word boundary, so a command whose
+# name merely contains or extends `bd` must still be allowed.
+p_abd_epic='{"tool_name":"Bash","tool_input":{"command":"abd create -t epic \"X\""}}'
+p_bdhelper_epic='{"tool_name":"Bash","tool_input":{"command":"bd-helper create -t epic \"X\""}}'
 p_task='{"tool_name":"Bash","tool_input":{"command":"bd create -t task \"X\""}}'
 p_task_longopt='{"tool_name":"Bash","tool_input":{"command":"bd create --type task \"X\""}}'
 p_task_eq_long='{"tool_name":"Bash","tool_input":{"command":"bd create --type=task \"X\""}}'
@@ -192,6 +208,28 @@ check "ruleA-single-quoted-value-denied" 2 'Rule A'
 run "$c_orch" "$h_full" "$p_epic_eq_sq_long"
 check "ruleA-equals-joined-single-quoted-value-denied" 2 'Rule A'
 
+# A global flag may precede the subcommand, `create` has the alias `new`, and
+# `bd q` is a second creation path. Rule A therefore keys on a `bd` invocation
+# plus an epic-type flag, not on bd's subcommand grammar.
+run "$c_orch" "$h_full" "$p_epic_flag_before_subcmd"
+check "ruleA-type-flag-before-the-subcommand-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_eqflag_before_subcmd"
+check "ruleA-equals-joined-type-flag-before-the-subcommand-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_global_dir"
+check "ruleA-global-flag-before-create-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_alias_new"
+check "ruleA-create-alias-new-denied" 2 'Rule A'
+
+run "$c_orch" "$h_full" "$p_epic_quick"
+check "ruleA-quick-capture-denied" 2 'Rule A'
+
+# The import clause gets the same treatment, for the same reason.
+run "$c_orch" "$h_full" "$p_import_global_dir"
+check "ruleA-import-behind-a-global-flag-denied" 2 'Rule A'
+
 run "$c_orch" "$h_full" "$p_task"
 check "ruleA-task-allowed" 0
 
@@ -200,6 +238,16 @@ check "ruleA-long-option-type-task-allowed" 0
 
 run "$c_orch" "$h_full" "$p_task_eq_long"
 check "ruleA-equals-joined-long-option-task-allowed" 0
+
+run "$c_orch" "$h_full" "$p_task_alias_new"
+check "ruleA-alias-new-with-a-task-type-allowed" 0
+
+# The word boundary is real: neither of these invokes bd.
+run "$c_orch" "$h_full" "$p_abd_epic"
+check "ruleA-abd-is-not-bd-allowed" 0
+
+run "$c_orch" "$h_full" "$p_bdhelper_epic"
+check "ruleA-bd-helper-is-not-bd-allowed" 0
 
 # Rule A is scoped to non-planning tiers: the planning session is the one that
 # is supposed to be creating epics.
@@ -340,6 +388,10 @@ unarmed_bad=0
 for p in "$p_epic" "$p_epic_longopt" "$p_epic_glued" "$p_import" "$p_task" \
          "$p_epic_eq_long" "$p_epic_eq_short" "$p_epic_dq_long" \
          "$p_epic_sq_short" "$p_epic_eq_sq_long" "$p_task_eq_long" \
+         "$p_epic_flag_before_subcmd" "$p_epic_eqflag_before_subcmd" \
+         "$p_epic_global_dir" "$p_epic_alias_new" "$p_epic_quick" \
+         "$p_import_global_dir" "$p_task_alias_new" "$p_abd_epic" \
+         "$p_bdhelper_epic" \
          "$p_src" "$p_src_edit" "$p_src_via_docs" "$p_internal" "$p_mex" \
          "$p_docs" "$p_assert" "$p_assert_pty" "$p_state_assert" \
          "$p_state_session" "$p_state_dotdot" "$p_state_dblslash" \

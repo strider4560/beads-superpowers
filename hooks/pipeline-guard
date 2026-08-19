@@ -134,28 +134,46 @@ while IFS= read -r tier; do
 done <<< "$tiers"
 
 # --- Rule A: only a planning-tier session mutates the plan graph ------------
+# The rule keys on TWO independent tokens, wherever they appear in the command
+# string, instead of on bd's subcommand grammar: a `bd` invocation, AND either
+# an epic-type flag or an `import` token. Guessing the grammar failed three
+# times. Cobra finds the subcommand PAST any leading global flag, so
+# `bd --type epic create` and `bd -C <dir> create -t epic` never match an
+# anchored `bd create`; and `create` is not the only creation path — it carries
+# the alias `new` (`bd create --help` prints `Aliases: create, new`), and `bd q`
+# is "Quick capture creates an issue ... Designed for scripting and AI agent
+# integration". Each of those, and `bd -C <dir> import`, was run against the
+# installed bd v1.1.2 and did create an epic. Enumerating subcommands and
+# aliases loses to the next bd release; two independent tokens do not.
 # The type flag is matched in eight spellings, all of which reach bd as
 # `--type epic`: `-t epic`, `-tepic`, `--type epic`, `--type=epic`, `-t=epic`,
 # `--type "epic"`, `-t 'epic'` and `--type='epic'`. bd is Cobra/pflag-based, so
 # it takes the `=`-joined forms (`bd create --help` documents `--type=event`
 # itself), and the shell strips the quotes before bd sees the value. Hence the
 # separator class `[[:space:]='"]*` between the flag and its value.
+# `$padded` is the command with one space added at each end, so the `bd` and
+# `import` token patterns need no ^/$ anchor — a plain character class is the
+# same regex on every libc. It is what rejects `abd` and `bd-helper`.
 # This is best-effort, NOT a parse of bd's flag grammar: a regex over a shell
-# command string cannot be one. Uncovered, and known to be: any spelling where
-# the literal `epic` is not adjacent to the flag — a variable or substitution
-# (`--type=$T`, `-t "$(echo epic)"`), a value split across quoting
-# (`-t ep'ic'`), or the flag and value arriving through a helper script.
+# command string cannot be one. Uncovered, and known to be: a type value
+# produced by expansion or substitution (`--type=$T`, `-t "$(echo epic)"`), a
+# value split across quoting (`-t ep'ic'`), and a flag that reaches bd through a
+# helper script whose own command string does not contain `bd`.
+# The cost is wider denial, taken deliberately: ANY bd command whose string
+# carries an epic-type flag is denied off the planning tier — `bd list -t epic`
+# included — as is a `bd create -t task` whose text quotes `--type epic`, or a
+# `git log --grep="bd import"`. A denied read costs one command; an epic created
+# off the planning tier forks the plan of record. Do NOT narrow these patterns
+# by subcommand to let a read through: that is the grammar-guessing this shape
+# exists to remove.
 # (This widens the plan's literal `-t[[:space:]]+epic`; the deviation is
 # disclosed in the task report.)
-# These stay substring matches over a command string, so they over-deny: a `bd
-# create -t task` whose description quotes "-t epic", or a `git log --grep="bd
-# import"`, is denied off the planning tier. That is the safe direction for a
-# plan-graph mutation guard — do not anchor the patterns to make a false positive
-# pass.
-epic_flag_re='bd[[:space:]]+create[[:space:]].*(-t|--type)[[:space:]='"'"'"]*epic'
-if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ]; then
-  if [[ "$cmd" =~ $epic_flag_re ]] ||
-     [[ "$cmd" =~ bd[[:space:]]+import ]]; then
+padded=" $cmd "
+bd_re='[^[:alnum:]_-]bd[[:space:]]'
+epic_flag_re='(-t|--type)[[:space:]='"'"'"]*epic'
+import_re='[^[:alnum:]_-]import[^[:alnum:]_-]'
+if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ] && [[ "$padded" =~ $bd_re ]]; then
+  if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]]; then
     [ "$has_tier" -eq 1 ] &&
       deny "only a planning-tier session mutates the plan graph (Rule A)"
     deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run 'bash scripts/pipeline/tier-gate.sh --assert <tier>' (Rule A)"
