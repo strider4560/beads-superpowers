@@ -11,7 +11,7 @@ Orient on the project before any work: re-derive the current state from **ground
 
 **When NOT to use:** a single targeted question; already oriented this session and nothing changed; a fresh empty repo (use the `project-init` skill).
 
-**frugal bd kernel:** bounded by selection and shape, not by a forbidden call — the memory digest emits a defined tier as short gists, never every body. `bd ready --claim` is FORBIDDEN here — orientation ends at the terminal contract and the user picks the work.
+**frugal bd kernel:** bounded by selection and shape, not by a forbidden call — the mex section emits the hot page's head and one `mex check` line, never the whole store. `bd ready --claim` is FORBIDDEN here — orientation ends at the terminal contract and the user picks the work.
 
 ## Steps
 
@@ -27,10 +27,10 @@ Copy this checklist into your working response and tick as you go:
 
 ### 1 — Gather (at most 2 tool calls)
 
-Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled sections: `scale` (tracked=N, git=0|1), `ledger`, `ready`, `in-progress`, `blocked`, `memories` (digest: `key — gist` lines, hazard-class first, then salience >=4), `handoff` (`path=`, `head_sha=`, `doc_sha=`, `doc_mtime=`, `last_commit_time=`, `inbox_count=`). It never runs `bd dolt` commands — orientation stays read-only. If `== handoff ==` has a `path=` line, `Read` that file (the second call); quote only its short headline — never echo doc body sections that could carry secrets. The handoff is a synthesized narrative → cross-check it in step 4 and tag it ⚠️, never "verified".
+Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled sections: `scale` (tracked=N, git=0|1), `ledger`, `ready`, `in-progress`, `blocked`, `mex` (`ABSENT`, or `PRESENT` + a `check:` line carrying `mex check`'s exit code and first output line + the first 20 lines of `.mex/lessons.md`), `handoff` (`path=`, `head_sha=`, `doc_sha=`, `doc_mtime=`, `last_commit_time=`, `inbox_count=`). It never runs `bd dolt` commands — orientation stays read-only. If `== handoff ==` has a `path=` line, `Read` that file (the second call); quote only its short headline — never echo doc body sections that could carry secrets. The handoff is a synthesized narrative → cross-check it in step 4 and tag it ⚠️, never "verified".
 
 - No `<beads-context>` block visible this session → run `bd prime` once before the script.
-- bd missing / `.beads` absent → the bd sections read SKIP: skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped".
+- bd missing / `.beads` absent → the script's bd branch reads SKIP (the `mex` section included): skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped", and read `.mex/lessons.md` directly if `.mex/` exists.
 
 Done when: every orient.sh section is read, and the handoff is read or recorded as "none".
 
@@ -52,8 +52,8 @@ Done when: 3 beads drilled (or step skipped with reason).
 
 ### 4 — Close
 
-1. Capture durable, evidence-backed insights: `bd remember "<kind>: <insight>"`. Stale Phase-1 memory → `bd forget <id>`.
-2. Prune continuation pointers to one: keep the memory paired with the doc read; forget the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
+1. Capture durable, evidence-backed insights per the capture contract (`mex-curator`): one `<kind>: <insight>` bullet appended to `.mex/lessons.md`, the evidence named. The hot page is hard-capped at 2048 bytes — if the append would exceed it, demote the coldest entries to `.mex/lessons-archive.md` first. A stale Phase-1 entry is updated in place, never left beside its replacement.
+2. Prune continuation pointers in `.mex/lessons.md` to one: keep the entry paired with the doc read; remove the rest matching the `continuation-` **key prefix** only. Ambiguous keeper → keep ALL and skip (never guess-delete). Report: "Pruned N superseded continuation pointers; kept `<key>`."
 3. Archive the consumed doc (only if one was read; AFTER the prune):
    `mkdir -p .internal/handoff/archive && mv -f "<doc>" .internal/handoff/archive/`
    Report "Archived consumed handoff `<name>` → `archive/`." — or on failure "⚠️ could not archive (<reason>); left in inbox" and continue (it self-heals next session). This mv is the skill's only local mutation.
@@ -102,6 +102,7 @@ Then emit **exactly** this structure. Deterministic sections (`(verified)`) carr
 **Working tree:** <top-N +X/-Y · +K untracked> (omit if clean).
 **Last release:** <version + CHANGELOG gist; [Unreleased] count>.
 **Beads ledger:** <total · closed · open · in-progress · blocked> (verified).
+**mex:** <present | absent> · check <exit=N + first line, reported as-is — warnings at exit 0 are the stock baseline> · hot page: <one-line gist>.
 **Continuity check:** <✓ | ⚠️ advisory | skipped | unavailable>.
 **Last handoff:** <path> (<date>) — <headline>. Freshness: <✓ fresh | ⚠️ possibly stale — HEAD ahead of <DOC_SHA> | unavailable | none found>.<+N older unread if inbox_count>1>
 
@@ -111,9 +112,9 @@ Then emit **exactly** this structure. Deterministic sections (`(verified)`) carr
 ## Recent Activity
 <3–5 commits as narrative · in-progress beads · prior thread from handoff. Degrades to "Fresh session — no prior in-session delta".>
 
-**Memory digest (verified):** <the orient.sh `== memories ==` lines, hazard-class first — these are the operational rules that bind this repo>
-**Relevant to ready work:** <keyword-scan the remainder against the top ready beads; then read — routed hits are pointers, not knowledge — quoting full bodies only for hits. Never echo credential-shaped content from a memory body — the same rule as the handoff doc above>
-**Remaining:** <total minus digest count> — search `bd memories <keyword>`, fetch `bd recall <key>`
+**Hot page (verified):** <the lesson lines from the orient.sh `== mex ==` section — these are the operational rules that bind this repo>
+**Relevant to ready work:** <route the top ready beads through `mex graph scope "<their titles>"`; then read the routed pages — routed hits are pointers, not knowledge — quoting only what bears on that work. Never echo credential-shaped content from a page body — the same rule as the handoff doc above>
+**Remaining:** <pages routed but not read> — router: `.mex/ROUTER.md`; retrieval: `mex graph scope "<task>"`
 
 ---
 <"Welcome back — last thread was <X>." ONLY when the freshness verdict is fresh; if possibly-stale: "Note: the newest handoff (<date>, <DOC_SHA>) predates HEAD — background context, not necessarily the last session.">

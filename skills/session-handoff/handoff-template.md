@@ -2,7 +2,7 @@
 
 > **Read this FIRST on resume.** The session hook already injected beads context automatically;
 > if no `<beads-context>` block is visible, run `bd prime`. This file + the continuation
-> memory give full orientation. Gitignored (`.internal/`), local-only.
+> entry on the mex hot page give full orientation. Gitignored (`.internal/`), local-only.
 
 ## Current State (TL;DR)
 - Repo / branch @ <sha>, sync status, working tree, version, backlog counts.
@@ -36,5 +36,7 @@
 ## Suggested Skills
 - <skill the next session should invoke and why>.
 
-## Continuation Memory
-- `continuation-<date>-<topic>` — one-line pointer (written via `bd remember`).
+## Continuation Pointer
+- `continuation-<date>-<topic>` — one-line pointer appended to `.mex/lessons.md` as
+  `lesson: continuation — <one line>; see .internal/handoff/<file>` (cap-aware: demote
+  coldest entries to `.mex/lessons-archive.md` if the 2048-byte cap would be exceeded).
