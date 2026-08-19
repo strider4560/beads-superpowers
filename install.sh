@@ -792,28 +792,34 @@ This workspace uses **bd (beads)**. Core commands:
 Full reference: `bd human`. If beads context was not injected this session: `bd prime`.
 PTR
 )
-  # Durable knowledge: the router pointer plus the lessons hot page under the same
-  # 2048-byte cap the canonical composer uses. Reading two files is not policy —
-  # routing, ranking and curation stay in hooks/session-start and the mex skills.
-  if [ -d .mex ]; then
-    MEX_SECTION='## Durable Knowledge (mex)
+fi
+
+# Durable knowledge: the router pointer plus the lessons hot page under the same
+# 2048-byte cap the canonical composer uses. Reading two files is not policy —
+# routing, ranking and curation stay in hooks/session-start and the mex skills.
+# Composed independently of bd: a .mex/ store is not a beads feature.
+if [ -d .mex ]; then
+  MEX_SECTION='## Durable Knowledge (mex)
 
 Router: read .mex/ROUTER.md for task-scoped pages. Retrieval: mex graph scope "<task>".'
-    if [ -s .mex/lessons.md ]; then
-      MEX_SECTION="${MEX_SECTION}
+  if [ -s .mex/lessons.md ]; then
+    MEX_SECTION="${MEX_SECTION}
 
 $(head -c 2048 .mex/lessons.md)"
-      if [ "$(wc -c < .mex/lessons.md)" -gt 2048 ]; then
-        MEX_SECTION="${MEX_SECTION}
+    if [ "$(wc -c < .mex/lessons.md)" -gt 2048 ]; then
+      MEX_SECTION="${MEX_SECTION}
 [truncated — lessons.md exceeds the 2 KB hot-page cap; run mex-curator]"
-      fi
     fi
-  else
-    MEX_SECTION='No .mex/ found — run the project-init skill to set up mex.'
   fi
+else
+  MEX_SECTION='No .mex/ found — run the project-init skill to set up mex.'
+fi
+if [ -n "$BEADS_CONTEXT" ]; then
   BEADS_CONTEXT="${BEADS_CONTEXT}
 
 ${MEX_SECTION}"
+else
+  BEADS_CONTEXT="$MEX_SECTION"
 fi
 
 escape_json() {
