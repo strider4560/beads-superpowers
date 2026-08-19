@@ -201,27 +201,29 @@ const blocksOut = new Map(
 const WHITE = 0, GRAY = 1, BLACK = 2;
 const colour = new Map(memberIssues.map((i) => [i.id, WHITE]));
 const stack = [];
-let cycle = null;
+const cycles = [];
 function walk(id) {
   colour.set(id, GRAY);
   stack.push(id);
   for (const next of blocksOut.get(id) ?? []) {
-    if (cycle) break;
     if (colour.get(next) === GRAY) {
-      cycle = { at: id, loop: [...stack.slice(stack.indexOf(next)), next] };
-      break;
+      // Record the back edge and keep walking. Stopping at the first cycle
+      // would report one defect per run and hide the rest.
+      cycles.push({ at: id, loop: [...stack.slice(stack.indexOf(next)), next] });
+    } else if (colour.get(next) === WHITE) {
+      walk(next);
     }
-    if (colour.get(next) === WHITE) walk(next);
   }
   stack.pop();
   colour.set(id, BLACK);
 }
 for (const issue of memberIssues) {
-  if (cycle) break;
   if (colour.get(issue.id) === WHITE) walk(issue.id);
 }
-// One line for the whole loop: naming every bead in it would repeat one defect.
-if (cycle) {
+// One line per cycle, not per bead: naming every bead in a loop would repeat a
+// single defect. Every cycle contains at least one back edge, so every cycle is
+// reported.
+for (const cycle of cycles) {
   violation(cycle.at, "dependencies", `blocks dependency cycle: ${cycle.loop.join(" -> ")}`);
 }
 
