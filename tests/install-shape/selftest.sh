@@ -39,6 +39,26 @@ expect_green() {  # expect_green <label> <cmd>... — the GREEN-control counterp
     echo "SELFTEST FAIL: '$label' should have gone GREEN but failed"; rc=1
   fi
 }
+# expect_exit_because <label> <want-exit> <substring> <cmd>... — the strict form of
+# expect_red, for a guard with a documented exit-code contract. Two things are
+# asserted, not one: the EXACT exit code, because callers route on it (a deny that
+# arrives as 1 where the contract says 2 is a different outcome), and a substring of
+# the guard's own message, because a mutation that goes red for an unrelated reason
+# — a broken sandbox, a missing dependency — is a false pass wearing a red hat.
+# Mutations 11/19/20 spell this shape out inline; they predate the helper and are
+# left as they are.
+expect_exit_because() {
+  local label="$1" want="$2" needle="$3"; shift 3
+  local out ec
+  out="$("$@" 2>&1)"; ec=$?
+  if [ "$ec" -ne "$want" ]; then
+    echo "SELFTEST FAIL: '$label' exited $ec, want $want: $out"; rc=1
+  elif ! printf '%s\n' "$out" | grep -qF -- "$needle"; then
+    echo "SELFTEST FAIL: '$label' failed for the wrong reason (no message naming '$needle'): $out"; rc=1
+  else
+    echo "SELFTEST ok: '$label' correctly fails with exit $want, naming the violation"
+  fi
+}
 # expect_npm_untouched <label> — the sandbox npm is a stub that logs its argv and
 # exits 1. These mutation scenarios run with mex already satisfied, so nothing may
 # ever reach npm: an empty-or-absent log is the proof the host was not mutated.
@@ -312,13 +332,36 @@ elif ! cp -rf "$REPO_ROOT/skills/subagent-driven-development" "$SB18/skills/suba
 elif ! cp -f "$REPO_ROOT/tests/skills/test-sdd-structure.sh" "$SB18/tests/skills/test-sdd-structure.sh"; then
   echo "SELFTEST FAIL: mutation-18 setup copy guard script failed (rig broken, not a caught mutation)"; rc=1
 else
-  for _ in $(seq 1 60); do echo >> "$SB18/skills/subagent-driven-development/SKILL.md"; done
-  expect_red "sdd structure: SKILL.md over the 500-line budget" \
-    bash "$SB18/tests/skills/test-sdd-structure.sh"
-  cp -f "$REPO_ROOT/skills/subagent-driven-development/SKILL.md" \
-    "$SB18/skills/subagent-driven-development/SKILL.md"
-  expect_green "sdd structure: SKILL.md back under budget (control)" \
-    bash "$SB18/tests/skills/test-sdd-structure.sh"
+  # The pad is DERIVED from the budget and the file's own length, never a literal.
+  # This mutation appended a fixed 60 lines until 2026-08: enough while SKILL.md
+  # was 478 lines, and silently no-longer-a-mutation once Task 6's refactor took it
+  # to 381 (381 + 60 = 441, under the 500-line budget). The rig caught its own dead
+  # mutation, which is the rig working; a hardcoded count is what made it possible.
+  # Reading the budget out of the guard's own comparison and appending
+  # (budget - lines + 1) breaches by construction at any file length and any future
+  # budget. An unreadable budget is rig breakage, NOT a caught mutation.
+  sdd18="$SB18/skills/subagent-driven-development/SKILL.md"
+  budget18="$(grep -oE '"\$lines" -ge [0-9]+' "$SB18/tests/skills/test-sdd-structure.sh" | grep -oE '[0-9]+$')"
+  case "${budget18:-}" in
+    ''|*[!0-9]*)
+      echo "SELFTEST FAIL: mutation-18 could not read the line budget out of test-sdd-structure.sh (rig broken, not a caught mutation)"; rc=1 ;;
+    *)
+      # grep -c '' is the guard's own counting method — wc -l would disagree on a
+      # file with no trailing newline and could leave the pad one line short.
+      pad18=$(( budget18 - $(grep -c '' "$sdd18") + 1 ))
+      [ "$pad18" -lt 1 ] && pad18=1
+      for _ in $(seq 1 "$pad18"); do echo >> "$sdd18"; done
+      # Rig-broken guard (stress-test P2): the append MUST have carried the file over
+      # the budget, or the RED below would be measuring something else.
+      if [ "$(grep -c '' "$sdd18")" -lt "$budget18" ]; then
+        echo "SELFTEST FAIL: mutation-18 left SKILL.md under the $budget18-line budget (rig broken, not a caught mutation)"; rc=1
+      fi
+      expect_exit_because "sdd structure: SKILL.md over the line budget" 1 "C1 budget" \
+        bash "$SB18/tests/skills/test-sdd-structure.sh"
+      cp -f "$REPO_ROOT/skills/subagent-driven-development/SKILL.md" "$sdd18"
+      expect_green "sdd structure: SKILL.md back under budget (control)" \
+        bash "$SB18/tests/skills/test-sdd-structure.sh" ;;
+  esac
 fi
 rm -rf "$SB18"
 
@@ -382,5 +425,109 @@ else
   fi
 fi
 rm -rf "$MUT20"
+
+# make_pipeline_home <dir> — a HOME carrying a great_cto bundle root the shipped
+# bundle-root.sh accepts, plus the fixture tier-map. Shared by mutations 21 and 22,
+# which both need the pipeline's hard dependencies satisfied so that the case under
+# test is the ONLY thing that can go red.
+# The bundle version is READ from bundle-root.sh, never written as a literal: Task 14
+# raises GREAT_CTO_MIN_VERSION, and a literal here would quietly turn both mutations
+# into version-check failures that still look red — the same rot that killed
+# mutation 18's fixed line count. Returns 1 (rig broken) if the constant is unreadable.
+make_pipeline_home() {
+  local home="$1" minver
+  minver="$(sed -n 's/^GREAT_CTO_MIN_VERSION="\([0-9][0-9.]*\)".*/\1/p' "$REPO_ROOT/scripts/pipeline/bundle-root.sh")"
+  [ -n "$minver" ] || return 1
+  mkdir -p "$home/.agents/great_cto/shared" || return 1
+  printf '{"version":"%s"}\n' "$minver" > "$home/.agents/great_cto/package.json" || return 1
+  cp -f "$REPO_ROOT/tests/pipeline/fixtures/tier-map.json" \
+     "$home/.agents/great_cto/shared/tier-map.json" || return 1
+}
+
+# Mutation 21: tier-gate.sh (Task 2) — a session whose model the tier-map does not
+# list must fail RED at exit 1, naming the model; the same sandbox with a listed
+# model must pass GREEN (control, proves the tier check discriminates rather than
+# always failing). Sandboxed the way tests/pipeline/test-tier-gate.sh sandboxes:
+# a mktemp HOME holding the fixture bundle root and tier-map, and a mktemp cwd
+# holding the session state file, so neither the real great_cto install nor this
+# repo's own .internal/pipeline/ is ever read. jq is a hard dependency of the gate,
+# so its absence is a visible SKIP — never a red, which would credit a missing tool
+# as a caught mutation.
+SB21=$(mktemp -d)
+if ! command -v jq > /dev/null 2>&1; then
+  echo "SELFTEST SKIP: mutation-21 (tier-gate) needs jq, which is not installed"
+elif ! make_pipeline_home "$SB21/home"; then
+  echo "SELFTEST FAIL: mutation-21 setup could not build the bundle-root HOME (rig broken, not a caught mutation)"; rc=1
+elif ! mkdir -p "$SB21/cwd/.internal/pipeline"; then
+  echo "SELFTEST FAIL: mutation-21 setup mkdir failed (rig broken, not a caught mutation)"; rc=1
+else
+  run_tier_gate_21() { # <model> — the gate at stage planning for that session model
+    printf '{"model_id":"%s","effort":null,"source":"hook","timestamp":"t"}\n' "$1" \
+      > "$SB21/cwd/.internal/pipeline/session.json" || return 1
+    ( cd "$SB21/cwd" && HOME="$SB21/home" \
+      bash "$REPO_ROOT/scripts/pipeline/tier-gate.sh" --stage planning < /dev/null )
+  }
+  expect_exit_because "tier-gate: session model absent from the tier-map" 1 "not in tier-map" \
+    run_tier_gate_21 model-not-in-tier-map
+  expect_green "tier-gate: session model listed in the tier-map (control)" \
+    run_tier_gate_21 model-plan-1
+fi
+rm -rf "$SB21"
+
+# Mutation 22: hooks/pipeline-guard (Task 4) — malformed stdin must fail RED at
+# exit 2 (the PreToolUse deny code), naming the payload; a well-formed payload in
+# the same sandbox must pass GREEN (control).
+# The sandbox MUST be armed. Phase 1 is a bare file-existence test and an unarmed
+# project exits 0 for everything, malformed stdin included — so an unarmed sandbox
+# here would assert the opposite of what this mutation claims. The session state
+# file is what arms it, and it carries a planning-tier model so the GREEN control's
+# `ls` is judged by the same armed path the RED payload takes.
+SB22=$(mktemp -d)
+if ! command -v jq > /dev/null 2>&1; then
+  echo "SELFTEST SKIP: mutation-22 (pipeline-guard) needs jq, which is not installed"
+elif ! make_pipeline_home "$SB22/home"; then
+  echo "SELFTEST FAIL: mutation-22 setup could not build the bundle-root HOME (rig broken, not a caught mutation)"; rc=1
+elif ! mkdir -p "$SB22/cwd/.internal/pipeline"; then
+  echo "SELFTEST FAIL: mutation-22 setup mkdir failed (rig broken, not a caught mutation)"; rc=1
+elif ! printf '{"model_id":"model-plan-1","effort":null,"source":"hook","timestamp":"t"}\n' \
+        > "$SB22/cwd/.internal/pipeline/session.json"; then
+  echo "SELFTEST FAIL: mutation-22 setup could not arm the sandbox (rig broken, not a caught mutation)"; rc=1
+else
+  run_pipeline_guard_22() { # <payload> — the armed guard reading that payload on stdin
+    ( cd "$SB22/cwd" && HOME="$SB22/home" bash "$REPO_ROOT/hooks/pipeline-guard" ) <<< "$1"
+  }
+  expect_exit_because "pipeline-guard: malformed stdin, armed" 2 "not valid JSON" \
+    run_pipeline_guard_22 '{"tool_name":"Bash","tool_input":'
+  expect_green "pipeline-guard: well-formed stdin, armed (control)" \
+    run_pipeline_guard_22 '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
+fi
+rm -rf "$SB22"
+
+# Mutation 23: graph-lint.mjs (Task 5) — a plan graph carrying a blocks cycle must
+# fail RED at exit 1, naming the cycle; the unmutated fixture must pass GREEN
+# (control). The cycle is built with jq from tests/pipeline/fixtures/graph-valid.json
+# into a mktemp dir — the fixture itself is read-only here — closing fx-t1 -> fx-t2
+# -> fx-t3 back onto fx-t1. node and jq are both required to build and run it, so
+# either one missing is a visible SKIP rather than a red.
+SB23=$(mktemp -d)
+if ! command -v node > /dev/null 2>&1 || ! command -v jq > /dev/null 2>&1; then
+  echo "SELFTEST SKIP: mutation-23 (graph-lint) needs node and jq"
+elif ! jq '(.[] | select(.id=="fx-t1") | .dependencies) += [{"issue_id":"fx-t1","depends_on_id":"fx-t3","type":"blocks","metadata":"{}"}]' \
+        "$REPO_ROOT/tests/pipeline/fixtures/graph-valid.json" > "$SB23/state-cycle.json"; then
+  echo "SELFTEST FAIL: mutation-23 setup jq mutation failed (rig broken, not a caught mutation)"; rc=1
+elif cmp -s "$SB23/state-cycle.json" "$REPO_ROOT/tests/pipeline/fixtures/graph-valid.json"; then
+  echo "SELFTEST FAIL: mutation-23 changed nothing (stale fixture ids, not a caught mutation)"; rc=1
+else
+  run_graph_lint_23() { # <state-file>
+    node "$REPO_ROOT/scripts/pipeline/graph-lint.mjs" --initiative fx-ini --state "$1" \
+      --roster "$REPO_ROOT/tests/pipeline/fixtures/roster.mjs" \
+      --tier-map "$REPO_ROOT/tests/pipeline/fixtures/tier-map.json"
+  }
+  expect_exit_because "graph-lint: blocks dependency cycle in the plan graph" 1 "cycle" \
+    run_graph_lint_23 "$SB23/state-cycle.json"
+  expect_green "graph-lint: unmutated valid fixture (control)" \
+    run_graph_lint_23 "$REPO_ROOT/tests/pipeline/fixtures/graph-valid.json"
+fi
+rm -rf "$SB23"
 
 exit "$rc"
