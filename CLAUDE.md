@@ -182,7 +182,7 @@ This plugin uses `bd` (beads) for ALL task tracking.
 | getting-up-to-speed            | Session orientation — reads latest session-handoff doc + bd context + adaptive codebase deep-dive + structured current-state summary |
 | research-driven-development    | Parallel research agents → blinded citation-grounding verify → synthesized knowledge base document. Triggers on "research this", "what is X", "how does Y work" |
 | write-documentation            | Human-quality prose for all human-facing text — 14-rule writing system with context-first drafting and required checks      |
-| memory-curator                 | Session-close/on-demand memory consolidation — quality-gated extract, dedup, consolidate, prune (evidence-led)              |
+| mex-curator                    | Session-close/on-demand distillation of durables into .mex/ — routing, 2 KB hot-page cap, promotion/demotion, supersession  |
 | session-handoff                | **Human-invoked only** — grounded session-handoff doc + continuation memory (not agent-routed)            |
 
 ## Modifying Skills
