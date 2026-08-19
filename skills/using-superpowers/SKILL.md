@@ -17,7 +17,7 @@ This is not negotiable. You cannot rationalize your way out of this.
 
 ## The Rule
 
-**Invoke relevant or requested skills BEFORE any response or action** — including clarifying questions, exploring the codebase, or checking files. If it turns out wrong for the situation, you don't have to use it.
+**Invoke relevant or requested skills BEFORE any response or action** — including clarifying questions, exploring the codebase, or checking files. If it turns out wrong, you don't have to use it.
 
 **Before entering plan mode:** if you haven't already brainstormed, invoke the brainstorming skill first.
 
@@ -25,11 +25,17 @@ Then announce "Using [skill] to [purpose]" and follow the skill exactly. If it h
 
 ## Skill Priority
 
-Process skills come first — they set the approach, implementation skills carry it out. Implementation is **spec-backed**: it starts from an approved spec or plan, and you state the file you are working from before the first edit.
+Process skills come first — they set the approach, implementation skills carry it out. Implementation is **spec-backed**: it starts from an approved spec or plan, and you name that file before the first edit.
 
-- "Let's build X" → beads-superpowers:brainstorming first, then implementation skills.
+- "Let's build X" → planning session (planning tier): brainstorming → great_cto's planning-with-reviews → writing-plans.
+- "Implement the ready epic" → implementation session: great_cto's `implementing-epics`.
 - "Fix this bug" → beads-superpowers:systematic-debugging first, then domain skills.
-- No spec or plan file yet, and it's more than a typo? Brainstorm before you edit.
+- Design question mid-implementation → file a `needs-planning` bead. **Never** re-plan in-lane.
+- A planning session drains open `needs-planning` beads first.
+
+### Pipeline
+
+Both sessions require the great_cto bundle root (`~/.agents/great_cto`). Without it the stage gates fail closed — stop and report, no override.
 
 ## Red Flags
 
@@ -50,11 +56,11 @@ Treat every project as a production system with real users, no matter how small 
 
 ## Capturing Decisions
 
-Log every settled decision — `mex log --type decision "<one-line>"`, unconditional; that line makes it retrievable. When a decision is hard to reverse, surprising without context, and a genuine trade-off, you MUST also offer an ADR in `docs/decisions/` (the user confirms; never auto-create). Bias toward offering rather than skipping. Routine clarifications and scope questions don't qualify.
+Log every settled decision — `mex log --type decision "<one-line>"`, unconditional; that line makes it retrievable. When a decision is hard to reverse, surprising without context, and a genuine trade-off, you MUST also offer an ADR in `docs/decisions/` (the user confirms; never auto-create). Bias toward offering; routine clarifications and scope questions don't qualify.
 
 ## Beads and mex
 
-`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. If beads context wasn't injected this session, run `bd prime`.
+`bd` (beads) is the task tracker for ALL work — TodoWrite is forbidden, as are TaskCreate and markdown TODOs. Only the orchestrating agent manages beads — subagents never touch them. Include bead IDs in commit messages. If beads context wasn't injected this session, run `bd prime`. Initiative work is a graph: initiative → epics → tasks.
 
 **bd tracks work; mex holds knowledge.** Durable notes (requirements, architecture, decisions, conventions, compliance, lessons) live in `.mex/` — never in beads. Only the orchestrating agent writes to `.mex/` or runs `mex log` — subagents read routed pages, never write. If mex context wasn't injected this session, read `.mex/ROUTER.md`. If a `mex` command errors, surface the error and stop the knowledge step — never improvise a workaround.
 
@@ -62,23 +68,15 @@ Session close = land the plane: `bd close` → `mex check` → `bd dolt push` �
 
 ## Skill Name Resolution
 
-Skill references in these skills use the canonical namespaced form
-`beads-superpowers:<skill>`. Depending on install channel, your skill list may
-show them bare (`brainstorming`) or namespaced (`beads-superpowers:brainstorming`)
-— they are the same skills. Invoke whichever form your skill list shows; if a
-reference errors as unknown, match it to the closest name in your list and
-retry with that.
+Skills are referenced here as `beads-superpowers:<skill>`. Your skill list may show
+them bare (`brainstorming`) or namespaced — the same skills. Invoke whichever form
+your list shows; if a reference errors as unknown, match it to the closest name in
+your list and retry.
 
 ## Platform Adaptation
 
-If your harness appears here, read its reference file for special instructions:
-
-- Codex: `references/codex-tools.md`
-- OpenCode: `references/opencode-tools.md`
-- Copilot CLI: `references/copilot-tools.md`
-- Pi: `references/pi-tools.md`
-- Antigravity: `references/antigravity-tools.md`
-- Gemini: `references/gemini-tools.md`
+If your harness is codex, opencode, copilot, pi, antigravity, or gemini, read
+`references/<harness>-tools.md` for special instructions.
 
 ## Asking the User
 
