@@ -157,7 +157,10 @@ c_orch="$(make_cwd orch model-orch-only)"       # implementation-orchestration t
 c_unarmed="$(make_cwd unarmed)"                 # no pipeline state at all
 c_assertfile="$(make_cwd assertfile)"           # armed by the tier assert file alone
 mkdir -p "$c_assertfile/.internal/pipeline"
-printf 'planning\n' > "$c_assertfile/.internal/pipeline/tier-assert"
+# `v2 <tier> <session-id>` — the session-bound assert format (D4). A legacy,
+# id-less line is treated as absent by resolve_session_tier, so this fixture has
+# to carry the real shape or it would arm nothing.
+printf 'v2 planning session-assertfile\n' > "$c_assertfile/.internal/pipeline/tier-assert"
 
 # Armed, but the tier cannot be resolved: the harness did not report a model
 # (D2 says that is the NORMAL case) and no human has asserted a tier.

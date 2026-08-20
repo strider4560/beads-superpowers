@@ -47,26 +47,35 @@ declared_files() {
 }
 
 # Read the list of declared prose files from config.
-# Outputs lines of "path<TAB>prefix" — the version is the token immediately
-# after the literal prefix on the first line containing it.
+# Outputs lines of "path<TAB>prefix<TAB>suffix" — the version is the token
+# immediately after the literal prefix on the first line containing it, ending
+# at the first whitespace or, when the entry declares one, at the literal suffix.
 declared_prose() {
-  jq -r '.prose[]? | "\(.path)\t\(.prefix)"' "$CONFIG"
+  jq -r '.prose[]? | "\(.path)\t\(.prefix)\t\(.suffix // "")"' "$CONFIG"
 }
 
-# Extract the version following a literal prefix in a prose file.
+# Extract the version following a literal prefix in a prose file. The optional
+# suffix bounds values that whitespace does not terminate — a shell or JS
+# constant, where the closing quote sits flush against the version.
 read_prose_field() {
-  local file="$1" prefix="$2"
+  local file="$1" prefix="$2" suffix="${3:-}"
   local line
   line=$(grep -F -m1 "$prefix" "$file") || return 1
   line="${line#*"$prefix"}"
-  echo "${line%%[[:space:]]*}"
+  if [[ -n "$suffix" ]]; then
+    [[ "$line" == *"$suffix"* ]] || return 1
+    echo "${line%%"$suffix"*}"
+  else
+    echo "${line%%[[:space:]]*}"
+  fi
 }
 
 # Replace prefix+<old-version> with prefix+<new-version> (first occurrence).
+# The suffix is never part of the replaced span, so a closing quote survives.
 write_prose_field() {
-  local file="$1" prefix="$2" new_version="$3"
+  local file="$1" prefix="$2" new_version="$3" suffix="${4:-}"
   local old
-  old=$(read_prose_field "$file" "$prefix") || return 1
+  old=$(read_prose_field "$file" "$prefix" "$suffix") || return 1
   local tmp="${file}.tmp"
   awk -v s="${prefix}${old}" -v r="${prefix}${new_version}" '
     !done { i = index($0, s); if (i) { $0 = substr($0, 1, i-1) r substr($0, i + length(s)); done = 1 } }
@@ -101,7 +110,7 @@ cmd_check() {
     versions+=("$ver")
   done < <(declared_files)
 
-  while IFS=$'\t' read -r path prefix; do
+  while IFS=$'\t' read -r path prefix suffix; do
     local fullpath="$REPO_ROOT/$path"
     if [[ ! -f "$fullpath" ]]; then
       printf "  %-45s  MISSING\n" "$path (prose)"
@@ -109,7 +118,7 @@ cmd_check() {
       continue
     fi
     local ver
-    if ! ver=$(read_prose_field "$fullpath" "$prefix"); then
+    if ! ver=$(read_prose_field "$fullpath" "$prefix" "$suffix"); then
       printf "  %-45s  NO MATCH for '%s'\n" "$path (prose)" "$prefix"
       has_drift=1
       continue
@@ -172,7 +181,7 @@ cmd_audit() {
   while IFS=$'\t' read -r path _field; do
     declared_paths+=("$path")
   done < <(declared_files)
-  while IFS=$'\t' read -r path _prefix; do
+  while IFS=$'\t' read -r path _prefix _suffix; do
     declared_paths+=("$path")
   done < <(declared_prose)
 
@@ -235,18 +244,18 @@ cmd_bump() {
     printf "  %-45s  %s -> %s\n" "$path ($field)" "$old_ver" "$new_version"
   done < <(declared_files)
 
-  while IFS=$'\t' read -r path prefix; do
+  while IFS=$'\t' read -r path prefix suffix; do
     local fullpath="$REPO_ROOT/$path"
     if [[ ! -f "$fullpath" ]]; then
       echo "  SKIP (missing): $path"
       continue
     fi
     local old_ver
-    if ! old_ver=$(read_prose_field "$fullpath" "$prefix"); then
+    if ! old_ver=$(read_prose_field "$fullpath" "$prefix" "$suffix"); then
       echo "  SKIP (no match for '$prefix'): $path"
       continue
     fi
-    write_prose_field "$fullpath" "$prefix" "$new_version"
+    write_prose_field "$fullpath" "$prefix" "$new_version" "$suffix"
     printf "  %-45s  %s -> %s\n" "$path (prose)" "$old_ver" "$new_version"
   done < <(declared_prose)
 

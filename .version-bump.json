@@ -37,6 +37,11 @@
     {
       "path": "CLAUDE.md",
       "prefix": "**Version:** "
+    },
+    {
+      "path": "scripts/pipeline/tier-gate.sh",
+      "prefix": "BSP_PIPELINE_VERSION=\"",
+      "suffix": "\""
     }
   ],
   "audit": {
