@@ -63,6 +63,6 @@ repos:
     hooks:
       - id: scan-plan
         name: Plan secret/PII scan (scan-plan)
-        entry: bash scripts/scan-plan.sh
+        entry: bash -c 'rc=0; for f; do bash scripts/scan-plan.sh "$f" || rc=1; done; exit $rc' --
         language: system
         files: ^plans/.*\.md$

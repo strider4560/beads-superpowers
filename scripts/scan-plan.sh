@@ -36,14 +36,14 @@ scan() { # <grep-flags> <ere> <reason> — one finding per matching line
 # A quote or backtick. A reference is "quoted" when the path starts right after
 # one of these: `"the spec" and .internal/x` is prose, `.internal/x` is a path.
 q="[\"'\`]"
-p='[A-Za-z0-9._/~-]'
+p='[A-Za-z0-9._/~$-]'
 
 scan '' -----BEGIN                       'private-key header'
 scan '' 'AKIA[0-9A-Z]{16}'               'AWS access key id'
 scan '' 'ghp_[A-Za-z0-9]{36}'            'GitHub personal access token'
 scan '' 'xox[baprs]-'                    'Slack token'
 scan '' 'eyJ[A-Za-z0-9_-]{10,}\.eyJ'     'JSON Web Token'
-scan 'i' "(key|token|secret|password)[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*${q}?[A-Za-z0-9+/=_-]{32,}" \
+scan 'i' "(key|token|secret|password)[A-Za-z0-9_-]*${q}?[[:space:]]*[:=][[:space:]]*${q}?[A-Za-z0-9+/=_-]{32,}" \
   'secret-like value assigned to a key/token/secret/password name'
 scan '' "${q}${p}*\.internal/"           'quoted .internal/ path'
 

@@ -101,6 +101,13 @@ run "$TMP/assign-hex.md"
 check "hex-value-assigned-to-a-key-name-exits-1" 1 \
   ':[0-9]+: secret-like value assigned to a key/token/secret/password name'
 
+# The JSON/YAML spelling quotes the NAME too, so a closing quote sits between
+# the name and the separator. It is the form a pasted config block actually has.
+printf '# Plan\n\n{ "apiKey": "%s" }\n' "$hex32" > "$TMP/assign-json.md"
+run "$TMP/assign-json.md"
+check "quoted-name-json-assignment-exits-1" 1 \
+  ':[0-9]+: secret-like value assigned to a key/token/secret/password name'
+
 printf '# Plan\n\nSESSION_SECRET: %s\n' "$b64_40" > "$TMP/assign-b64.md"
 run "$TMP/assign-b64.md"
 check "base64-value-assigned-to-a-secret-name-exits-1" 1 \
@@ -119,6 +126,16 @@ Background: `.internal/specs/2026-08-19-thing.md`
 EOF
 run "$f"
 check "quoted-internal-path-exits-1" 1 ':[0-9]+: quoted \.internal/ path'
+
+# A shell-variable prefix is how a portable path to the same directory gets
+# written; it must not be an escape hatch out of the rule.
+mkfix internal-envvar <<'EOF'
+# Plan
+
+Background: `$HOME/.internal/specs/x.md`
+EOF
+run "$f"
+check "quoted-internal-path-with-variable-prefix-exits-1" 1 ':[0-9]+: quoted \.internal/ path'
 
 mkfix handoff <<'EOF'
 # Plan
@@ -202,6 +219,30 @@ if [ -z "$out" ] && [ -n "$err" ]; then
 else
   echo "FAIL usage-diagnostic-goes-to-stderr: stdout='$out' stderr='$err'"
   fails=$((fails+1))
+fi
+
+# --- hook level: pre-commit batches filenames onto one entry ----------------
+# pre-commit appends every matched path to a SINGLE invocation of the hook's
+# `entry`, so the entry — not the scanner — owns the multi-file case. The entry
+# is read out of the config rather than restated here, so the test tracks the
+# wiring the repo actually ships. A clean file alongside a dirty one must still
+# surface the dirty file's finding and fail the commit.
+
+entry="$(awk '
+  /^      - id: scan-plan$/ { in_hook = 1; next }
+  in_hook && /^        entry: / { sub(/^        entry: /, ""); print; exit }
+' "$root/.pre-commit-config.yaml")"
+
+if [ -z "$entry" ]; then
+  echo "FAIL hook-entry-is-readable: no scan-plan entry in .pre-commit-config.yaml"
+  fails=$((fails+1))
+else
+  hook=()
+  eval "hook=($entry)"   # pre-commit shlex-splits `entry`; so does this.
+  out="$(cd "$root" && "${hook[@]}" "$TMP/clean.md" "$TMP/aws.md" 2>"$TMP/stderr" </dev/null)"
+  rc=$?
+  err="$(cat "$TMP/stderr")"
+  check "hook-entry-reports-the-dirty-file-of-two" 1 "^$TMP/aws\.md:[0-9]+: AWS access key id$"
 fi
 
 # --- summary ----------------------------------------------------------------
