@@ -461,10 +461,14 @@ elif ! make_pipeline_home "$SB21/home"; then
 elif ! mkdir -p "$SB21/cwd/.internal/pipeline"; then
   echo "SELFTEST FAIL: mutation-21 setup mkdir failed (rig broken, not a caught mutation)"; rc=1
 else
+  # The state file and the live identifier must agree (D4): state written by a
+  # different session is treated as absent, so an unbound fixture would deny for
+  # the wrong reason and both cases below would stop testing the tier check.
+  SID21="selftest-21-session"
   run_tier_gate_21() { # <model> — the gate at stage planning for that session model
-    printf '{"model_id":"%s","effort":null,"source":"hook","timestamp":"t"}\n' "$1" \
-      > "$SB21/cwd/.internal/pipeline/session.json" || return 1
-    ( cd "$SB21/cwd" && HOME="$SB21/home" \
+    printf '{"model_id":"%s","effort":null,"session_id":"%s","source":"hook","timestamp":"t"}\n' \
+      "$1" "$SID21" > "$SB21/cwd/.internal/pipeline/session.json" || return 1
+    ( cd "$SB21/cwd" && HOME="$SB21/home" CLAUDE_CODE_SESSION_ID="$SID21" \
       bash "$REPO_ROOT/scripts/pipeline/tier-gate.sh" --stage planning < /dev/null )
   }
   expect_exit_because "tier-gate: session model absent from the tier-map" 1 "not in tier-map" \

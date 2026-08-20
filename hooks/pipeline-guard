@@ -116,7 +116,13 @@ esac
 bundle="$(resolve_bundle_root 2>/dev/null)" || deny "great_cto bundle root missing or below the required version"
 map="$bundle/shared/tier-map.json"
 [ -f "$map" ] || deny "tier-map missing at $map — update great_cto"
-tiers="$(resolve_session_tier "$state_dir" "$map" 2>/dev/null)" ||
+# `-` is the explicit "no live identity on this surface" sentinel: the live
+# session id lives in the PreToolUse payload and wiring it through is the sibling
+# identity task's work. Until then the unbound path is spelled, not defaulted —
+# session.json binding is skipped and a v2 tier-assert is treated as absent, so
+# the guard falls to its unresolved-tier posture below rather than trusting an
+# assert nothing verified.
+tiers="$(resolve_session_tier "$state_dir" "$map" - 2>/dev/null)" ||
   deny "session tier could not be resolved from $state_dir"
 
 # An unresolved tier (a session state file with a null model and no asserted

@@ -157,7 +157,11 @@ c_orch="$(make_cwd orch model-orch-only)"       # implementation-orchestration t
 c_unarmed="$(make_cwd unarmed)"                 # no pipeline state at all
 c_assertfile="$(make_cwd assertfile)"           # armed by the tier assert file alone
 mkdir -p "$c_assertfile/.internal/pipeline"
-printf 'planning\n' > "$c_assertfile/.internal/pipeline/tier-assert"
+# `v2 <tier> <session-id>` — the session-bound assert format (D4). A legacy,
+# id-less line is treated as absent by resolve_session_tier, so this fixture has
+# to carry the real shape or it would not even arm Phase 1. It still resolves no
+# tier through this hook while the call site passes the `-` sentinel.
+printf 'v2 planning session-assertfile\n' > "$c_assertfile/.internal/pipeline/tier-assert"
 
 # Armed, but the tier cannot be resolved: the harness did not report a model
 # (D2 says that is the NORMAL case) and no human has asserted a tier.
@@ -347,9 +351,20 @@ check "ruleB-does-not-fire-off-the-planning-tier" 0
 run "$c_notier" "$h_full" "$p_src"
 check "ruleB-unresolved-tier-stays-inert" 0
 
-# The tier assert file is the other arming channel, and resolves a tier too.
+# The tier assert file is the other arming channel, but this surface has no live
+# session identity yet, so it calls resolve_session_tier with the `-` sentinel
+# and a v2 assert is treated as ABSENT (D4) — the tier stays unresolved and Rule
+# B stays inert, exactly as for c_notier above. Rule B only ever restricts, so
+# nothing escalates here; the fail-closed half is asserted immediately below.
+# When the sibling identity task feeds the payload's session id in, a matching
+# assert resolves again and this case becomes a Rule B deny.
 run "$c_assertfile" "$h_full" "$p_src"
-check "ruleB-fires-when-the-tier-came-from-the-tier-assert-file" 2 'Rule B'
+check "ruleB-inert-while-the-unbound-guard-treats-the-tier-assert-as-absent" 0
+
+# The direction that matters: an assert nothing verified buys no plan-graph
+# permission. Rule A denies on the unresolved tier rather than trusting it.
+run "$c_assertfile" "$h_full" "$p_epic"
+check "ruleA-unbound-tier-assert-does-not-authorize-the-plan-graph" 2 'Rule A'
 
 # --- Rule C: --assert is human-only (D13a) ----------------------------------
 
