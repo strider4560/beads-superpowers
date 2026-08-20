@@ -114,6 +114,12 @@ if [ ! -t 0 ]; then
 fi
 bsp_sid=$(printf '%s' "$bsp_stdin" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | tr -cd 'a-zA-Z0-9_-' | cut -c1-64)
 bsp_src=$(printf '%s' "$bsp_stdin" | sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'     | tr -cd 'a-zA-Z0-9_-' | cut -c1-32)
+# Kept before the PPID fallback below: the pipeline state file records the id the
+# PreToolUse payload will carry (D4), and `nosid-$PPID` is a dedup bucket, not a
+# session identity. Empty stays empty here so the field can be OMITTED rather
+# than written as "" — an empty recorded id would compare equal to an empty
+# payload id, turning "state no session claims" into a match.
+bsp_sid_payload="$bsp_sid"
 # PPID-keyed fallback: duplicate registrations for the SAME event share a parent
 # (the harness process) → still dedup; different sessions = different harness
 # processes (different PPIDs) → never collide on one global "nosid" bucket.
@@ -349,12 +355,19 @@ if [ -d "$_bsp_bundle_root" ] && [ -f "$_bsp_bundle_root/shared/tier-map.json" ]
     # Brace-grouped so the group's 2>/dev/null is in place BEFORE the inner `>` is
     # attempted: an existing-but-unwritable .internal/pipeline/ makes the redirect
     # itself fail, and bash reports that on the group's stderr, not the command's.
+    # session_id is what binds this state to a live session (D4): hooks/pipeline-guard
+    # compares it against the PreToolUse payload's own session_id, and without it
+    # every armed project reads as state no session claims — the tier never
+    # resolves and Rule B is inert. Omitted, never empty, when the payload carried
+    # no id: "" would match an id-less payload instead of failing closed.
     { jq -n --arg model "$_bsp_model" --arg effort "${CLAUDE_EFFORT:-}" \
+            --arg sid "$bsp_sid_payload" \
             --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{model_id: (if $model == "" then null else $model end),
           effort:   (if $effort == "" then null else $effort end),
           source: "hook",
-          timestamp: $ts}' > ".internal/pipeline/session.json.$$" \
+          timestamp: $ts}
+         + (if $sid == "" then {} else {session_id: $sid} end)' > ".internal/pipeline/session.json.$$" \
         && mv -f ".internal/pipeline/session.json.$$" .internal/pipeline/session.json; } 2>/dev/null || true
     rm -f ".internal/pipeline/session.json.$$" 2>/dev/null || true
   fi

@@ -120,12 +120,43 @@ gate_dir="$(cd "$(dirname "$0")/../scripts/pipeline" 2>/dev/null && pwd -P)" ||
 assert_remedy="bash $gate_dir/tier-gate.sh --assert <tier> --session ${live_sid:-<session-id>}"
 
 # --- install integrity (D3, R4-004) -----------------------------------------
-# bundle-root.sh is sourced HERE, ahead of the rules, for two reasons: it owns
-# the fixed anchor and record spellings Rule D reads, and its own integrity is
-# what the verification below establishes. Trusting it and then checking it
-# would be the wrong order.
+# bundle-root.sh is sourced HERE, ahead of the rules, because it owns the fixed
+# anchor and record spellings Rule D reads.
+# It also owns verify_record — and it is itself a manifest entry — so sourcing it
+# and then calling the function it defines would be a check that trusts its own
+# subject: appending `verify_record() { return 0; }` to the anchored copy would
+# disable the check that catches the append. The file is therefore hashed
+# against the record BEFORE it is sourced, and only then sourced.
+# The anchor and record are spelled as literals here rather than imported,
+# because the file that owns those spellings is exactly what may not be trusted
+# yet. They are fixed literals for the reason bundle-root.sh states — four actors
+# resolving env vars in four process trees — so restating them cannot drift
+# without the record reading as absent, which is already a hard deny.
+# Only a manifest-backed record makes a claim about this file. An absent,
+# unreadable or declared-advisory record claims nothing here; verify_record below
+# already denies or stands down exactly as each of those postures requires.
+bsp_anchor_lit="${HOME%/}/.agents/beads-superpowers"
+bsp_record_lit="${HOME%/}/.local/state/beads-superpowers/record.json"
+bundle_lib="$(dirname "$0")/../scripts/pipeline/bundle-root.sh"
+if { [ -e "$bsp_anchor_lit" ] || [ -L "$bsp_anchor_lit" ]; } && [ -r "$bsp_record_lit" ] &&
+   [ "$(jq -r '.posture // empty' "$bsp_record_lit" 2>/dev/null)" = "manifest-backed" ]; then
+  want_lib_hash="$(jq -r '.hashes["scripts/pipeline/bundle-root.sh"] // empty' \
+                      "$bsp_record_lit" 2>/dev/null)"
+  if command -v sha256sum >/dev/null 2>&1; then
+    got_lib_hash="$(sha256sum "$bundle_lib" 2>/dev/null)" || got_lib_hash=""
+  elif command -v shasum >/dev/null 2>&1; then
+    got_lib_hash="$(shasum -a 256 "$bundle_lib" 2>/dev/null)" || got_lib_hash=""
+  else
+    deny "install integrity: no sha256 tool on PATH (sha256sum or shasum), so scripts/pipeline/bundle-root.sh cannot be verified before it is sourced"
+  fi
+  got_lib_hash="${got_lib_hash%% *}"
+  # An empty want is a manifest-backed record that attests nothing about this
+  # file — a licence to source it unchecked, which is the deny this exists for.
+  [ -n "$want_lib_hash" ] && [ "$got_lib_hash" = "$want_lib_hash" ] ||
+    deny "install integrity: scripts/pipeline/bundle-root.sh does not match its recorded hash — restore the file, or re-run beads-superpowers' install.sh to re-attest the root"
+fi
 # shellcheck source=scripts/pipeline/bundle-root.sh
-. "$(dirname "$0")/../scripts/pipeline/bundle-root.sh" 2>/dev/null ||
+. "$bundle_lib" 2>/dev/null ||
   deny "cannot load scripts/pipeline/bundle-root.sh"
 
 # verify_record's four failure states — record absent under a present anchor, a
@@ -205,23 +236,28 @@ esac
 # control that is judging the call — the same self-authorization the state
 # directory half closes, one level up.
 # The match set is deliberately BOUNDED, and the bound is the anchor SPELLING:
-# the two anchor entries themselves, the gate and hook files reached THROUGH an
-# anchor, and the integrity record's directory. It is not "and their targets" —
-# a development clone reached as the working project is ordinary source, and an
-# unbounded rule would brick every clone on the machine. Residual, stated: with
-# the clone as the working project, editing its own gates is not denied, which
-# is consistent with dev-clone roots being advisory.
+# the two anchor entries themselves, the script and hook files reached THROUGH an
+# anchor, great_cto's tier-map, and the integrity record's directory. It is not
+# "and their targets" — a development clone reached as the working project is
+# ordinary source, and an unbounded rule would brick every clone on the machine.
+# Residual, stated: with the clone as the working project, editing its own gates
+# is not denied, which is consistent with dev-clone roots being advisory.
+# `scripts/`, not `scripts/pipeline/`: control files live outside the pipeline/
+# subdirectory too (scan-plan.sh among them), and a bound that stops at pipeline/
+# leaves them model-writable through the anchor. shared/tier-map.json is named
+# because the tier wall is READ from it — anything that can rewrite it can put
+# its own model on the planning tier.
 # The great_cto anchor is spelled here rather than imported because
 # bundle-root.sh keeps it local to resolve_bundle_root; both spellings are fixed
 # literals for the reason stated there — four actors resolve env vars in four
 # process trees, so an env-derived path would read as a different anchor.
-gc_anchor="${HOME}/.agents/great_cto"
+gc_anchor="${HOME%/}/.agents/great_cto"
 record_dir="${RECORD_PATH%/*}"
 case "$tool" in
   Write|Edit|NotebookEdit) case "$nabs" in
     "$gc_anchor"|"$BSP_ANCHOR"|"$record_dir"|"$record_dir"/*|\
-    "$gc_anchor"/scripts/pipeline/*|"$gc_anchor"/hooks/*|\
-    "$BSP_ANCHOR"/scripts/pipeline/*|"$BSP_ANCHOR"/hooks/*)
+    "$gc_anchor"/scripts/*|"$gc_anchor"/hooks/*|"$gc_anchor"/shared/tier-map.json|\
+    "$BSP_ANCHOR"/scripts/*|"$BSP_ANCHOR"/hooks/*)
       deny "the beads-superpowers install surface is not model-writable (Rule D)" ;; esac ;;
 esac
 

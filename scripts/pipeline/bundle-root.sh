@@ -15,8 +15,12 @@ GREAT_CTO_MIN_VERSION="3.1.0"
 # writer/verifier divergence reads as record-absent, which is a hard deny
 # (spec D3, R5-001). The record lives outside both anchors and outside any
 # synced tree, so a dotfiles sync cannot propagate one host's hashes.
-BSP_ANCHOR="${HOME}/.agents/beads-superpowers"
-RECORD_PATH="${HOME}/.local/state/beads-superpowers/record.json"
+# `${HOME%/}`, not `${HOME}`: both spellings are compared against normalized
+# absolute paths, and a HOME with a trailing slash would build `/home/u//.agents/…`
+# — a string no normalized path ever equals, which silently disables the
+# install-surface half of the guard's Rule D.
+BSP_ANCHOR="${HOME%/}/.agents/beads-superpowers"
+RECORD_PATH="${HOME%/}/.local/state/beads-superpowers/record.json"
 
 resolve_bundle_root() {
   local root="${HOME}/.agents/great_cto"

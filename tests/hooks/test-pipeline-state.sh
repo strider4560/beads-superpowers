@@ -163,6 +163,11 @@ if [ -f "$state" ]; then
     assert "effort read from \$CLAUDE_EFFORT" "got $(jqr '.effort' "$state")" \
         jqok '.effort == "high"' "$state"
     assert "source is hook" "got $(jqr '.source' "$state")" jqok '.source == "hook"' "$state"
+    # D4: the guard binds the recorded id against the PreToolUse payload's
+    # session_id, so the hook has to RECORD one. Without this field every armed
+    # project reads as "state no session claims" and Rule B is inert.
+    assert "session_id recorded from the payload" "got $(jqr '.session_id' "$state")" \
+        jqok '.session_id == "pipestate-C"' "$state"
     assert "timestamp is a non-empty string" "got $(jqr '.timestamp' "$state")" \
         jqok '.timestamp | type == "string" and length > 0' "$state"
 fi
@@ -184,6 +189,24 @@ if [ -f "$state" ]; then
         jqok '.model_id == null' "$state"
     assert "effort is null when \$CLAUDE_EFFORT is unset" "got $(jqr '.effort' "$state")" \
         jqok '.effort == null' "$state"
+fi
+
+# --- Case AA: armed, payload with NO session_id -----------------------------
+# The field is OMITTED rather than written empty. An empty recorded id would
+# compare equal to an empty payload id, which is exactly the "state no session
+# claims" case D4 wants treated as absent — writing "" would turn it into a
+# match and hand the tier to whatever session came along.
+home=$(mk_home armed); ws=$(mk_ws)
+out=$(run_hook "$home" "$ws" '{"source":"startup","hook_event_name":"SessionStart","model":"model-x"}' ""); rc=$?
+state="$ws/.internal/pipeline/session.json"
+assert "hook exits 0 with no session_id in the payload" "rc=$rc (out: $out)" test "$rc" -eq 0
+assert "state file written with no session_id in the payload" "$state missing" test -f "$state"
+if [ -f "$state" ]; then
+    assert "session_id is absent when the payload carries none" \
+        "got $(jqr 'has(\"session_id\")' "$state") / $(cat "$state")" \
+        jqok 'has("session_id") | not' "$state"
+    assert "model_id still recorded when the payload carries no session_id" \
+        "got $(jqr '.model_id' "$state")" jqok '.model_id == "model-x"' "$state"
 fi
 
 # --- Case E: armed, .internal/pipeline/ exists but is not writable ----------

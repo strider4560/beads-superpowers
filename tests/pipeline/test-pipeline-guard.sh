@@ -54,9 +54,11 @@ stray_stdout=""
 
 run() { # <cwd> <home> <stdin-payload> — sets rc, err (stderr)
   # PATH_OVERRIDE, when set, replaces PATH for the guard only (jq-absence cases).
+  # GUARD_OVERRIDE runs a COPY of the guard instead of this repo's — the anchored
+  # copy, for the cases that tamper with the bundle-root.sh it sources.
   local cwd="$1" home="$2" payload="$3"
   ( cd "$cwd" && HOME="$home" XDG_RUNTIME_DIR="$TMP/xdg" \
-      PATH="${PATH_OVERRIDE:-$PATH}" "$BASH" "$guard" ) \
+      PATH="${PATH_OVERRIDE:-$PATH}" "$BASH" "${GUARD_OVERRIDE:-$guard}" ) \
     <<<"$payload" >"$TMP/stdout" 2>"$TMP/stderr"
   rc=$?
   err="$(cat "$TMP/stderr")"
@@ -516,6 +518,28 @@ check "ruleD-write-under-the-great_cto-hooks-dir-denied" 2 'Rule D'
 run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/hooks/pipeline-guard NotebookEdit)"
 check "ruleD-notebook-edit-through-the-anchor-denied" 2 'Rule D'
 
+# The bound is `<anchor>/scripts/`, not `<anchor>/scripts/pipeline/`: the control
+# files live outside the pipeline/ subdirectory too, and a rule that stops at
+# pipeline/ leaves them model-writable through the anchor.
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/scripts/scan-plan.sh)"
+check "ruleD-write-to-a-script-outside-pipeline-through-the-anchor-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/great_cto/scripts/x.sh)"
+check "ruleD-write-to-a-great_cto-script-outside-pipeline-denied" 2 'Rule D'
+
+# The tier-map is the file the whole tier wall is read from: anything that can
+# rewrite it can put its own model on the planning tier.
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/great_cto/shared/tier-map.json)"
+check "ruleD-write-to-the-great_cto-tier-map-denied" 2 'Rule D'
+
+# A trailing slash on $HOME must not disable the install-surface half: the
+# anchors are built off ${HOME%/}, so `/home/u/` and `/home/u` spell one anchor.
+run "$c_orch" "$h_full/" "$(home_payload "$h_full" .agents/beads-superpowers/hooks/pipeline-guard)"
+check "ruleD-install-surface-survives-a-trailing-slash-in-HOME" 2 'Rule D'
+
+run "$c_orch" "$h_full/" "$(home_payload "$h_full" .local/state/beads-superpowers/record.json)"
+check "ruleD-record-directory-survives-a-trailing-slash-in-HOME" 2 'Rule D'
+
 # The integrity record is the thing the whole check rests on (SEC-R3-RECORD).
 run "$c_orch" "$h_full" "$(home_payload "$h_full" .local/state/beads-superpowers/record.json)"
 check "ruleD-write-to-the-integrity-record-denied" 2 'Rule D'
@@ -616,6 +640,32 @@ check "identity-bound-tier-assert-resolves-the-planning-tier" 2 'Rule B'
 run "$c_assertfile" "$h_full" "$(sid_src other-session)"
 check "identity-tier-assert-bound-to-another-session-stays-absent" 0
 
+# --- end to end: the id the hook writes is the id the guard binds on (D4) ----
+# Every case above hand-writes session.json. That leaves the one thing D4
+# actually rests on untested: hooks/session-start has to RECORD the payload's
+# session_id, or the recorded id is absent on every armed project, the tier
+# never resolves, and Rule B is inert everywhere. This case builds session.json
+# by RUNNING the hook, then runs the guard against it with the same id — so the
+# dependency between the two files is pinned mechanically, not by inspection.
+h_e2e="$(make_home e2e)"; add_bundle "$h_e2e" "$minver"; add_tier_map "$h_e2e"
+c_e2e="$TMP/cwd-e2e"; mkdir -p "$c_e2e"
+( cd "$c_e2e" && HOME="$h_e2e" XDG_RUNTIME_DIR="$TMP/xdg" "$BASH" "$root/hooks/session-start" \
+    <<<'{"session_id":"sess-e2e","source":"startup","hook_event_name":"SessionStart","model":"model-plan-1"}' \
+  ) >/dev/null 2>&1
+e2e_state="$c_e2e/.internal/pipeline/session.json"
+if grep -Eq '"session_id"[[:space:]]*:[[:space:]]*"sess-e2e"' "$e2e_state" 2>/dev/null; then
+  echo "PASS e2e-session-start-records-the-payload-session-id"
+else
+  echo "FAIL e2e-session-start-records-the-payload-session-id: $(cat "$e2e_state" 2>/dev/null)"
+  fails=$((fails+1))
+fi
+
+run "$c_e2e" "$h_e2e" "$(sid_src sess-e2e)"
+check "e2e-hook-written-state-resolves-the-planning-tier-and-rule-B-denies" 2 'Rule B'
+
+run "$c_e2e" "$h_e2e" "$(sid_docs sess-e2e)"
+check "e2e-hook-written-state-keeps-the-rule-B-allow-list" 0
+
 # --- Phase-2 install integrity (D3, R4-004) ---------------------------------
 # verify_record's four failure states are a DENY AT EXIT 2 here: exit 1 does not
 # block a PreToolUse call, so "nonzero" is not the assertion — 2 is. The check
@@ -627,11 +677,11 @@ elif command -v shasum >/dev/null 2>&1; then sha_cmd=(shasum -a 256)
 else sha_cmd=(); fi
 sha256_of() { local o; o="$("${sha_cmd[@]}" "$1")"; printf '%s' "${o%% *}"; }
 
-write_record() { # <home> <target> — the out-of-anchor integrity record
+write_record() { # <home> <target> [posture] — the out-of-anchor integrity record
   local rec="$1/.local/state/beads-superpowers" first=1 f
   mkdir -p "$rec"
-  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"manifest-backed","hashes":{' \
-      "$1" "$2"
+  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"%s","hashes":{' \
+      "$1" "$2" "${3:-manifest-backed}"
     for f in scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
              scripts/pipeline/graph-lint.mjs hooks/pipeline-guard; do
       [ "$first" -eq 1 ] || printf ','
@@ -642,7 +692,7 @@ write_record() { # <home> <target> — the out-of-anchor integrity record
   } > "$rec/record.json"
 }
 
-make_anchor_home() { # <name> -> HOME with a bundle, a populated anchor and a matching record
+make_anchor_home() { # <name> [posture] -> HOME with a bundle, a populated anchor and a matching record
   local home="$TMP/home-$1" target="$TMP/target-$1"
   mkdir -p "$home/.agents" "$target/scripts/pipeline" "$target/hooks"
   add_bundle "$home" "$minver"; add_tier_map "$home"
@@ -650,7 +700,7 @@ make_anchor_home() { # <name> -> HOME with a bundle, a populated anchor and a ma
         "$root/scripts/pipeline/graph-lint.mjs" "$target/scripts/pipeline/"
   cp -f "$root/hooks/pipeline-guard" "$target/hooks/"
   ln -sfn "$target" "$home/.agents/beads-superpowers"
-  write_record "$home" "$target"
+  write_record "$home" "$target" "${2:-manifest-backed}"
   printf '%s' "$home"
 }
 
@@ -732,6 +782,52 @@ else
   # A failure is never cached: the very next call must deny again.
   run "$c_cache" "$h_cache" "$(sid_task sess-cache)"
   check "integrity-a-failure-is-never-cached" 2 'integrity'
+
+  # --- the check may not trust the file that implements it (SEC-R3-RECORD) ---
+  # verify_record lives in bundle-root.sh, and bundle-root.sh is itself a
+  # manifest entry. Sourcing first and calling it afterwards means appending
+  # `verify_record() { return 0; }` to the anchored copy disables the check that
+  # would have caught the append. So the guard hashes the bundle-root.sh it is
+  # about to source against the record BEFORE sourcing it.
+  # The guard under test here is the ANCHORED COPY — that is the only way its
+  # `dirname $0` sibling is the tampered file, which is what production does.
+  h_selfcheck="$(make_anchor_home integrity-selfcheck)"
+  printf 'verify_record() { return 0; }\n' \
+    >> "$TMP/target-integrity-selfcheck/scripts/pipeline/bundle-root.sh"
+  GUARD_OVERRIDE="$h_selfcheck/.agents/beads-superpowers/hooks/pipeline-guard"
+  run "$c_int" "$h_selfcheck" "$(sid_task sess-selfcheck)"
+  check "integrity-a-neutered-bundle-root-is-caught-before-it-is-sourced" 2 'bundle-root\.sh'
+
+  # A record that attests nothing about the file cannot license sourcing it: a
+  # manifest-backed posture whose manifest has no entry for bundle-root.sh is a
+  # deny, not a skip.
+  h_noentry="$(make_anchor_home integrity-noentry)"
+  GUARD_OVERRIDE="$h_noentry/.agents/beads-superpowers/hooks/pipeline-guard"
+  printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"manifest-backed","hashes":{"hooks/pipeline-guard":"%s"}}\n' \
+    "$h_noentry" "$TMP/target-integrity-noentry" \
+    "$(sha256_of "$TMP/target-integrity-noentry/hooks/pipeline-guard")" \
+    > "$h_noentry/.local/state/beads-superpowers/record.json"
+  run "$c_int" "$h_noentry" "$(sid_task sess-noentry)"
+  check "integrity-an-unattested-bundle-root-denies-at-exit-2" 2 'bundle-root\.sh'
+
+  # A hash tool is required to run the pre-source check at all, so its absence is
+  # a deny — the same posture verify_record already takes.
+  GUARD_OVERRIDE="$h_anchor/.agents/beads-superpowers/hooks/pipeline-guard"
+  PATH_OVERRIDE="$nosha"
+  run "$c_int" "$h_anchor" "$(sid_task sess-nosha-anchored)"
+  unset PATH_OVERRIDE
+  check "integrity-pre-source-check-denies-when-no-hash-tool-exists" 2 'sha256'
+
+  # Declared-advisory postures attest nothing, so there is nothing to check
+  # against and the pre-source check stands down — the same carve-out
+  # verify_record makes for an unpinned root.
+  h_advisory="$(make_anchor_home integrity-advisory dev-clone-advisory)"
+  printf '# advisory tampering\n' \
+    >> "$TMP/target-integrity-advisory/scripts/pipeline/bundle-root.sh"
+  GUARD_OVERRIDE="$h_advisory/.agents/beads-superpowers/hooks/pipeline-guard"
+  run "$c_int" "$h_advisory" "$(sid_task sess-advisory)"
+  check "integrity-dev-clone-advisory-posture-is-not-denied" 0
+  unset GUARD_OVERRIDE
 fi
 
 # --- unarmed: no pipeline state -> allow everything, cost nothing -----------
