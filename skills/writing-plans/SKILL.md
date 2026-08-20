@@ -17,8 +17,9 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Context:** This should be run in a dedicated worktree (created by brainstorming skill).
 
-**Save plans to:** `.internal/plans/YYYY-MM-DD-<feature-name>.md`
-- (User preferences for plan location override this default)
+**Save plans to:** `plans/YYYY-MM-DD-<feature-name>.md` — a tracked directory at the repo root
+- (User preferences for plan location override this default. The stamp records the actual path.)
+- A location outside the repo is unsupported for stamped initiatives. Stop there and report. **Never** stamp a path that cannot resolve.
 
 ## Stage Entry
 
@@ -36,6 +37,7 @@ Run it from the repo root — the gate reads session state from `./.internal/pip
 | 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
 | 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
 | 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
+| other | Any exit outside {0, 1, 2, 4}, including 127 (missing file). | Fail-closed: stop and report. |
 
 Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
 
@@ -301,7 +303,9 @@ Read `bd create --help`, `bd import --help`, and `bd batch --help` on first use 
 **1. The initiative epic.** One epic bead, labeled `initiative`, whose body carries the plan's Goal as `## Success Criteria` plus pointers to the settled spec and to the mex declarations:
 
 ```bash
-bd create "Initiative: <plan name>" -t epic -p 1 -l initiative -d "<the plan's Goal>
+bd create "Initiative: <plan name>" -t epic -p 1 -l initiative \
+  --metadata "$(jq -nc --arg p "<plan-path>" '{plan_path:$p}')" \
+  -d "<the plan's Goal>
 
 Spec: .internal/specs/YYYY-MM-DD-<topic>-design.md
 Declarations: .mex/context/initiatives.md
@@ -309,6 +313,8 @@ Declarations: .mex/context/initiatives.md
 ## Success Criteria
 - <measurable outcome from the Goal>"
 ```
+
+`<plan-path>` is the plan's repository-relative path — the file you saved above. Stamp it here, at the `bd create` site. The Capture Complete Gate rejects an initiative whose `plan_path` does not exist inside the repo.
 
 Note the initiative id — every later step needs it. The graph lint checks the `initiative` label on this bead alone, so whether the label reaches any other bead does not matter.
 
@@ -324,7 +330,7 @@ bd list --parent <initiative-id> --json | jq -r '.[].id'   # → the epic ids
 
 # Tasks — parent-child to their epic, acceptance criteria copied verbatim.
 cat <<'EOF' | bd import -
-{"title":"Task 1: <name>","issue_type":"task","priority":2,"description":"<summary>\n\n## Acceptance Criteria\n- <observable outcome>","metadata":{"implementation_agent":"senior-dev","required_skills":["test-driven-development"],"tier":"implementation"},"dependencies":[{"depends_on_id":"<epic-id>","type":"parent-child"}]}
+{"title":"Task 1: <name>","issue_type":"task","priority":2,"description":"<summary>\n\n## Acceptance Criteria\n- <observable outcome>","metadata":{"implementation_agent":"senior-dev","required_skills":["test-driven-development"],"tier":"implementation","paths":["<repository-relative path>", ...]},"dependencies":[{"depends_on_id":"<epic-id>","type":"parent-child"}]}
 EOF
 ```
 
@@ -339,6 +345,16 @@ Three metadata values come from great_cto, and the graph lint rejects anything e
 | `tier` (tasks) | a tier name from `$HOME/.agents/great_cto/shared/tier-map.json` |
 
 `required_skills` (tasks) lists the skills the implementer loads before touching code — `test-driven-development` at minimum. Read the two great_cto files and copy the names out of them. **Never** invent an agent name or a tier name.
+
+`paths` (tasks) lists every file the task edits **or creates**, taken from the task's **Files:** block. The stamp is never empty, and the graph lint rejects a non-canonical entry, so write each entry in canonical form:
+
+- Entries are repository-relative.
+- No leading `./` or `/`.
+- No `..`, no interior `.` segments (`src/./a.ts`), and no empty segments (`src//a.ts`).
+- Forward slashes only.
+- No duplicate entries.
+- Comparison is byte-exact.
+- A trailing `/` appears if and only if the entry is a directory claim. That rule is enforceable where the entry already exists on disk. For a not-yet-created path the claim's spelling is taken as declared.
 
 **3. Task ordering.** `parent-child` rides the import; `blocks` does not, because sibling ids do not exist while their own file is being read. Collect the ids per epic, then wire the ordering in one batch:
 
@@ -385,12 +401,44 @@ The plan is not captured until the graph lint passes:
 
 ```bash
 state="$(mktemp)"
-bd list --all -n 0 --json > "$state" && node scripts/pipeline/graph-lint.mjs --initiative <initiative-id> --state "$state"
+bd list --all -n 0 --json > "$state" && node scripts/pipeline/graph-lint.mjs --initiative <initiative-id> --state "$state" --require-stamps
 ```
+
+**Always** pass `--require-stamps` on the graph you just created. That mode adds two checks to the structural ones: the initiative bead must carry a `plan_path` that exists and resolves inside the repo, and every member task must carry non-empty canonical `paths`. A violation exits 1, in the session that can still fix it.
 
 Exit 0 is the only pass. On exit 1 the lint prints one line per violation, each naming the bead id and the field, so fix those beads and run it again.
 
 Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M MUST match the counts you just captured. Every lint check is quantified over the initiative's children, so an initiative with none passes them all — an import that silently landed nothing reads as a clean graph, and the counts are what catch it.
+
+## Commit the Plan
+
+The plan is a tracked artifact, so it lands in git. Nothing lands unscanned.
+
+Scan the plan file for secrets and PII first:
+
+```bash
+bash "$HOME/.agents/beads-superpowers/scripts/scan-plan.sh" <plan-path>
+```
+
+That absolute anchor path is the spelling to use in every working project. **Never** invoke the scanner through a working-project-relative path — that runs whatever file the project supplies. Inside the beads-superpowers clone itself, the repo-relative `scripts/scan-plan.sh` is the supported spelling.
+
+Route on the exit code:
+
+| Exit | Meaning | What this skill does |
+| --- | --- | --- |
+| 0 | No findings. | Commit the plan. |
+| 1 | Findings — one `file:line: reason` line each. | Stop. Report every finding and hand them to the user. |
+| 2 | Usage error, or a file that cannot be read. | Stop and report. |
+
+A hit stops the commit. The remedy is human review, **never** auto-redaction — do not edit the flagged text yourself to get past the scan. Cite hand-carried inputs by reference, never by quotation.
+
+**Fail-closed.** Stop before the commit whenever the scanner cannot be resolved: the anchor path is missing, the harness has no pipeline root, or the command returns any other exit. **Never** commit a plan you did not scan. On a pipeline-unavailable channel this blocks plan commits, and that is the intended outcome.
+
+Commit only on exit 0:
+
+```bash
+git add <plan-path> && git commit -m "docs: plan for <feature-name> (<initiative-id>)"
+```
 
 ## Execution Handoff
 

@@ -33,6 +33,7 @@ Run it from the repo root — the gate reads session state from `./.internal/pip
 | 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
 | 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
 | 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
+| other | Any exit outside {0, 1, 2, 4}, including 127 (missing file). | Fail-closed: stop and report. |
 
 Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
 
