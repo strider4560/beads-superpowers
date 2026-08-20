@@ -248,22 +248,31 @@ so a pushed tag without a published Release leaves installers on the previous ve
 **Pipeline release step (ADR-0061 / spec D1 — applies from the release that ships the install root):** the two bundles ship in a fixed order — (1) the install root + distribution ship on the integration branch and pass their per-channel acceptance; (2) the contract answers go to great_cto in the outbound reply; (3) great_cto merges and tags its rework, then the owner re-runs great_cto's `install.sh --host all` on **every** host; (4) beads-superpowers `<ver>` is cut (the process above); (5) the owner re-runs beads-superpowers `install.sh` — or refreshes the plugin — on **every** host. Steps 3→5 bracket the window in which great_cto's stage skills call `$HOME/.agents/beads-superpowers/…` before the host has it. Before cutting at step 4, on the release host, every one of these must pass:
 
 ```bash
+# Run from the REPO ROOT on the release host, as a script (`bash preflight.sh`) — not pasted
+# into an interactive shell, where `set -e`/`exit 1` would kill the shell itself.
+# `set -e` aborts on the first failure and every check names itself on the way out, so silence
+# here means PASS: nothing but the final OK line is a green run.
+set -e
+
 # great_cto floor — the same read the gate performs (scripts/pipeline/bundle-root.sh)
 gcmin=$(sed -n 's/^GREAT_CTO_MIN_VERSION="\(.*\)"/\1/p' scripts/pipeline/bundle-root.sh)
-test -f "$HOME/.agents/great_cto/package.json"
+[ -n "$gcmin" ] || { echo "FAIL: no GREAT_CTO_MIN_VERSION in scripts/pipeline/bundle-root.sh (wrong cwd?)"; exit 1; }
+test -f "$HOME/.agents/great_cto/package.json" || { echo "FAIL: no \$HOME/.agents/great_cto/package.json — great_cto is absent, or its root predates the version link; re-run great_cto's scripts/install.sh --host all"; exit 1; }
 gcver=$(jq -r .version "$HOME/.agents/great_cto/package.json")
-[ "$(printf '%s\n%s\n' "$gcmin" "$gcver" | sort -V | head -1)" = "$gcmin" ]
-gh release view "v$gcver" --repo strider4560/great_cto   # the great_cto release is published
+[ "$(printf '%s\n%s\n' "$gcmin" "$gcver" | sort -V | head -1)" = "$gcmin" ] || { echo "FAIL: installed great_cto $gcver is below the $gcmin floor"; exit 1; }
+gh release view "v$gcver" --repo strider4560/great_cto >/dev/null || { echo "FAIL: great_cto v$gcver has no published release (step 3 incomplete)"; exit 1; }
 # the install root resolves, the three contract paths exist, the version handshake matches
-test -d "$HOME/.agents/beads-superpowers"
-test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/tier-gate.sh"
-test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs"
-test -x "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scripts/review-package"
-[ "$(jq -r .version "$HOME/.agents/beads-superpowers/package.json")" = "<ver>" ]
+test -d "$HOME/.agents/beads-superpowers" || { echo "FAIL: install root \$HOME/.agents/beads-superpowers missing"; exit 1; }
+test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/tier-gate.sh" || { echo "FAIL: contract path tier-gate.sh missing from the install root"; exit 1; }
+test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" || { echo "FAIL: contract path graph-lint.mjs missing from the install root"; exit 1; }
+test -x "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scripts/review-package" || { echo "FAIL: contract path review-package missing or not executable"; exit 1; }
+[ "$(jq -r .version "$HOME/.agents/beads-superpowers/package.json")" = "<ver>" ] || { echo "FAIL: installed root is not <ver> — re-run install.sh before cutting"; exit 1; }
 # SD-13: the great_cto hard dependency is disclosed before the cut, not after
-grep -q great_cto README.md && grep -q great_cto install.sh
-# contract pins bump-version does NOT track — both pages must name the pair being cut
-grep -n "$gcver" docs/en/pipeline.md docs/zh/pipeline.md
+grep -q great_cto README.md || { echo "FAIL: README.md does not disclose the great_cto dependency"; exit 1; }
+grep -q great_cto install.sh || { echo "FAIL: install.sh does not disclose the great_cto dependency"; exit 1; }
+# contract pins bump-version does NOT track — BOTH pages must name the pair being cut
+{ grep -q "$gcver" docs/en/pipeline.md && grep -q "$gcver" docs/zh/pipeline.md; } || { echo "FAIL: docs/en/pipeline.md and docs/zh/pipeline.md must both pin great_cto $gcver"; exit 1; }
+echo "OK: pipeline preconditions pass — safe to cut <ver>"
 ```
 
 Other hosts are not verifiable from the release host and self-heal by failing closed until reinstalled — that is the honest form of the ordering guarantee. Rollback = the pinned pairs in `docs/en/pipeline.md`: run **this release's own** `install.sh --uninstall` first, then check out the paired great_cto tag and re-run its installer, then install the older beads-superpowers.
