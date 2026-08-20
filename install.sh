@@ -33,6 +33,25 @@ HOOK_SCRIPT="$HOOKS_DIR/beads-superpowers-session-start.sh"
 AGENTS_DIR="$HOME/.claude/agents"
 VERSION_FILE="$SKILLS_DIR/.beads-superpowers-version"
 
+# The harness-neutral install root the pipeline's literal spellings resolve
+# through, and the out-of-anchor ownership record that governs it. Both paths are
+# FIXED, never $XDG_STATE_HOME (spec D3, R5-001): the installer, the hooks and
+# the two gate surfaces resolve env vars in different process trees, and a
+# writer/verifier divergence reads as record-absent, which is a hard deny.
+# `${HOME%/}` matches the spelling bundle-root.sh and hooks/pipeline-guard use.
+ANCHOR_ROOT="${HOME%/}/.agents/beads-superpowers"
+RECORD_FILE="${HOME%/}/.local/state/beads-superpowers/record.json"
+# The gate files the record attests, spelled relative to the install root.
+ANCHOR_MANIFEST=(
+  scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh
+  scripts/pipeline/graph-lint.mjs hooks/pipeline-guard
+)
+# First release that ships the pipeline install root. Older sources have no root
+# to populate — spec D1 defines the 0.17.x half of the version pair as "no anchor
+# present" — so this is a version fact, not a fallback.
+PIPELINE_MIN_VERSION="0.18.0"
+ANCHOR_READY=false
+
 KNOWN_SKILLS=(
   brainstorming dispatching-parallel-agents
   document-release executing-plans finishing-a-development-branch
@@ -532,8 +551,134 @@ install_agents_from() {
   done
 }
 
+# --- Install root (spec D3) --------------------------------------------------
+# $ANCHOR_ROOT is the single POPULATED root on the scripted tiers: a real
+# directory — never a symlink — holding the whole shipped unit. scripts/pipeline/
+# travels in full (tier-gate.sh sources a sibling bundle-root.sh), hooks/ sits
+# beside scripts/ (pipeline-guard sources ../scripts/pipeline/bundle-root.sh),
+# and package.json is the root's version file, which the gates compare against
+# their own commit-time constant.
+#
+# This is its own install step, ordered BEFORE and independent of the python3
+# hook registration, and every failure below fails the install: a root that
+# reaches neither tier is exactly the hole the design closes, and a partial root
+# is the state the gates deny.
+
+# sha256 of $1 on stdout. sha256sum or the portable `shasum -a 256` only — the
+# two the verification sites accept; an openssl digest would write a record no
+# gate on any host can check.
+anchor_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# Minimal JSON string escaping for the paths and version the record carries.
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  printf '%s' "${s//\"/\\\"}"
+}
+
+populate_anchor_root() {
+  local source_root="$1" src_ver rel h target new_root tmp hashes=""
+
+  # The version file is the pipeline's version handshake, so an unreadable one
+  # is fatal here rather than recorded as an empty or invented version.
+  src_ver=$(grep -m1 '"version"' "$source_root/package.json" 2>/dev/null | sed -E 's/.*"([0-9][^"]*)".*/\1/')
+  if [ -z "$src_ver" ]; then
+    error "Cannot read a version from $source_root/package.json — the install root's version file is the pipeline's version handshake."
+    exit 1
+  fi
+
+  # A source that predates the pipeline has no root to populate (spec D1). A
+  # source that should carry it and does not is a broken tree, not an old one.
+  if [ ! -f "$source_root/scripts/pipeline/tier-gate.sh" ]; then
+    if version_ge "$src_ver" "$PIPELINE_MIN_VERSION"; then
+      error "v$src_ver ships the pipeline install root, but $source_root/scripts/pipeline is missing — refusing to write a partial root."
+      exit 1
+    fi
+    info "v$src_ver predates the pipeline install root (< $PIPELINE_MIN_VERSION) — none created; the pipeline gates fail closed on this host"
+    return 0
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    error "No SHA-256 tool available (need sha256sum or shasum) — the install root cannot be attested, and an unattested root is denied by every pipeline gate."
+    exit 1
+  fi
+
+  for rel in "${ANCHOR_MANIFEST[@]}" scripts/scan-plan.sh hooks/session-start skills; do
+    [ -e "$source_root/$rel" ] || { error "Install source is incomplete: $source_root/$rel is missing."; exit 1; }
+  done
+
+  info "Creating the install root at ${ANCHOR_ROOT/$HOME/\~}..."
+  mkdir -p "$(dirname "$ANCHOR_ROOT")" || { error "Cannot create $(dirname "$ANCHOR_ROOT")"; exit 1; }
+  new_root="${ANCHOR_ROOT}.new-$$"
+  rm -rf "$new_root"
+  if ! { mkdir -p "$new_root/scripts" "$new_root/hooks" \
+      && cp -rf "$source_root/scripts/pipeline" "$new_root/scripts/pipeline" \
+      && cp -f "$source_root/scripts/scan-plan.sh" "$new_root/scripts/scan-plan.sh" \
+      && cp -f "$source_root/hooks/session-start" "$new_root/hooks/session-start" \
+      && cp -f "$source_root/hooks/pipeline-guard" "$new_root/hooks/pipeline-guard" \
+      && cp -rf "$source_root/skills" "$new_root/skills" \
+      && cp -f "$source_root/package.json" "$new_root/package.json" \
+      && chmod +x "$new_root/hooks/session-start" "$new_root/hooks/pipeline-guard" \
+                  "$new_root/scripts/scan-plan.sh" "$new_root/scripts/pipeline/tier-gate.sh" \
+                  "$new_root/scripts/pipeline/graph-lint.mjs"; }; then
+    rm -rf "$new_root"
+    error "Could not stage the install root at $new_root."
+    exit 1
+  fi
+
+  # Never write THROUGH a pre-existing symlink at the anchor (R3-002): a
+  # plugin-channel symlink points into the plugin cache or a clone, and copying
+  # into it would modify a tree this installer does not own. The link goes first,
+  # together with the record that blessed it, and only then does a real directory
+  # land. Anything else at the path — a stale directory, a regular file — is
+  # replaced too: this installer is the remedy every other surface points at.
+  if [ -L "$ANCHOR_ROOT" ]; then
+    rm -f "$ANCHOR_ROOT" "$RECORD_FILE"
+  elif [ -d "$ANCHOR_ROOT" ]; then
+    rm -rf "$ANCHOR_ROOT"
+  elif [ -e "$ANCHOR_ROOT" ]; then
+    rm -f "$ANCHOR_ROOT"
+  fi
+  if ! mv -f "$new_root" "$ANCHOR_ROOT"; then
+    rm -rf "$new_root"
+    error "Could not move the staged install root into place at $ANCHOR_ROOT."
+    exit 1
+  fi
+
+  # The record is written AFTER the root, over the files that actually landed.
+  # In between, the root exists with no record — the fail-closed direction: the
+  # gates deny an unrecorded root rather than trusting it.
+  target="$(cd "$ANCHOR_ROOT" && pwd -P)" || target="$ANCHOR_ROOT"
+  for rel in "${ANCHOR_MANIFEST[@]}"; do
+    h=$(anchor_sha256 "$ANCHOR_ROOT/$rel") || h=""
+    [ -n "$h" ] || { error "Could not hash $ANCHOR_ROOT/$rel — the install root cannot be attested."; exit 1; }
+    hashes="${hashes},\"${rel}\":\"${h}\""
+  done
+  mkdir -p "$(dirname "$RECORD_FILE")" || { error "Cannot create $(dirname "$RECORD_FILE")"; exit 1; }
+  tmp="${RECORD_FILE}.$$"
+  # One line, keys in the order hooks/session-start's writer emits them — the two
+  # maintainers write one shape, and both readers (jq in the gates, sed in the
+  # hook) read it.
+  if ! { printf '{"anchor":"%s","target":"%s","posture":"manifest-backed","version":"%s","hashes":{%s}}\n' \
+          "$(json_escape "$ANCHOR_ROOT")" "$(json_escape "$target")" \
+          "$(json_escape "$src_ver")" "${hashes#,}" > "$tmp" \
+      && mv -f "$tmp" "$RECORD_FILE"; }; then
+    rm -f "$tmp"
+    error "Could not write the ownership record $RECORD_FILE — an install root with no record is denied by every pipeline gate."
+    exit 1
+  fi
+
+  ANCHOR_READY=true
+  success "Install root populated: ${ANCHOR_ROOT/$HOME/\~} (v$src_ver, manifest-backed)"
+}
+
 setup_hooks() {
-  local source_root="${1:-}"
   if [ "$HAS_PYTHON3" = 0 ]; then
     warn "python3 not found — cannot register hooks in settings.json"
     warn "Re-run install.sh once python3 is available to configure hooks"
@@ -543,7 +688,7 @@ setup_hooks() {
   mkdir -p "$HOOKS_DIR"
 
   info "Creating SessionStart hook..."
-  write_hook_script "$source_root"
+  write_hook_script
 
   if [ -f "$SETTINGS_FILE" ]; then
     local backup
@@ -571,6 +716,12 @@ try_local_install() {
   cp -rf "$FLAG_SOURCE/skills" "$STAGING_DIR/repo/skills"
   [ -d "$FLAG_SOURCE/example-workflow" ] && cp -rf "$FLAG_SOURCE/example-workflow" "$STAGING_DIR/repo/example-workflow"
   [ -d "$FLAG_SOURCE/hooks" ] && cp -rf "$FLAG_SOURCE/hooks" "$STAGING_DIR/repo/hooks"
+  # The install root's own contents (spec D3) — staged like everything else.
+  [ -d "$FLAG_SOURCE/scripts" ] && cp -rf "$FLAG_SOURCE/scripts" "$STAGING_DIR/repo/scripts"
+  [ -f "$FLAG_SOURCE/package.json" ] && cp -f "$FLAG_SOURCE/package.json" "$STAGING_DIR/repo/package.json"
+
+  # Before promote_staging, which MOVES the skill dirs out of the staged tree.
+  populate_anchor_root "$STAGING_DIR/repo"
 
   if ! promote_staging "$STAGING_DIR/repo/skills"; then
     return 1
@@ -578,7 +729,7 @@ try_local_install() {
 
   install_agents_from "$STAGING_DIR/repo"
 
-  setup_hooks "$STAGING_DIR/repo" || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="local"
   return 0
@@ -675,13 +826,16 @@ try_tarball_install() {
     return 1
   fi
 
+  # Before promote_staging, which MOVES the skill dirs out of the staged tree.
+  populate_anchor_root "$STAGING_DIR/extracted"
+
   if ! promote_staging "$STAGING_DIR/extracted/skills"; then
     return 1
   fi
 
   install_agents_from "$STAGING_DIR/extracted"
 
-  setup_hooks "$STAGING_DIR/extracted" || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="tarball"
   return 0
@@ -699,13 +853,16 @@ try_git_install() {
     return 1
   fi
 
+  # Before promote_staging, which MOVES the skill dirs out of the staged tree.
+  populate_anchor_root "$STAGING_DIR/repo"
+
   if ! promote_staging "$STAGING_DIR/repo/skills"; then
     return 1
   fi
 
   install_agents_from "$STAGING_DIR/repo"
 
-  setup_hooks "$STAGING_DIR/repo" || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="git"
   return 0
@@ -755,7 +912,7 @@ sf = '$SETTINGS_FILE'
 with open(sf) as f:
     s = json.load(f)
 h = s.get('hooks', {})
-for k in ['SessionStart', 'UserPromptSubmit']:
+for k in ['SessionStart', 'UserPromptSubmit', 'PreToolUse']:
     if k in h:
         h[k] = [e for e in h[k] if 'beads-superpowers' not in json.dumps(e)]
 with open(sf, 'w') as f:
@@ -867,36 +1024,34 @@ do_install() {
   echo "${VERSION}:${INSTALL_TIER}" > "$VERSION_FILE"
 }
 
-# write_hook_script [source_root]
-# Checkout tiers (local/tarball/git) pass a repo root: the canonical composer
-# (hooks/session-start) is copied to a durable root and HOOK_SCRIPT becomes a
-# thin exec shim of it — one source of truth (bead bb6x).
-# The npx tier has no checkout to copy from: HOOK_SCRIPT becomes a policy-free
-# minimal fallback — skill injection, static bd pointers, and the capped mex hot
-# page only. All composition policy (bd prime capture, envelope budgeting,
-# routing/curation) lives ONLY in hooks/session-start.
+# write_hook_script
+# With a populated install root (the scripted tiers), HOOK_SCRIPT becomes a thin
+# exec shim of the canonical composer inside it — one source of truth (bead
+# bb6x), and now the very copy the pipeline gates are attested against. The
+# legacy $HOOKS_DIR/beads-superpowers canon root is reduced to this shim: no
+# populated copy is left there (spec D3).
+# Without a root — the npx tier, which has no checkout to copy from, and sources
+# predating the pipeline — HOOK_SCRIPT becomes a policy-free minimal fallback:
+# skill injection, static bd pointers, and the capped mex hot page only. All
+# composition policy (bd prime capture, envelope budgeting, routing/curation)
+# lives ONLY in hooks/session-start.
 write_hook_script() {
-  local source_root="${1:-}"
+  if [ "$ANCHOR_READY" = true ]; then
+    rm -rf "$HOOKS_DIR/beads-superpowers"
 
-  if [ -n "$source_root" ] && [ -f "$source_root/hooks/session-start" ]; then
-    local canon_root="$HOOKS_DIR/beads-superpowers"
-    mkdir -p "$canon_root/hooks"
-    cp -f "$source_root/hooks/session-start" "$canon_root/hooks/session-start"
-    chmod +x "$canon_root/hooks/session-start"  # direct exec relies on the bash shebang
-    # The canonical hook resolves skills relative to its own root
-    # (<root>/skills/using-superpowers/SKILL.md) — point <root>/skills at SKILLS_DIR.
-    rm -rf "$canon_root/skills"
-    ln -s "$SKILLS_DIR" "$canon_root/skills"
-
-    # Unquoted heredoc: $canon_root is substituted at install time (same
+    # Unquoted heredoc: $ANCHOR_ROOT is substituted at install time (same
     # mechanism as register_hook's PYEOF); runtime expansions are escaped.
+    # CLAUDE_PLUGIN_ROOT is exported unconditionally, not defaulted: it selects
+    # the hookSpecificOutput envelope this registration has always emitted, AND
+    # it is what keys the hook's anchor-maintenance branch onto the right root —
+    # an inherited value from some other plugin root would point that branch at
+    # a tree this host's install does not own.
     cat > "$HOOK_SCRIPT" << HOOKEOF
 #!/usr/bin/env bash
-# beads-superpowers hook shim — canonical logic lives in hooks/session-start.
-# The CLAUDE_PLUGIN_ROOT default preserves the hookSpecificOutput envelope this
-# registration has always emitted (settings.json / codex_hooks consumers).
-BSP_ROOT="$canon_root"
-export CLAUDE_PLUGIN_ROOT="\${CLAUDE_PLUGIN_ROOT:-\$BSP_ROOT}"
+# beads-superpowers hook shim — canonical logic lives in hooks/session-start,
+# inside the install root the pipeline's literal spellings resolve through.
+BSP_ROOT="$ANCHOR_ROOT"
+export CLAUDE_PLUGIN_ROOT="\$BSP_ROOT"
 exec "\$BSP_ROOT/hooks/session-start" "\$@"
 HOOKEOF
   else
@@ -1004,6 +1159,8 @@ import json, os
 
 sf = "$SETTINGS_FILE"
 hs = "$HOOK_SCRIPT"
+guard = "$ANCHOR_ROOT/hooks/pipeline-guard"
+anchor_ready = "$ANCHOR_READY" == "true"
 
 if os.path.exists(sf):
     with open(sf) as f:
@@ -1021,6 +1178,19 @@ if not any("beads-superpowers" in json.dumps(e) for e in ss):
         "matcher": "startup|clear|compact",
         "hooks": [{"type": "command", "command": f"bash {hs}"}]
     })
+
+# PreToolUse pipeline-guard (spec D3). Registered only with a populated install
+# root: the plugin channel wires this itself through hooks/hooks.json, and the
+# npx tier has no root for the command to resolve through. The matcher covers
+# the tool set the guard rules over — NotebookEdit included, whose payloads
+# carry notebook_path rather than file_path.
+if anchor_ready:
+    pt = hooks.setdefault("PreToolUse", [])
+    if not any("beads-superpowers" in json.dumps(e) for e in pt):
+        pt.append({
+            "matcher": "Bash|Write|Edit|NotebookEdit",
+            "hooks": [{"type": "command", "command": f"bash {guard}"}]
+        })
 
 with open(sf, "w") as f:
     json.dump(settings, f, indent=2)
@@ -1093,6 +1263,22 @@ assert any('beads-superpowers' in json.dumps(e) for e in d.get('hooks',{}).get('
       success "Hook registered in settings.json"
     else
       warn "Hook not found in settings.json"
+    fi
+
+    if [ "$ANCHOR_READY" = true ]; then
+      if [ -d "$ANCHOR_ROOT" ] && [ ! -L "$ANCHOR_ROOT" ] && [ -f "$RECORD_FILE" ]; then
+        success "Install root attested: ${ANCHOR_ROOT/$HOME/\~}"
+      else
+        warn "Install root or ownership record missing after install — the pipeline gates will fail closed"
+      fi
+      if [ -f "$SETTINGS_FILE" ] && python3 -c "
+import json; d=json.load(open('$SETTINGS_FILE'))
+assert any('beads-superpowers' in json.dumps(e) for e in d.get('hooks',{}).get('PreToolUse',[]))
+" 2>/dev/null; then
+        success "pipeline-guard registered in settings.json"
+      else
+        warn "pipeline-guard not found in settings.json"
+      fi
     fi
   fi
 
@@ -1193,7 +1379,7 @@ sf = "$SETTINGS_FILE"
 with open(sf) as f:
     settings = json.load(f)
 hooks = settings.get("hooks", {})
-for key in ["SessionStart", "UserPromptSubmit"]:
+for key in ["SessionStart", "UserPromptSubmit", "PreToolUse"]:
     if key in hooks:
         hooks[key] = [e for e in hooks[key] if "beads-superpowers" not in json.dumps(e)]
 with open(sf, "w") as f:
@@ -1208,6 +1394,24 @@ PYEOF
   # ADR-0039 migration: clean up any stale reminder registration/file, regardless of tier
   cleanup_stale_reminder "$SETTINGS_FILE"
   rm -f "$HOOKS_DIR/beads-superpowers-reminder.sh"
+
+  # The install root and its ownership record go together, on every tier: the
+  # removing installer must be the one that introduced the artifacts (spec D1
+  # rollback), and the plugin-channel maintainer can leave a symlink here too.
+  # A symlink is unlinked, never followed — the tree it points at (a plugin cache
+  # or a clone) is not ours to delete.
+  if [ -L "$ANCHOR_ROOT" ]; then
+    rm -f "$ANCHOR_ROOT"
+    info "Removed the install-root symlink ${ANCHOR_ROOT/$HOME/\~}"
+  elif [ -d "$ANCHOR_ROOT" ]; then
+    rm -rf "$ANCHOR_ROOT"
+    info "Removed the install root ${ANCHOR_ROOT/$HOME/\~}"
+  fi
+  if [ -e "$RECORD_FILE" ]; then
+    rm -f "$RECORD_FILE"
+    rmdir "$(dirname "$RECORD_FILE")" 2>/dev/null || true
+    info "Removed the ownership record ${RECORD_FILE/$HOME/\~}"
+  fi
 
   uninstall_codex_support
   uninstall_opencode_support

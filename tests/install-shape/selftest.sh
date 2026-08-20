@@ -78,10 +78,13 @@ expect_npm_untouched() {
 #  Note: promote_staging only WARNS below 20 skills — install exits 0 with 22/23; only the
 #  suite's assert_all_skills catches the gap. That is exactly what this mutation proves.
 #  SHAPE_EXPECTED_ROOT pins the assert_all_skills yardstick to the real checkout — without it
-#  the mutated copy would be both install source AND ground truth, a tautology that can't fail.)
+#  the mutated copy would be both install source AND ground truth, a tautology that can't fail.
+#  scripts/ travels with every mutated install source here and in mutations 19/20:
+#  install.sh populates the install root from it and fails the install when it is
+#  missing, so a copy without it would go red for the wrong reason.)
 MUT1=$(mktemp -d)
 cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
-      "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT1/"
+      "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT1/"
 mkdir -p "$MUT1/tests"
 cp -rf "$REPO_ROOT/tests/install-shape" "$MUT1/tests/install-shape"
 rm -rf "$MUT1/skills/using-superpowers"
@@ -376,7 +379,7 @@ rm -rf "$SB18"
 # breakage, NOT a caught mutation.
 MUT19=$(mktemp -d)
 if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
-        "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT19/"; then
+        "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT19/"; then
   echo "SELFTEST FAIL: mutation-19 setup copy failed (rig broken, not a caught mutation)"; rc=1
 elif ! { mkdir -p "$MUT19/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT19/tests/install-shape"; }; then
   echo "SELFTEST FAIL: mutation-19 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
@@ -404,7 +407,7 @@ rm -rf "$MUT19"
 # is what lets this mutation be caught at all.
 MUT20=$(mktemp -d)
 if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
-        "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT20/"; then
+        "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT20/"; then
   echo "SELFTEST FAIL: mutation-20 setup copy failed (rig broken, not a caught mutation)"; rc=1
 elif ! { mkdir -p "$MUT20/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT20/tests/install-shape"; }; then
   echo "SELFTEST FAIL: mutation-20 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
@@ -513,9 +516,15 @@ rm -rf "$SB22"
 # into a mktemp dir — the fixture itself is read-only here — closing fx-t1 -> fx-t2
 # -> fx-t3 back onto fx-t1. node and jq are both required to build and run it, so
 # either one missing is a visible SKIP rather than a red.
+# Run under a scratch HOME, exactly as mutations 21 and 22 are: graph-lint's own
+# integrity self-check reads the install anchor and the ownership record out of
+# $HOME, so under the developer's real HOME this mutation would be judged by
+# whatever that machine's install happens to look like.
 SB23=$(mktemp -d)
 if ! command -v node > /dev/null 2>&1 || ! command -v jq > /dev/null 2>&1; then
   echo "SELFTEST SKIP: mutation-23 (graph-lint) needs node and jq"
+elif ! make_pipeline_home "$SB23/home"; then
+  echo "SELFTEST FAIL: mutation-23 setup could not build the bundle-root HOME (rig broken, not a caught mutation)"; rc=1
 elif ! jq '(.[] | select(.id=="fx-t1") | .dependencies) += [{"issue_id":"fx-t1","depends_on_id":"fx-t3","type":"blocks","metadata":"{}"}]' \
         "$REPO_ROOT/tests/pipeline/fixtures/graph-valid.json" > "$SB23/state-cycle.json"; then
   echo "SELFTEST FAIL: mutation-23 setup jq mutation failed (rig broken, not a caught mutation)"; rc=1
@@ -523,7 +532,7 @@ elif cmp -s "$SB23/state-cycle.json" "$REPO_ROOT/tests/pipeline/fixtures/graph-v
   echo "SELFTEST FAIL: mutation-23 changed nothing (stale fixture ids, not a caught mutation)"; rc=1
 else
   run_graph_lint_23() { # <state-file>
-    node "$REPO_ROOT/scripts/pipeline/graph-lint.mjs" --initiative fx-ini --state "$1" \
+    HOME="$SB23/home" node "$REPO_ROOT/scripts/pipeline/graph-lint.mjs" --initiative fx-ini --state "$1" \
       --roster "$REPO_ROOT/tests/pipeline/fixtures/roster.mjs" \
       --tier-map "$REPO_ROOT/tests/pipeline/fixtures/tier-map.json"
   }
@@ -533,5 +542,37 @@ else
     run_graph_lint_23 "$REPO_ROOT/tests/pipeline/fixtures/graph-valid.json"
 fi
 rm -rf "$SB23"
+
+# Mutation 24: install.sh no longer populates the install root (spec D3) — the
+# call sites are deleted, so nothing lands at $HOME/.agents/beads-superpowers and
+# great_cto's literal spellings resolve to nothing. The REAL assert-claude.sh
+# must go RED naming the missing root. This is the hole the design closes (the
+# root reaching NEITHER tier), so a suite that stays green without it is
+# decoration. Same rig as mutations 19/20.
+MUT24=$(mktemp -d)
+if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
+        "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT24/"; then
+  echo "SELFTEST FAIL: mutation-24 setup copy failed (rig broken, not a caught mutation)"; rc=1
+elif ! { mkdir -p "$MUT24/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT24/tests/install-shape"; }; then
+  echo "SELFTEST FAIL: mutation-24 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
+else
+  # The CALL sites only — `populate_anchor_root "` never matches the definition
+  # line, so the function survives and the mutated installer is still valid bash.
+  grep -v 'populate_anchor_root "' "$MUT24/install.sh" > "$MUT24/install.sh.tmp" \
+    && mv -f "$MUT24/install.sh.tmp" "$MUT24/install.sh"
+  if cmp -s "$MUT24/install.sh" "$REPO_ROOT/install.sh"; then
+    echo "SELFTEST FAIL: mutation-24 changed nothing (stale call-site text, not a caught mutation)"; rc=1
+  fi
+  out24=$(env SHAPE_REPO_ROOT="$MUT24" SHAPE_EXPECTED_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/tests/install-shape/assert-claude.sh" 2>&1); ec24=$?
+  if [ "$ec24" -eq 0 ]; then
+    echo "SELFTEST FAIL: 'install root never populated' should have gone RED but passed"; rc=1
+  elif ! printf '%s\n' "$out24" | grep -qF "install root is not a real directory"; then
+    echo "SELFTEST FAIL: 'install root never populated' failed for the wrong reason (no missing-root message)"; rc=1
+  else
+    echo "SELFTEST ok: 'install root never populated' correctly fails, naming the missing root"
+  fi
+fi
+rm -rf "$MUT24"
 
 exit "$rc"

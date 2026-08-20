@@ -21,6 +21,16 @@ fail_count() { return "$FAILS"; }
 # shape_sandbox_setup <binary>... — fresh sandbox HOME + shims for the named binaries.
 shape_sandbox_setup() {
   SANDBOX=$(mktemp -d)
+  # Hard isolation, checked before anything writes: every case runs with
+  # HOME=$SANDBOX and mutates $HOME/.claude, $HOME/.agents/beads-superpowers and
+  # $HOME/.local/state/beads-superpowers — including deletes and tamper/restore
+  # steps. A sandbox that ever resolved to the real HOME would take the
+  # developer's own install with it, so the suite stops rather than assert its
+  # way around a failed mktemp.
+  if [ -z "${SANDBOX:-}" ] || [ "$SANDBOX" = "$HOME" ] || [ "$SANDBOX" = "/" ]; then
+    echo "   FATAL: sandbox HOME '${SANDBOX:-}' is not isolated from the real HOME '$HOME'" >&2
+    exit 1
+  fi
   SHIM_DIR="$SANDBOX/.shims"
   MARKER_DIR="$SANDBOX/.markers"
   bash "$REPO_ROOT/tests/install-shape/fixtures/make-shims.sh" "$SHIM_DIR" "$MARKER_DIR" "$@"
