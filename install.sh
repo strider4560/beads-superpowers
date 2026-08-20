@@ -19,7 +19,7 @@ set -euo pipefail
 
 # --- Configuration ---
 REPO="strider4560/beads-superpowers"
-FALLBACK_VERSION="0.17.0"
+FALLBACK_VERSION="0.18.0"
 # mex is a hard dependency: skills and the session-start hook read .mex/.
 # MEX_PIN is the exact npm version installed; MEX_NODE_FLOOR mirrors
 # mex-agent's own engines.node (">=22.5") — below it the package will not run.

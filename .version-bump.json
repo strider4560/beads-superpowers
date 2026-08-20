@@ -47,6 +47,11 @@
       "path": "scripts/pipeline/graph-lint.mjs",
       "prefix": "BSP_PIPELINE_VERSION = \"",
       "suffix": "\""
+    },
+    {
+      "path": "install.sh",
+      "prefix": "FALLBACK_VERSION=\"",
+      "suffix": "\""
     }
   ],
   "audit": {
