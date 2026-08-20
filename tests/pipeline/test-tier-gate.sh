@@ -345,6 +345,85 @@ check "legacy-tier-assert-still-offers-the-assert-remedy" 1 '--assert <tier> --s
 run "$c_foreign" "$h_full" "$gate" --stage planning
 check "tier-assert-bound-to-another-session-is-treated-as-absent" 1
 
+# --- resolve_session_tier arity + the `-` sentinel (D4) ---------------------
+# The live identifier is a REQUIRED third argument. An optional one makes the
+# unbound path the silent default, so a caller that simply forgot it gets
+# unbound behaviour with no signal. A surface that genuinely has no live
+# identity spells that deliberately: `-`.
+# These call the function directly rather than through the gate, because the
+# gate can only ever produce the three-argument form.
+
+check_empty() { # <name> <want-exit> — exit code plus empty stdout
+  if [ "$rc" -ne "$2" ]; then
+    echo "FAIL $1: exit $rc want $2"; fails=$((fails+1))
+  elif [ -n "$out" ]; then
+    echo "FAIL $1: stdout is not empty: $out"; fails=$((fails+1))
+  else
+    echo "PASS $1"
+  fi
+}
+
+rst() { # <args...> — source bundle-root.sh and call resolve_session_tier
+  out="$("$BASH" -c '
+    . "$1/scripts/pipeline/bundle-root.sh"
+    shift
+    resolve_session_tier "$@"' _ "$root" "$@" 2>"$TMP/stderr")"
+  rc=$?
+  err="$(cat "$TMP/stderr")"
+}
+
+arity_msg='resolve_session_tier requires exactly three arguments'
+map_full="$h_full/.agents/great_cto/shared/tier-map.json"
+
+rst "$c_assert/.internal/pipeline" "$map_full"
+check "two-argument-call-exits-1" 1
+check "two-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
+check "two-argument-call-names-the-sentinel" 1 "'-'" stderr
+if [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ]; then
+  echo "PASS arity-error-is-one-line"
+else
+  echo "FAIL arity-error-is-one-line: $err"; fails=$((fails+1))
+fi
+check_empty "two-argument-call-prints-no-tier" 1
+
+rst "$c_assert/.internal/pipeline" "$map_full" "$LIVE_SID" extra
+check "four-argument-call-exits-1" 1
+check "four-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
+
+rst
+check "zero-argument-call-exits-1" 1
+check "zero-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
+
+# The sentinel: session.json binding is skipped, tier-assert v2 entries are
+# treated ABSENT. The safer of the two readings — an unverified assert is the
+# self-authorization path D4 exists to close, and an unresolved tier is an
+# already-designed state for both callers (D17a).
+rst "$c_assert/.internal/pipeline" "$map_full" -
+check_empty "sentinel-treats-a-matching-v2-tier-assert-as-absent" 0
+
+rst "$c_foreign/.internal/pipeline" "$map_full" -
+check_empty "sentinel-treats-a-foreign-v2-tier-assert-as-absent" 0
+
+rst "$c_legacy/.internal/pipeline" "$map_full" -
+check_empty "sentinel-treats-a-legacy-tier-assert-as-absent" 0
+
+# The other half of the sentinel: a session.json is still read, whoever wrote it.
+c_othersession="$TMP/cwd-othersession"; mkdir -p "$c_othersession/.internal/pipeline"
+printf '{"model_id":"model-plan-1","effort":null,"session_id":"some-other-session","source":"hook","timestamp":"t"}\n' \
+  > "$c_othersession/.internal/pipeline/session.json"
+rst "$c_othersession/.internal/pipeline" "$map_full" -
+check "sentinel-skips-session-json-binding" 0 '^planning$'
+
+# Bound calls are unchanged by the arity fix.
+rst "$c_assert/.internal/pipeline" "$map_full" "$LIVE_SID"
+check "bound-call-resolves-a-matching-v2-tier-assert" 0 '^planning$'
+
+rst "$c_foreign/.internal/pipeline" "$map_full" "$LIVE_SID"
+check_empty "bound-call-treats-a-foreign-v2-tier-assert-as-absent" 0
+
+rst "$c_othersession/.internal/pipeline" "$map_full" "$LIVE_SID"
+check_empty "bound-call-treats-another-sessions-state-file-as-absent" 0
+
 run "$c_unknown" "$h_full" "$gate" --stage planning
 check "model-absent-from-tier-map-exits-1" 1
 check "model-absent-from-tier-map-names-the-model" 1 "model 'model-not-in-map' not in tier-map" stderr

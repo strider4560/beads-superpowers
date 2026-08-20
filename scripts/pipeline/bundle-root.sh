@@ -140,7 +140,7 @@ verify_record() {
   return 0
 }
 
-# resolve_session_tier <state-dir> <tier-map> [<live-session-id>] — which tier(s)
+# resolve_session_tier <state-dir> <tier-map> <live-session-id> — which tier(s)
 # this session is in.
 # The session state file's model is authoritative; the human-asserted tier file is
 # the fallback for a session whose model the harness did not report. Prints one
@@ -148,14 +148,26 @@ verify_record() {
 # error — the caller decides what an unknown tier costs it.
 # Returns 1 only on broken state: an unparsable session file, or a model the
 # tier-map does not list. Callers: tier-gate.sh, hooks/pipeline-guard.
-# With a live session id passed as $3 both sources are identity-bound (D4):
-# state written by a DIFFERENT session, and a tier assert recorded for one, are
-# treated as ABSENT rather than trusted — the caller's absent-data deny then
-# covers the mismatch. The argument is optional so the PreToolUse guard, which
-# resolves identity from its own payload, keeps its two-argument call site.
+# Both sources are identity-bound to the live session id in $3 (D4): state
+# written by a DIFFERENT session, and a tier assert recorded for one, are treated
+# as ABSENT rather than trusted — the caller's absent-data deny then covers the
+# mismatch.
+# The live id is REQUIRED, and exactly three arguments are accepted. An optional
+# third argument would make the unbound path the silent default, so a caller that
+# simply forgot it would get unbound behaviour with no signal; any other arity is
+# a caller bug and returns 1.
+# `-` is the sentinel for "no live identity available on this surface":
+# session.json binding is skipped, and tier-assert v2 entries are treated absent.
+# That is the fail-closed reading — an assert nothing verified is exactly the
+# self-authorization path D4 exists to close, and an unresolved tier is an
+# already-designed state for both callers (D17a).
 resolve_session_tier() {
-  local state_dir="$1" map="$2" live="${3-}" bind=0 session="$1/session.json" model tiers
-  [ "$#" -ge 3 ] && bind=1
+  if [ "$#" -ne 3 ]; then
+    echo "ERROR: resolve_session_tier requires exactly three arguments (<state-dir> <tier-map> <live-session-id>), got $#. Pass '-' when the surface has no live identity." >&2
+    return 1
+  fi
+  local state_dir="$1" map="$2" live="$3" bind=1 session="$1/session.json" model tiers
+  [ "$live" = "-" ] && bind=0
   if [ -f "$session" ]; then
     jq -e . "$session" >/dev/null 2>&1 || {
       echo "ERROR: session state file '$session' is not valid JSON. Delete it and start a new session so the hook rewrites it." >&2
@@ -179,12 +191,13 @@ resolve_session_tier() {
   fi
   # tier-assert is `v2 <tier> <session-id>` on one line. Anything else — the
   # legacy bare tier name, extra fields, an empty file — is treated as absent:
-  # an assert that cannot be bound to a session is not an assert (D4).
+  # an assert that cannot be bound to a session is not an assert (D4). Under the
+  # `-` sentinel there is no live id to bind against, so no assert is one either.
   if [ -f "$state_dir/tier-assert" ]; then
     local ver="" tier="" sid="" extra=""
     read -r ver tier sid extra < "$state_dir/tier-assert" || true
-    if [ "$ver" = "v2" ] && [ -n "$tier" ] && [ -n "$sid" ] && [ -z "$extra" ] &&
-       { [ "$bind" -eq 0 ] || [ "$sid" = "$live" ]; }; then
+    if [ "$bind" -eq 1 ] && [ "$ver" = "v2" ] && [ -n "$tier" ] && [ -n "$sid" ] &&
+       [ -z "$extra" ] && [ "$sid" = "$live" ]; then
       printf '%s\n' "$tier"
     fi
   fi
