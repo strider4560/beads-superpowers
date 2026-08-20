@@ -245,6 +245,29 @@ so a pushed tag without a published Release leaves installers on the previous ve
 `checksums.txt` (`sha256sum` of the tag tarball `archive/refs/tags/v<ver>.tar.gz`) or
 `verify_checksum` silently skips. Docs deploy is no longer part of this repo's release process — the site publishes from the private the-factory-website repo (ADR-0050).
 
+**Pipeline release step (ADR-0061 / spec D1 — applies from the release that ships the install root):** the two bundles ship in a fixed order — (1) the install root + distribution ship on the integration branch and pass their per-channel acceptance; (2) the contract answers go to great_cto in the outbound reply; (3) great_cto merges and tags its rework, then the owner re-runs great_cto's `install.sh --host all` on **every** host; (4) beads-superpowers `<ver>` is cut (the process above); (5) the owner re-runs beads-superpowers `install.sh` — or refreshes the plugin — on **every** host. Steps 3→5 bracket the window in which great_cto's stage skills call `$HOME/.agents/beads-superpowers/…` before the host has it. Before cutting at step 4, on the release host, every one of these must pass:
+
+```bash
+# great_cto floor — the same read the gate performs (scripts/pipeline/bundle-root.sh)
+gcmin=$(sed -n 's/^GREAT_CTO_MIN_VERSION="\(.*\)"/\1/p' scripts/pipeline/bundle-root.sh)
+test -f "$HOME/.agents/great_cto/package.json"
+gcver=$(jq -r .version "$HOME/.agents/great_cto/package.json")
+[ "$(printf '%s\n%s\n' "$gcmin" "$gcver" | sort -V | head -1)" = "$gcmin" ]
+gh release view "v$gcver" --repo strider4560/great_cto   # the great_cto release is published
+# the install root resolves, the three contract paths exist, the version handshake matches
+test -d "$HOME/.agents/beads-superpowers"
+test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/tier-gate.sh"
+test -f "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs"
+test -x "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scripts/review-package"
+[ "$(jq -r .version "$HOME/.agents/beads-superpowers/package.json")" = "<ver>" ]
+# SD-13: the great_cto hard dependency is disclosed before the cut, not after
+grep -q great_cto README.md && grep -q great_cto install.sh
+# contract pins bump-version does NOT track — both pages must name the pair being cut
+grep -n "$gcver" docs/en/pipeline.md docs/zh/pipeline.md
+```
+
+Other hosts are not verifiable from the release host and self-heal by failing closed until reinstalled — that is the honest form of the ordering guarantee. Rollback = the pinned pairs in `docs/en/pipeline.md`: run **this release's own** `install.sh --uninstall` first, then check out the paired great_cto tag and re-run its installer, then install the older beads-superpowers.
+
 Fixes on dev reach installers only at release — cut patch releases promptly. main receives nothing except ff-only merges from dev; hotfixes ride dev as patch releases.
 
 ## Version Management
