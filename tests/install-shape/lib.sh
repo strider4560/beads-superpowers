@@ -12,6 +12,10 @@ EXPECTED_SKILLS_ROOT="${SHAPE_EXPECTED_ROOT:-$REPO_ROOT}"
 # install.sh — a test that derives the expected value from the code under test can
 # never catch an unpinning (selftest.sh mutates the invocation and expects red).
 SHAPE_MEX_PIN="0.7.1"
+# The tree the sandboxed install is fed with. Defaults to the checkout; cases that
+# need a DOCTORED source (an old release, a partial tree) point it at their own
+# copy and set it back afterwards.
+SHAPE_INSTALL_SOURCE="${SHAPE_INSTALL_SOURCE:-$REPO_ROOT}"
 FAILS=0
 
 _fail() { echo "   FAIL: $*"; FAILS=$((FAILS + 1)); }
@@ -86,7 +90,7 @@ shape_sandbox_teardown() { rm -rf "$SANDBOX"; }
 # Sets INSTALL_RC; asserts nothing (callers decide what the expected outcome is).
 _shape_run_install() {
   HOME="$SANDBOX" BEADS_SUPERPOWERS_SKILLS_DIR="$SANDBOX/skills" PATH="$SANDBOX_PATH" \
-    bash "$REPO_ROOT/install.sh" --yes --source "$REPO_ROOT" "$@" > "$SANDBOX/install.log" 2>&1
+    bash "$REPO_ROOT/install.sh" --yes --source "$SHAPE_INSTALL_SOURCE" "$@" > "$SANDBOX/install.log" 2>&1
   INSTALL_RC=$?
 }
 

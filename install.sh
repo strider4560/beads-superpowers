@@ -51,6 +51,10 @@ ANCHOR_MANIFEST=(
 # present" — so this is a version fact, not a fallback.
 PIPELINE_MIN_VERSION="0.18.0"
 ANCHOR_READY=false
+# Set the moment this run's install root lands at the anchor. It scopes the
+# failed-install rollback to artifacts THIS run introduced: a run that never got
+# that far must leave an earlier, working install alone.
+ANCHOR_CREATED_THIS_RUN=false
 
 KNOWN_SKILLS=(
   brainstorming dispatching-parallel-agents
@@ -609,7 +613,11 @@ populate_anchor_root() {
     exit 1
   fi
 
-  for rel in "${ANCHOR_MANIFEST[@]}" scripts/scan-plan.sh hooks/session-start skills; do
+  # The three literal spellings the cross-repo contract resolves through the
+  # install root travel with the manifest files: a source missing one of them
+  # refuses the install here rather than passing and failing at first use.
+  for rel in "${ANCHOR_MANIFEST[@]}" scripts/scan-plan.sh hooks/session-start skills \
+             skills/subagent-driven-development/scripts/review-package; do
     [ -e "$source_root/$rel" ] || { error "Install source is incomplete: $source_root/$rel is missing."; exit 1; }
   done
 
@@ -645,11 +653,24 @@ populate_anchor_root() {
   elif [ -e "$ANCHOR_ROOT" ]; then
     rm -f "$ANCHOR_ROOT"
   fi
+  # Re-checked immediately before the mv, with nothing in between: between the
+  # unlink above and the move, another process could put a symlink back, and
+  # `mv` would follow it and deposit the staged tree INSIDE someone else's root.
+  # Refusing is the only safe answer — a second unlink would race the same way.
+  if [ -L "$ANCHOR_ROOT" ]; then
+    rm -rf "$new_root"
+    error "A symlink reappeared at $ANCHOR_ROOT while the install root was being staged — refusing to write through it. Re-run the installer."
+    exit 1
+  fi
   if ! mv -f "$new_root" "$ANCHOR_ROOT"; then
     rm -rf "$new_root"
     error "Could not move the staged install root into place at $ANCHOR_ROOT."
     exit 1
   fi
+
+  # From here on, THIS run owns what is at the anchor: an install that fails
+  # afterwards has to take it back down again (all_methods_failed).
+  ANCHOR_CREATED_THIS_RUN=true
 
   # The record is written AFTER the root, over the files that actually landed.
   # In between, the root exists with no record — the fail-closed direction: the
@@ -679,6 +700,8 @@ populate_anchor_root() {
 }
 
 setup_hooks() {
+  local source_root="${1:-}"
+
   if [ "$HAS_PYTHON3" = 0 ]; then
     warn "python3 not found — cannot register hooks in settings.json"
     warn "Re-run install.sh once python3 is available to configure hooks"
@@ -688,7 +711,7 @@ setup_hooks() {
   mkdir -p "$HOOKS_DIR"
 
   info "Creating SessionStart hook..."
-  write_hook_script
+  write_hook_script "$source_root"
 
   if [ -f "$SETTINGS_FILE" ]; then
     local backup
@@ -729,7 +752,7 @@ try_local_install() {
 
   install_agents_from "$STAGING_DIR/repo"
 
-  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks "$STAGING_DIR/repo" || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="local"
   return 0
@@ -835,7 +858,7 @@ try_tarball_install() {
 
   install_agents_from "$STAGING_DIR/extracted"
 
-  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks "$STAGING_DIR/extracted" || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="tarball"
   return 0
@@ -862,13 +885,25 @@ try_git_install() {
 
   install_agents_from "$STAGING_DIR/repo"
 
-  setup_hooks || warn "Hook setup failed — re-run install.sh once python3 is available"
+  setup_hooks "$STAGING_DIR/repo" || warn "Hook setup failed — re-run install.sh once python3 is available"
 
   INSTALL_TIER="git"
   return 0
 }
 
 all_methods_failed() {
+  # The installer that introduced an artifact is the one that removes it. A
+  # failed install must not leave an attested install root standing with no hook
+  # registration behind it: the plugin channel's session-start stands down on a
+  # real directory at the anchor, so that root would pin every later session to a
+  # tree nothing maintains. Only what THIS run created is removed — an earlier
+  # successful install's root is not this run's to touch.
+  if [ "$ANCHOR_CREATED_THIS_RUN" = true ]; then
+    rm -rf "$ANCHOR_ROOT"
+    rm -f "$RECORD_FILE"
+    rmdir "$(dirname "$RECORD_FILE")" 2>/dev/null || true
+    info "Removed the install root and ownership record this failed run created"
+  fi
   error "All installation methods failed."
   echo
   echo "Manual installation options:"
@@ -1024,18 +1059,25 @@ do_install() {
   echo "${VERSION}:${INSTALL_TIER}" > "$VERSION_FILE"
 }
 
-# write_hook_script
-# With a populated install root (the scripted tiers), HOOK_SCRIPT becomes a thin
-# exec shim of the canonical composer inside it — one source of truth (bead
-# bb6x), and now the very copy the pipeline gates are attested against. The
-# legacy $HOOKS_DIR/beads-superpowers canon root is reduced to this shim: no
-# populated copy is left there (spec D3).
-# Without a root — the npx tier, which has no checkout to copy from, and sources
-# predating the pipeline — HOOK_SCRIPT becomes a policy-free minimal fallback:
-# skill injection, static bd pointers, and the capped mex hot page only. All
-# composition policy (bd prime capture, envelope budgeting, routing/curation)
-# lives ONLY in hooks/session-start.
+# write_hook_script [source_root]
+# Three shapes, in descending order of what the host can support:
+#  1. A populated install root (0.18+ scripted tiers): HOOK_SCRIPT is a thin exec
+#     shim of the canonical composer inside it — one source of truth (bead bb6x),
+#     and the very copy the pipeline gates are attested against. The legacy
+#     $HOOKS_DIR/beads-superpowers canon root is reduced to this shim: no
+#     populated copy is left there (spec D3).
+#  2. No root but a checkout that ships hooks/session-start (a --version pin, a
+#     --source of an old tree, any source predating 0.18): the pre-0.18 shape —
+#     the composer is copied to the legacy canon root and exec'd through it.
+#     These hosts get exactly what the release they asked for always gave them;
+#     dropping to shape 3 here would silently strip bd prime capture, envelope
+#     budgeting and routing with no message.
+#  3. Neither (the npx tier, which has no checkout to copy from): a policy-free
+#     minimal fallback — skill injection, static bd pointers, and the capped mex
+#     hot page only. All composition policy lives ONLY in hooks/session-start.
 write_hook_script() {
+  local source_root="${1:-}"
+
   if [ "$ANCHOR_READY" = true ]; then
     rm -rf "$HOOKS_DIR/beads-superpowers"
 
@@ -1052,6 +1094,28 @@ write_hook_script() {
 # inside the install root the pipeline's literal spellings resolve through.
 BSP_ROOT="$ANCHOR_ROOT"
 export CLAUDE_PLUGIN_ROOT="\$BSP_ROOT"
+exec "\$BSP_ROOT/hooks/session-start" "\$@"
+HOOKEOF
+  elif [ -n "$source_root" ] && [ -f "$source_root/hooks/session-start" ]; then
+    # Pre-0.18 shape, unchanged: canon root copy + shim.
+    local canon_root="$HOOKS_DIR/beads-superpowers"
+    mkdir -p "$canon_root/hooks"
+    cp -f "$source_root/hooks/session-start" "$canon_root/hooks/session-start"
+    chmod +x "$canon_root/hooks/session-start"  # direct exec relies on the bash shebang
+    # The canonical hook resolves skills relative to its own root
+    # (<root>/skills/using-superpowers/SKILL.md) — point <root>/skills at SKILLS_DIR.
+    rm -rf "$canon_root/skills"
+    ln -s "$SKILLS_DIR" "$canon_root/skills"
+
+    # Unquoted heredoc: $canon_root is substituted at install time (same
+    # mechanism as register_hook's PYEOF); runtime expansions are escaped.
+    cat > "$HOOK_SCRIPT" << HOOKEOF
+#!/usr/bin/env bash
+# beads-superpowers hook shim — canonical logic lives in hooks/session-start.
+# The CLAUDE_PLUGIN_ROOT default preserves the hookSpecificOutput envelope this
+# registration has always emitted (settings.json / codex_hooks consumers).
+BSP_ROOT="$canon_root"
+export CLAUDE_PLUGIN_ROOT="\${CLAUDE_PLUGIN_ROOT:-\$BSP_ROOT}"
 exec "\$BSP_ROOT/hooks/session-start" "\$@"
 HOOKEOF
   else

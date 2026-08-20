@@ -575,4 +575,61 @@ else
 fi
 rm -rf "$MUT24"
 
+# Mutation 25: the pre-0.18 composer branch is disabled, so a source that ships
+# hooks/session-start but no install root silently drops to the policy-free
+# minimal hook — bd prime capture, envelope budgeting and routing gone with no
+# message. The condition is rewritten to `false` rather than deleted: the branch
+# body survives and the mutated installer is still valid bash. Same rig as 19/20/24.
+MUT25=$(mktemp -d)
+if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
+        "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT25/"; then
+  echo "SELFTEST FAIL: mutation-25 setup copy failed (rig broken, not a caught mutation)"; rc=1
+elif ! { mkdir -p "$MUT25/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT25/tests/install-shape"; }; then
+  echo "SELFTEST FAIL: mutation-25 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
+else
+  sed 's|^  elif \[ -n "\$source_root" \] && \[ -f "\$source_root/hooks/session-start" \]; then$|  elif false; then|' \
+    "$MUT25/install.sh" > "$MUT25/install.sh.tmp" && mv -f "$MUT25/install.sh.tmp" "$MUT25/install.sh"
+  if cmp -s "$MUT25/install.sh" "$REPO_ROOT/install.sh"; then
+    echo "SELFTEST FAIL: mutation-25 changed nothing (stale composer-branch text, not a caught mutation)"; rc=1
+  fi
+  out25=$(env SHAPE_REPO_ROOT="$MUT25" SHAPE_EXPECTED_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/tests/install-shape/assert-claude.sh" 2>&1); ec25=$?
+  if [ "$ec25" -eq 0 ]; then
+    echo "SELFTEST FAIL: 'pre-0.18 composer branch disabled' should have gone RED but passed"; rc=1
+  elif ! printf '%s\n' "$out25" | grep -qF "silent hook downgrade"; then
+    echo "SELFTEST FAIL: 'pre-0.18 composer branch disabled' failed for the wrong reason (no downgrade message)"; rc=1
+  else
+    echo "SELFTEST ok: 'pre-0.18 composer branch disabled' correctly fails, naming the silent downgrade"
+  fi
+fi
+rm -rf "$MUT25"
+
+# Mutation 26: the failed-install rollback never arms — the flag stays false, so a
+# tier that populates the install root and then fails leaves an attested, hookless
+# root standing, permanently pinned for every later session. Deleting the single
+# arming line is the smallest change that reproduces it. Same rig as 19/20/24.
+MUT26=$(mktemp -d)
+if ! cp -rf "$REPO_ROOT/skills" "$REPO_ROOT/example-workflow" "$REPO_ROOT/hooks" "$REPO_ROOT/.opencode" \
+        "$REPO_ROOT/scripts" "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" "$MUT26/"; then
+  echo "SELFTEST FAIL: mutation-26 setup copy failed (rig broken, not a caught mutation)"; rc=1
+elif ! { mkdir -p "$MUT26/tests" && cp -rf "$REPO_ROOT/tests/install-shape" "$MUT26/tests/install-shape"; }; then
+  echo "SELFTEST FAIL: mutation-26 setup copy of tests/install-shape failed (rig broken, not a caught mutation)"; rc=1
+else
+  grep -v '^  ANCHOR_CREATED_THIS_RUN=true$' "$MUT26/install.sh" > "$MUT26/install.sh.tmp" \
+    && mv -f "$MUT26/install.sh.tmp" "$MUT26/install.sh"
+  if cmp -s "$MUT26/install.sh" "$REPO_ROOT/install.sh"; then
+    echo "SELFTEST FAIL: mutation-26 changed nothing (stale rollback-flag text, not a caught mutation)"; rc=1
+  fi
+  out26=$(env SHAPE_REPO_ROOT="$MUT26" SHAPE_EXPECTED_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/tests/install-shape/assert-claude.sh" 2>&1); ec26=$?
+  if [ "$ec26" -eq 0 ]; then
+    echo "SELFTEST FAIL: 'failed-install rollback disarmed' should have gone RED but passed"; rc=1
+  elif ! printf '%s\n' "$out26" | grep -qE "should not exist: .*(\.agents/beads-superpowers|record\.json)"; then
+    echo "SELFTEST FAIL: 'failed-install rollback disarmed' failed for the wrong reason (no surviving-root message)"; rc=1
+  else
+    echo "SELFTEST ok: 'failed-install rollback disarmed' correctly fails, naming the root a failed install left behind"
+  fi
+fi
+rm -rf "$MUT26"
+
 exit "$rc"
