@@ -39,6 +39,14 @@ add_tier_map() { # <home> — the fixture tier-map inside that bundle root
   mkdir -p "$1/.agents/great_cto/shared"
   cp -f "$fixture" "$1/.agents/great_cto/shared/tier-map.json"
 }
+add_tier_map_no_effort() { # <home> <tier> — the fixture with that tier's session_effort DELETED
+  # The shipped fixture sets session_effort on all four tiers, so nothing in this
+  # suite exercised a map that omits it. A real great_cto map may omit the key on
+  # any tier, and that must not brick the stage.
+  mkdir -p "$1/.agents/great_cto/shared"
+  jq --arg t "$2" 'del(.tiers[$t].session_effort)' "$fixture" \
+    > "$1/.agents/great_cto/shared/tier-map.json"
+}
 make_cwd() { # <name> [model] [effort] -> path to a working dir
   local cwd="$TMP/cwd-$1" effort="null"; mkdir -p "$cwd"
   if [ -n "${2:-}" ]; then
@@ -182,6 +190,12 @@ h_nopkg="$(make_home nopkg)";       mkdir -p "$h_nopkg/.agents/great_cto"; add_t
 c_plan="$(make_cwd plan model-plan-1)"                       # effort null
 c_eff_ok="$(make_cwd eff-ok model-plan-1 high)"
 c_eff_bad="$(make_cwd eff-bad model-plan-1 low)"
+# A tier-map whose planning tier declares no session_effort at all.
+h_noeff="$(make_home noeff)";       add_bundle "$h_noeff" "$minver"
+add_tier_map_no_effort "$h_noeff" planning
+# implementation-orchestration carries session_effort "default" in the fixture —
+# a value $CLAUDE_EFFORT never emits — with a session that reports a real effort.
+c_orch_eff="$(make_cwd orch-eff model-orch-only high)"
 c_unknown="$(make_cwd unknown model-not-in-map)"
 c_none="$(make_cwd none)"                                    # no session state file
 c_assert="$(make_cwd assert)"                                # tier assert file below
@@ -595,6 +609,28 @@ run "$c_eff_bad" "$h_full" "$gate" --stage planning
 check "effort-mismatch-exits-1" 1
 check "effort-mismatch-names-found-effort" 1 "is 'low'" stderr
 check "effort-mismatch-names-required-effort" 1 "requires session effort 'high'" stderr
+
+# A tier that declares NO session_effort constrains nothing. Defaulting the absent
+# key to the literal "default" compared that string against a session effort that
+# only ever reports low|medium|high|xhigh|max, so every effort-reporting session on
+# such a tier failed closed — the stage was unenterable by anyone who could detect
+# their own effort.
+run "$c_eff_ok" "$h_noeff" "$gate" --stage planning
+check "absent-session_effort-does-not-brick-an-effort-reporting-session" 0
+check "absent-session_effort-says-the-tier-declares-none" 0 'declares no session effort'
+check "absent-session_effort-still-names-the-session-effort" 0 'high'
+
+# The null-effort advisory must not regress into naming an effort the map never set.
+run "$c_plan" "$h_noeff" "$gate" --stage planning
+check "absent-session_effort-with-null-effort-exits-0" 0
+check "absent-session_effort-with-null-effort-declares-none" 0 'declares no session effort'
+
+# Same failure, spelled differently: a tier whose session_effort IS set, to a value
+# the harness never emits. "default" is the tier-map's own idiom for unconstrained,
+# so it must behave as unconstrained rather than as an effort to match.
+run "$c_orch_eff" "$h_full" "$gate" --stage implementing
+check "default-session_effort-does-not-brick-an-effort-reporting-session" 0
+check "default-session_effort-says-the-tier-declares-none" 0 'declares no session effort'
 
 # --- integrity record -------------------------------------------------------
 # Anchor presence is tested on the entry itself, the record is selected by

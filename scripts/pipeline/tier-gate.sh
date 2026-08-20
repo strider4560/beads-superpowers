@@ -125,7 +125,20 @@ if [ "$in_want" -ne 1 ]; then
   exit 1
 fi
 
-eff="$(jq -r --arg t "$want" '.tiers[$t].session_effort // "default"' "$map")"
+# `// empty`, not `// "default"` — and the literal "default" folded in beside it,
+# because both spellings mean the same thing: this tier declares no effort to match.
+# The session effort only ever reports low|medium|high|xhigh|max (Task 1 spike) and
+# never the literal "default". So the old default made a tier that OMITS the key
+# unenterable by every session that can detect its own effort — "requires session
+# effort 'default' but this session is 'high'" — and a tier that SETS it to
+# "default", as the tier-map's own idiom for unconstrained, failed identically.
+# An absent constraint must not read as a constraint nothing can satisfy.
+eff="$(jq -r --arg t "$want" '.tiers[$t].session_effort // empty' "$map")"
+[ "$eff" = "default" ] && eff=""
+if [ -z "$eff" ]; then
+  echo "tier-gate OK: $want (tier declares no session effort${effort:+ — this session is $effort})"
+  exit 0
+fi
 # The session effort is only script-detectable when the model supports the effort
 # parameter (spike: .internal/research/2026-08-19-harness-detection-spike.md). A
 # null effort is normal, not an error — it falls back to the human-set convention.
