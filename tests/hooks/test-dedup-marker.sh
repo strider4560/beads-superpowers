@@ -11,6 +11,11 @@ cd "$TMP"
 payload='{"session_id":"sess-abc","source":"startup"}'
 out1=$(printf '%s' "$payload" | CLAUDE_PLUGIN_ROOT=x bash "$HOOK")
 echo "$out1" | grep -q 'additionalContext' || { echo "FAIL: first run did not inject"; exit 1; }
+# `x` is not a usable plugin root: the anchor-maintenance block must refuse it rather
+# than attest it and leave a dangling relative symlink. Checked here, before any run
+# with a real plugin root has had a chance to create the anchor legitimately.
+[ ! -e "$HOME/.agents/beads-superpowers" ] && [ ! -L "$HOME/.agents/beads-superpowers" ] \
+    || { echo "FAIL: a bogus CLAUDE_PLUGIN_ROOT created the distribution anchor"; exit 1; }
 out2=$(printf '%s' "$payload" | CLAUDE_PLUGIN_ROOT=x bash "$HOOK")
 echo "$out2" | grep -q 'additionalContext' && { echo "FAIL: duplicate event injected twice"; exit 1; }
 

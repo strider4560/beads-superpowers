@@ -461,24 +461,63 @@ elif [ -L "$_bsp_anchor" ]; then
   fi
 elif [ ! -e "$_bsp_anchor" ]; then
   _bsp_action=refresh
+else
+  # Anything else at the anchor path — a regular file, a fifo, a device node.
+  # Every other anomalous state is reported; this one used to fall through in
+  # silence, leaving the gates to deny with nothing said about why.
+  printf '%s\n' "beads-superpowers: $_bsp_anchor exists but is neither a symlink nor a directory — not replacing it; remove it or re-run install.sh" >&2
 fi
 
 if [ -n "$_bsp_action" ]; then
+  # `|| _bsp_version=""`: a standalone assignment propagates the reader's exit
+  # status, and under `set -euo pipefail` an unreadable package.json would abort
+  # the hook rather than degrade. Every read below carries the same guard.
+  _bsp_version="$(bsp_root_version "$_bsp_own_canon")" || _bsp_version=""
   _bsp_hashes=""
-  _bsp_hashed=1
-  if [ "$_bsp_posture" = manifest-backed ]; then
-    _bsp_hashes="$(bsp_hashes "$_bsp_own_canon")" || { _bsp_hashed=0; _bsp_hashes=""; }
+  _bsp_refuse=""
+  # What gets written is an ATTESTATION, so the target has to be attestable.
+  # CLAUDE_PLUGIN_ROOT is harness-supplied and can be junk (a bare `x`): a
+  # relative or absent root would be blessed by the record and leave a dangling
+  # anchor whose meaning depends on each reader's cwd. Absolute AND an existing
+  # directory, or nothing is written at all.
+  case "$_bsp_own_canon" in
+    /*) [ -d "$_bsp_own_canon" ] || _bsp_refuse="the plugin root $_bsp_own_canon is not an existing absolute directory" ;;
+    *)  _bsp_refuse="the plugin root ${_bsp_own_canon:-(empty)} is not an existing absolute directory" ;;
+  esac
+  if [ -z "$_bsp_refuse" ] && [ "$_bsp_posture" = manifest-backed ]; then
+    # Manifest-backed only: the refresh is keyed on the version, so an empty one
+    # would freeze the manifest at whatever it last was. An advisory record
+    # attests nothing, so a versionless dev clone stays writable.
+    if [ -z "$_bsp_version" ]; then
+      _bsp_refuse="the managed plugin root $_bsp_own_canon has no readable package.json version"
+    elif ! _bsp_hashes="$(bsp_hashes "$_bsp_own_canon")"; then
+      _bsp_hashes=""
+      _bsp_refuse="cannot hash the pipeline manifest (no sha256sum/shasum, or a manifest file is missing)"
+    fi
   fi
-  if [ "$_bsp_hashed" -eq 0 ]; then
-    printf '%s\n' "beads-superpowers: cannot hash the pipeline manifest (no sha256sum/shasum, or a manifest file is missing) — no ownership record written; pipeline gates will fail closed" >&2
-  elif bsp_write_record "$_bsp_own_canon" "$_bsp_posture" "$(bsp_root_version "$_bsp_own_canon")" "$_bsp_hashes"; then
-    # Record first, anchor second: a record without an anchor is inert, an anchor
-    # without a record is the state the gates deny.
-    mkdir -p "$(dirname "$_bsp_anchor")" 2>/dev/null || true
-    ln -sfn "$_bsp_own_canon" "$_bsp_anchor" 2>/dev/null \
-      || printf '%s\n' "beads-superpowers: could not create the anchor $_bsp_anchor — pipeline gates will fail closed" >&2
+  if [ -n "$_bsp_refuse" ]; then
+    printf '%s\n' "beads-superpowers: $_bsp_refuse — no ownership record written; pipeline gates will fail closed" >&2
   else
-    printf '%s\n' "beads-superpowers: could not write the ownership record $_bsp_record — pipeline gates will fail closed" >&2
+    # A posture change is legitimate — a dev clone and a managed install sharing
+    # one HOME each own the anchor after they run — but a host that quietly stops
+    # being manifest-backed is exactly the downgrade that must be heard.
+    _bsp_old_posture=""; _bsp_old_target=""
+    if [ -f "$_bsp_record" ]; then
+      _bsp_old_posture="$(bsp_record_field posture)" || _bsp_old_posture=""
+      _bsp_old_target="$(bsp_record_field target)" || _bsp_old_target=""
+    fi
+    if [ -n "$_bsp_old_posture" ] && [ "$_bsp_old_posture" != "$_bsp_posture" ]; then
+      printf '%s\n' "beads-superpowers: ownership record posture $_bsp_old_posture → $_bsp_posture (target ${_bsp_old_target:-none} → $_bsp_own_canon) — the anchor $_bsp_anchor is changing hands; re-run install.sh if that is not what you meant" >&2
+    fi
+    if bsp_write_record "$_bsp_own_canon" "$_bsp_posture" "$_bsp_version" "$_bsp_hashes"; then
+      # Record first, anchor second: a record without an anchor is inert, an anchor
+      # without a record is the state the gates deny.
+      mkdir -p "$(dirname "$_bsp_anchor")" 2>/dev/null || true
+      ln -sfn "$_bsp_own_canon" "$_bsp_anchor" 2>/dev/null \
+        || printf '%s\n' "beads-superpowers: could not create the anchor $_bsp_anchor — pipeline gates will fail closed" >&2
+    else
+      printf '%s\n' "beads-superpowers: could not write the ownership record $_bsp_record — pipeline gates will fail closed" >&2
+    fi
   fi
 fi
 

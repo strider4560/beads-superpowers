@@ -418,6 +418,45 @@ assert "a version bump does not repoint a foreign anchor" "got $(readlink "$anch
     test "$(readlink "$anchor" 2>/dev/null)" = "$foreign"
 assert "a version bump does not rewrite the record behind a foreign anchor" \
     "got $(jqr '.version' "$record")" jqok '.version == "1.0.0"' "$record"
+
+# --- Case W: a posture change on refresh is reported, never silent -----------
+# One HOME, two roots: a managed plugin install and a dev clone maintain the SAME
+# anchor, so the posture flips to whichever ran last. The flip stays possible —
+# the last writer legitimately owns the anchor — but a manifest-backed host
+# silently becoming advisory is exactly the downgrade the residual says must be
+# noisy.
+home=$(mk_anchor_home none); ws=$(mk_ws)
+mroot="$home/.claude/plugins/cache/beads-superpowers"; mk_root "$mroot" 1.0.0
+clone="$home/dev/beads-superpowers"; mk_root "$clone" 1.0.0
+anchor=$(anchor_of "$home"); record=$(record_of "$home")
+ROOT_OVERRIDE="$mroot"; out=$(run_hook "$home" "$ws" "$(payload W1 '')" ""); unset ROOT_OVERRIDE
+ROOT_OVERRIDE="$clone"; out=$(run_hook "$home" "$ws" "$(payload W2 '')" ""); rc=$?; unset ROOT_OVERRIDE
+err=$(cat "$ERR")
+assert "hook exits 0 while the posture changes" "rc=$rc (stderr: $err)" test "$rc" -eq 0
+assert "a posture downgrade names both postures on stderr" "stderr: $err" \
+    grepok 'posture manifest-backed → dev-clone-advisory' "$err"
+assert "a posture downgrade names the old and the new target" "stderr: $err" \
+    grepok "$(canon "$mroot") → $(canon "$clone")" "$err"
+assert "a reported posture downgrade still takes effect (noisy, not impossible)" \
+    "got $(jqr '.posture' "$record")" jqok '.posture == "dev-clone-advisory"' "$record"
+
+# --- Case Y: a manifest-backed root with no readable version → no record -----
+# The manifest refresh is keyed on the version, so an empty one freezes the
+# hashes at whatever they were and the record attests a root that cannot say
+# what it is. Manifest-backed only: an advisory record carries no attestation.
+home=$(mk_anchor_home none); ws=$(mk_ws)
+mroot="$home/.claude/plugins/cache/beads-superpowers"; mk_root "$mroot" 1.0.0
+rm -f "$mroot/package.json"
+anchor=$(anchor_of "$home"); record=$(record_of "$home")
+ROOT_OVERRIDE="$mroot"; out=$(run_hook "$home" "$ws" "$(payload Y '')" ""); rc=$?; unset ROOT_OVERRIDE
+err=$(cat "$ERR")
+assert "hook exits 0 on a versionless managed root" "rc=$rc (stderr: $err)" test "$rc" -eq 0
+assert "a versionless managed root writes no record" "record: $(cat "$record" 2>&1)" \
+    test ! -e "$record"
+assert "a versionless managed root creates no anchor" "anchor: $(ls -ld "$anchor" 2>&1)" \
+    noent "$anchor"
+assert "a versionless managed root is reported" "stderr: $err" \
+    grepok 'no readable package.json version' "$err"
 fi
 
 # --- Case P: our symlink + a moved plugin root → repoint and refresh ---------
@@ -501,6 +540,45 @@ assert "a missing root is reported, not symlinked to itself" "stderr: $err" \
 assert "no anchor is created when the hook's own root is the anchor" \
     "created $(ls -ld "$anchor" 2>&1)" noent "$anchor"
 assert "no record is written when the hook's own root is the anchor" "record written" \
+    test ! -e "$record"
+
+# --- Case X: an unusable plugin root is never attested -----------------------
+# CLAUDE_PLUGIN_ROOT is harness-supplied and can be junk — tests/hooks/test-dedup-marker.sh
+# passes a bare `x`. A relative or absent root written into the record would bless a
+# dangling anchor whose meaning depends on each reader's cwd.
+# $1 case tag · $2 CLAUDE_PLUGIN_ROOT value · $3 description
+bad_root_case() {
+    local home ws anchor record out rc err
+    home=$(mk_anchor_home none); ws=$(mk_ws)
+    anchor=$(anchor_of "$home"); record=$(record_of "$home")
+    ROOT_OVERRIDE="$2"
+    out=$(run_hook "$home" "$ws" "$(payload "$1" '')" ""); rc=$?
+    unset ROOT_OVERRIDE
+    err=$(cat "$ERR")
+    assert "hook exits 0 with $3" "rc=$rc (stderr: $err)" test "$rc" -eq 0
+    assert "$3 creates no anchor" "anchor: $(ls -ld "$anchor" 2>&1)" noent "$anchor"
+    assert "$3 writes no record" "record: $(cat "$record" 2>&1)" test ! -e "$record"
+    assert "$3 is reported" "stderr: $err" grepok 'is not an existing absolute directory' "$err"
+}
+bad_root_case X1 x                'a relative plugin root'
+bad_root_case X2 "$T/absent-root" 'an absent plugin root'
+
+# --- Case Z: a regular file sits at the anchor path --------------------------
+# Every other anomalous anchor state is reported; a plain file fell through all
+# four branches without a word, leaving the gates to deny with no explanation.
+home=$(mk_anchor_home none); ws=$(mk_ws)
+clone="$home/dev/beads-superpowers"; mk_root "$clone" 1.0.0
+anchor=$(anchor_of "$home"); record=$(record_of "$home")
+mkdir -p "$(dirname "$anchor")"; printf 'not an anchor\n' > "$anchor"
+ROOT_OVERRIDE="$clone"; out=$(run_hook "$home" "$ws" "$(payload Z '')" ""); rc=$?; unset ROOT_OVERRIDE
+err=$(cat "$ERR")
+assert "hook exits 0 with a regular file at the anchor path" "rc=$rc (stderr: $err)" \
+    test "$rc" -eq 0
+assert "a regular file at the anchor path is reported" "stderr: $err" \
+    grepok 'neither a symlink nor a directory' "$err"
+assert "a regular file at the anchor path is left untouched" "content: $(cat "$anchor" 2>&1)" \
+    filematch "$anchor" 'not an anchor'
+assert "no record is written for a regular file at the anchor path" "record written" \
     test ! -e "$record"
 
 [ "$fail" -eq 0 ] && echo "PASS: session-start pipeline state" || exit 1
