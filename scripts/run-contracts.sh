@@ -13,4 +13,9 @@ done
 t=tests/installer/test-select-runtime.sh
 echo "── $t"
 if bash "$t"; then echo "   PASS"; else echo "   FAIL"; rc=1; fi
+
+# Plan secret/PII scanner contract (scripts/scan-plan.sh — spec D6).
+t=tests/pipeline/test-scan-plan.sh
+echo "── $t"
+if bash "$t"; then echo "   PASS"; else echo "   FAIL"; rc=1; fi
 exit "$rc"

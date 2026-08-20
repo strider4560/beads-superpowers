@@ -43,7 +43,7 @@ repos:
         entry: bash scripts/bump-version.sh --check
         language: system
         pass_filenames: false
-        files: (package\.json|plugin\.json|marketplace\.json)
+        files: (package\.json|plugin\.json|marketplace\.json|scripts/pipeline/tier-gate\.sh|scripts/pipeline/graph-lint\.mjs)
       - id: skill-count-guard
         name: Skill count drift guard + structural self-consistency
         entry: bash scripts/check-skill-count.sh
@@ -56,3 +56,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+  # Secret/PII scan over tracked plans (spec D6). A hit stops the commit; the
+  # remedy is human review of the named lines, never auto-redaction.
+  - repo: local
+    hooks:
+      - id: scan-plan
+        name: Plan secret/PII scan (scan-plan)
+        entry: bash scripts/scan-plan.sh
+        language: system
+        files: ^plans/.*\.md$
