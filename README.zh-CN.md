@@ -18,6 +18,12 @@
 
 一款适用于 Claude Code、Codex、OpenCode 及另外 7 款 AI 编程智能体的插件，让你的智能体在编写代码前先写测试、有条不紊地调试而非盲目猜测，并记住昨天做了什么。可组合技能强制执行这些实践；基于 Dolt 的问题追踪器在会话间保持上下文。
 
+**beads-superpowers 依赖 [great_cto](https://github.com/strider4560/great_cto)，这是硬性依赖。** great_cto 提供智能体名册、审查契约以及能力档位映射表，本插件的流水线脚本从捆绑根目录 `~/.agents/great_cto/` 读取这些内容。本插件没有独立运行模式：捆绑根目录缺失时，安装程序会中止，所有流水线门控一律失败即拒绝，绝不放行。请先安装它。
+
+```bash
+git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all
+```
+
 ## 快速开始
 
 最快路径——Claude Code 原生插件安装：
@@ -147,6 +153,8 @@ bd init                               # 2. Bootstrap the Dolt database for this 
 > **⚠️ 共存警告：** 请勿与 [obra/superpowers](https://github.com/obra/superpowers) 同时安装。技能名称存在冲突——请二选一。
 
 ### 前提条件
+
+**首先安装 great_cto。** 它是流水线脚本在任何档位判定之前都要解析的捆绑根目录，缺少它安装程序将直接中止：`git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all`。通过 `ls ~/.agents/great_cto` 验证。
 
 **先安装 `bd`，再安装插件。** 其钩子在每次会话启动时注入 `bd` 上下文；若未安装 `bd`，这一半会被跳过，导致丢失持久的任务追踪。可使用 Homebrew（`brew install beads`），或在任何平台上使用 `npm install -g @beads/bd`。通过 `bd version` 验证安装。
 

@@ -16,6 +16,12 @@
 
 A plugin for Claude Code, Codex, OpenCode, and 7 more AI coding agents that makes your agent write tests before code, debug systematically instead of guessing, and remember what it worked on yesterday. Composable skills enforce the practices; a Dolt-backed issue tracker keeps context across sessions.
 
+**beads-superpowers requires [great_cto](https://github.com/strider4560/great_cto).** great_cto ships the agent roster, the review contracts, and the capability-tier map that this plugin's pipeline scripts read from the bundle root at `~/.agents/great_cto/`. There is no standalone mode: a missing bundle root stops the installer and fails every pipeline gate closed. Install it first.
+
+```bash
+git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all
+```
+
 ## Quickstart
 
 The fastest path - Claude Code with native plugin install:
@@ -145,6 +151,8 @@ The long form lives in [Methodology](https://algocents.com/beads-superpowers/met
 > **⚠️ Coexistence warning:** Do not install alongside [obra/superpowers](https://github.com/obra/superpowers). Skill names collide - pick one or the other.
 
 ### Prerequisites
+
+**Install great_cto first.** It is the bundle root the pipeline scripts resolve before any tier decision, and the installer aborts without it: `git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all`. Verify with `ls ~/.agents/great_cto`.
 
 **Install `bd` before the plugin.** Its hook injects `bd` context on every session start; without `bd` that half is skipped and you lose persistent task tracking. Use Homebrew (`brew install beads`) or `npm install -g @beads/bd` on any platform. Verify with `bd version`.
 

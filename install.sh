@@ -452,6 +452,7 @@ print_consent() {
     *)              mex_consent="Installs mex-agent@$MEX_PIN globally via npm (durable-knowledge dependency)" ;;
   esac
   echo "  $mex_consent"
+  echo "  Requires great_cto at ~/.agents/great_cto (hard dependency, already verified above)"
   echo
   if [ "$HAS_CODEX" = 1 ]; then
     echo "  Codex CLI detected — skills will also be installed to ~/.codex/skills/"
@@ -974,6 +975,33 @@ with open(sf, 'w') as f:
 # Project scaffolding (`mex setup`) is out of scope here — project-init owns it.
 #
 # The dependency is handled in two phases so that nothing is mutated before the
+# great_cto is a hard dependency of the whole product, not an optional extra:
+# there is no degraded standalone mode, so an absent bundle root aborts the
+# install. Pure check, no mutation.
+#
+# Directory existence only. scripts/pipeline/bundle-root.sh additionally enforces
+# a version floor at runtime; that check is deliberately not replicated here,
+# because a version the installer cannot fix is not an install-time question.
+#
+# The remedy below is the same instruction bundle-root.sh prints. Two call sites,
+# one wording -- if you change it here, change it there.
+#
+# Deliberate divergence from check_mex: that function has a FLAG_DRY_RUN branch
+# that reports the plan instead of aborting, and this one has none. A dry run with
+# no bundle root prints the remedy and exits 1, which is the honest answer -- there
+# is no plan to preview when the install cannot proceed. Do not add the branch.
+check_great_cto() {
+  local root="${HOME}/.agents/great_cto"
+  if [ -d "$root" ]; then
+    info "great_cto: found at $root"
+    return 0
+  fi
+  error "great_cto bundle root not found at $root"
+  echo "beads-superpowers requires great_cto. Install it:" >&2
+  echo "  git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all" >&2
+  exit 1
+}
+
 # user consents: check_mex (pure checks, runs pre-consent) records MEX_STATE and
 # aborts on an unsatisfiable environment; install_mex (the npm mutation) runs
 # inside do_install, after consent.
@@ -1521,6 +1549,11 @@ do_test() {
   info "Test mode: installing to $test_home/"
   echo
 
+  # The inner install below overrides HOME, so check_great_cto resolves the bundle
+  # root under $test_home rather than the real one. Create it, or every --test run
+  # aborts on a dependency the host may well have.
+  mkdir -p "$test_home/.agents/great_cto"
+
   # Re-run ourselves with overridden HOME, --yes, and --version to force Tier 3 (tarball).
   # --version skips Tiers 1-2, which don't install to $SKILLS_DIR (plugin goes to cache).
   # --with-yegge (when given) is forwarded so --test verifies whichever mode was requested.
@@ -1684,6 +1717,10 @@ main() {
     do_uninstall
     exit 0
   fi
+
+  # Ahead of version resolution and its network call: an absent bundle root is
+  # fatal whatever version would have been resolved, and the remedy is the same.
+  check_great_cto
 
   detect_upstream_conflict
   resolve_version
