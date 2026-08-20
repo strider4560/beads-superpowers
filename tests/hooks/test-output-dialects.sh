@@ -10,6 +10,11 @@ fail=0
 # same "nosid/unknown" marker key -- both with each other and with other test files that
 # use the same real-/tmp fallback key (see tests/hooks/test-dedup-marker.sh).
 RUNDIR=$(mktemp -d); trap 'rm -rf "$RUNDIR"' EXIT
+# Scratch HOME, not the real one: the hook maintains $HOME/.agents/beads-superpowers
+# and writes $HOME/.local/state/beads-superpowers/record.json, and on a developer
+# machine $HOME/.agents is commonly a symlink into a synced dotfiles tree. These
+# checks care only about the output dialect, so the sandbox costs them nothing.
+SANDHOME="$RUNDIR/home"; mkdir -p "$SANDHOME"
 n=0
 check() { # desc | env-assignment | jq-filter that must be non-empty
   local desc="$1" envset="$2" filter="$3"
@@ -17,7 +22,7 @@ check() { # desc | env-assignment | jq-filter that must be non-empty
   n=$((n + 1))
   # shellcheck disable=SC2086  # $envset is intentionally word-split (space-separated KEY=VALUE pairs)
   out=$(printf '{"session_id":"dialect-%s","source":"startup"}' "$n" \
-    | env -i HOME="$HOME" PATH="$PATH" XDG_RUNTIME_DIR="$RUNDIR" $envset bash "$HOOK" 2>/dev/null)
+    | env -i HOME="$SANDHOME" PATH="$PATH" XDG_RUNTIME_DIR="$RUNDIR" $envset bash "$HOOK" 2>/dev/null)
   if echo "$out" | jq -e "$filter" >/dev/null 2>&1; then
     echo "PASS: $desc"
   else
