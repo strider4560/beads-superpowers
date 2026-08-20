@@ -96,7 +96,13 @@ elif printf '%s\n' "$gate_out" | grep -qE "integrity record|integrity check fail
   _fail "tier-gate denied on its own install's record: $gate_out"
 elif printf '%s\n' "$gate_out" | grep -qF "is running against beads-superpowers root"; then
   _fail "tier-gate version self-check failed against the install root: $gate_out"
-elif printf '%s\n' "$gate_out" | grep -qE "great_cto bundle root not found|jq required by tier-gate"; then
+elif printf '%s\n' "$gate_out" | grep -qE "great_cto bundle root not found|predates the package.json link|tier-map missing|jq required by tier-gate"; then
+  # Every alternative here is one of the gate's OWN checks, which is all this case
+  # asserts. Which one fires depends on how far the sandbox provisions the bundle
+  # root: it now gets the directory (install.sh hard-depends on it), so the gate
+  # gets past "not found" and stops on the absent version file instead. Listing the
+  # later checks too keeps the case about reaching the gate's logic rather than
+  # about one incidental depth.
   _pass "tier-gate reached its own gate logic through the install root (exit $gate_rc)"
 else
   _fail "tier-gate output does not name any of its own gate checks: $gate_out"
@@ -362,5 +368,18 @@ assert_in_log "skills/subagent-driven-development/scripts/review-package is miss
 assert_no_file "$SANDBOX/.agents/beads-superpowers"
 shape_sandbox_teardown
 rm -rf "$PARTIAL"
+
+# The great_cto bundle root is absent -- the hard-dependency check must abort before
+# any install work, print the same remedy scripts/pipeline/bundle-root.sh prints, and
+# leave the sandbox untouched.
+shape_sandbox_setup claude
+rm -rf "$SANDBOX/.agents/great_cto"
+shape_install_expect_abort
+assert_in_log "great_cto bundle root not found at $SANDBOX/.agents/great_cto"
+assert_in_log "beads-superpowers requires great_cto. Install it:"
+assert_in_log "/Develop/great_cto/scripts/install.sh --host all"
+assert_not_in_log "This script installs the beads-superpowers skill suite"
+assert_npm_untouched
+shape_sandbox_teardown
 
 fail_count

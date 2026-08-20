@@ -49,6 +49,10 @@ shape_sandbox_setup() {
   # so they must not touch MARKER_DIR (assert_shims_never_invoked stays meaningful).
   shape_stub_mex "$SHAPE_MEX_PIN"
   shape_stub_node "v22.5.0"
+  # great_cto is the other hard dependency (check_great_cto aborts without the
+  # bundle root) and it resolves under $HOME, which is this sandbox. Satisfy it the
+  # same way: presence only -- the installer checks the directory, not its contents.
+  mkdir -p "$SANDBOX/.agents/great_cto"
   # Real npm must never be reachable from a shape test. This stub records the
   # argv and fails, so an install that shells out to npm is both visible and inert.
   cat > "$SHIM_DIR/npm" << STUB

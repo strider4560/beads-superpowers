@@ -4,6 +4,9 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SANDBOX=$(mktemp -d); trap 'rm -rf "$SANDBOX"' EXIT
 fail=0
+# install.sh hard-depends on the great_cto bundle root under $HOME, which is this
+# sandbox -- provision it so the run reaches the --source path under test.
+mkdir -p "$SANDBOX/.agents/great_cto"
 
 HOME="$SANDBOX" BEADS_SUPERPOWERS_SKILLS_DIR="$SANDBOX/skills" \
   bash "$REPO_ROOT/install.sh" --yes --source "$REPO_ROOT" > "$SANDBOX/install.log" 2>&1 \
