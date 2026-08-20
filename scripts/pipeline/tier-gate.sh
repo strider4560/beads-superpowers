@@ -78,9 +78,15 @@ session="$state_dir/session.json"
 # data (D4): with nothing to bind state to, no state file and no assert can be
 # attributed to this session, so trusting either would be trusting whatever the
 # last session left behind.
+# `-` is rejected here for the same reason and on the same path: it is
+# resolve_session_tier's in-band "no live identity" sentinel, so forwarding it
+# would SKIP the binding — and this variable is settable by the very model whose
+# tier is being gated. The check must stay AHEAD of resolve_session_tier; the
+# guard's own hardcoded `-` call site is a different, non-model-settable caller
+# and is unaffected.
 live_sid="${CLAUDE_CODE_SESSION_ID:-}"
-if [ -z "$live_sid" ]; then
-  echo "ERROR: no live session identifier — CLAUDE_CODE_SESSION_ID is unset, and an absent identifier is treated as absent session data. Run the stage from a session whose harness exports it." >&2
+if [ -z "$live_sid" ] || [ "$live_sid" = "-" ]; then
+  echo "ERROR: no live session identifier — CLAUDE_CODE_SESSION_ID is unset or set to '-' (the reserved no-identity sentinel, which this gate never accepts), and an absent identifier is treated as absent session data. Run the stage from a session whose harness exports it." >&2
   exit 1
 fi
 # Tier resolution is shared with hooks/pipeline-guard — one implementation in

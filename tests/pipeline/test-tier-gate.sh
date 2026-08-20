@@ -338,6 +338,23 @@ check "absent-live-identifier-exits-1" 1
 check "absent-live-identifier-names-the-variable" 1 'CLAUDE_CODE_SESSION_ID' stderr
 SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
 
+# `-` is resolve_session_tier's in-band "this surface has no live identity"
+# sentinel, and CLAUDE_CODE_SESSION_ID is settable by the model whose tier is
+# being gated. Passing it through would let a session opt OUT of the D4 binding
+# and inherit whatever state file the last session left behind — exactly the
+# self-authorization path D4 closes. The fixture is the reachable exploit:
+# $c_plan's session.json belongs to another session and names a PLANNING model,
+# so a gate that forwarded `-` would answer --stage planning with exit 0. The
+# gate rejects the sentinel on the unset variable's own path, before
+# resolve_session_tier is called.
+SID_ENV=(CLAUDE_CODE_SESSION_ID=-)
+run "$c_plan" "$h_full" "$gate" --stage planning
+check "sentinel-live-identifier-exits-1" 1
+check "sentinel-live-identifier-names-the-variable" 1 'CLAUDE_CODE_SESSION_ID' stderr
+check "sentinel-live-identifier-names-the-rejected-sentinel" 1 "'-'" stderr
+check "sentinel-live-identifier-keeps-the-live-id-remedy" 1 'Run the stage from a session' stderr
+SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
+
 run "$c_legacy" "$h_full" "$gate" --stage planning
 check "legacy-id-less-tier-assert-is-treated-as-absent" 1
 check "legacy-tier-assert-still-offers-the-assert-remedy" 1 '--assert <tier> --session' stderr
