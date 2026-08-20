@@ -309,8 +309,23 @@ map="$bundle/shared/tier-map.json"
 # stays authoritative and a v2 assert is treated as absent — rather than
 # inventing a third state. It is NOT the mismatch state: a mismatch is decided
 # above, from the two ids directly.
-tiers="$(resolve_session_tier "$state_dir" "$map" "${live_sid:--}" 2>/dev/null)" ||
-  deny "session tier could not be resolved from $state_dir"
+# 2>&1, not 2>/dev/null: on this path the REASON is the whole value of the deny.
+# A bare "could not be resolved" leaves every Bash, Write and Edit call denied for
+# the rest of the session with nothing the user can act on — and the --assert
+# remedy named under Rule A cannot clear this particular state, because
+# resolve_session_tier reaches its tier-assert fallback only when session.json
+# yields an EMPTY model. A model the tier-map does not list (a harness model id
+# carrying a context-variant suffix, say) returns 1 before that fallback, so
+# pointing at --assert here would send the user to a remedy that never clears.
+# The real remedy is in the function's own message: update the tier-map.
+# Merging the streams is safe: the function prints tiers on stdout only when it
+# succeeds and its ERROR line on stderr only when it fails, never both. A
+# PreToolUse deny reason is one line, so only the last line survives — the same
+# shape the install-integrity check above uses.
+if ! tiers="$(resolve_session_tier "$state_dir" "$map" "${live_sid:--}" 2>&1)"; then
+  tier_why="${tiers##*$'\n'}"
+  deny "session tier could not be resolved from $state_dir: ${tier_why#ERROR: }"
+fi
 
 # An unresolved tier (a session state file with a null model and no asserted
 # tier) denies Rule A and leaves Rule B inert — D17a. The costs are asymmetric:

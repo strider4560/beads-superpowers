@@ -981,9 +981,17 @@ check "armed-missing-tier-map-denies" 2
 # above, and both must deny rather than fall through to an unresolved tier.
 run "$c_badmodel" "$h_full" "$p_task"
 check "armed-model-absent-from-tier-map-denies" 2 '^pipeline-guard: '
+# The deny has to carry the REASON, not just the fact. A bare "could not be resolved"
+# leaves every Bash, Write and Edit call denied for the whole session with nothing the
+# user can act on — and the --assert remedy named elsewhere cannot clear this state,
+# because resolve_session_tier reaches its tier-assert fallback only when session.json
+# yields an EMPTY model. An unmapped model returns 1 before that.
+check "armed-model-absent-from-tier-map-names-the-model" 2 "model-not-in-the-map"
+check "armed-model-absent-from-tier-map-names-the-tier-map-remedy" 2 'tier-map'
 
 run "$c_badjson" "$h_full" "$p_task"
 check "armed-unparsable-session-json-denies" 2 '^pipeline-guard: '
+check "armed-unparsable-session-json-names-the-reason" 2 'not valid JSON'
 
 # The guard's own diagnostics must not leak into the deny reason. resolve_bundle_root
 # and resolve_session_tier both print multi-line advice on stderr; the guard's call
