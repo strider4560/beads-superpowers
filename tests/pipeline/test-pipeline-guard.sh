@@ -11,6 +11,20 @@ fixture="$root/tests/pipeline/fixtures/tier-map.json"
 fails=0
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
+# Every case runs under a scratch HOME, and the anchor cases below create the
+# install anchor and the integrity record inside it. A suite that ran against
+# the real $HOME would rewrite the developer's own install, so the separation is
+# asserted before the first case rather than assumed.
+if [ -z "$TMP" ] || [ "$TMP" = "$HOME" ]; then
+  echo "FAIL sandbox-home-differs-from-the-real-home: refusing to run against '$HOME'"
+  exit 1
+fi
+echo "PASS sandbox-home-differs-from-the-real-home"
+# The integrity cache marker hangs off XDG_RUNTIME_DIR, so it is namespaced into
+# this run's temp dir: two suites running at once, or a stale marker from an
+# earlier run, must never satisfy a case here.
+mkdir -p "$TMP/xdg"
+
 # --- sandbox builders -------------------------------------------------------
 
 make_home() { # <name> -> path to an empty HOME (no bundle root)
@@ -41,7 +55,8 @@ stray_stdout=""
 run() { # <cwd> <home> <stdin-payload> — sets rc, err (stderr)
   # PATH_OVERRIDE, when set, replaces PATH for the guard only (jq-absence cases).
   local cwd="$1" home="$2" payload="$3"
-  ( cd "$cwd" && HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" "$BASH" "$guard" ) \
+  ( cd "$cwd" && HOME="$home" XDG_RUNTIME_DIR="$TMP/xdg" \
+      PATH="${PATH_OVERRIDE:-$PATH}" "$BASH" "$guard" ) \
     <<<"$payload" >"$TMP/stdout" 2>"$TMP/stderr"
   rc=$?
   err="$(cat "$TMP/stderr")"
@@ -159,8 +174,8 @@ c_assertfile="$(make_cwd assertfile)"           # armed by the tier assert file 
 mkdir -p "$c_assertfile/.internal/pipeline"
 # `v2 <tier> <session-id>` — the session-bound assert format (D4). A legacy,
 # id-less line is treated as absent by resolve_session_tier, so this fixture has
-# to carry the real shape or it would not even arm Phase 1. It still resolves no
-# tier through this hook while the call site passes the `-` sentinel.
+# to carry the real shape or it would not even arm Phase 1. It resolves a tier
+# only for a payload whose session_id is `session-assertfile`.
 printf 'v2 planning session-assertfile\n' > "$c_assertfile/.internal/pipeline/tier-assert"
 
 # Armed, but the tier cannot be resolved: the harness did not report a model
@@ -351,13 +366,12 @@ check "ruleB-does-not-fire-off-the-planning-tier" 0
 run "$c_notier" "$h_full" "$p_src"
 check "ruleB-unresolved-tier-stays-inert" 0
 
-# The tier assert file is the other arming channel, but this surface has no live
-# session identity yet, so it calls resolve_session_tier with the `-` sentinel
-# and a v2 assert is treated as ABSENT (D4) — the tier stays unresolved and Rule
-# B stays inert, exactly as for c_notier above. Rule B only ever restricts, so
-# nothing escalates here; the fail-closed half is asserted immediately below.
-# When the sibling identity task feeds the payload's session id in, a matching
-# assert resolves again and this case becomes a Rule B deny.
+# The tier assert file is the other arming channel, and this payload carries no
+# session_id, so the guard calls resolve_session_tier with the `-` sentinel and
+# a v2 assert is treated as ABSENT (D4) — the tier stays unresolved and Rule B
+# stays inert, exactly as for c_notier above. Rule B only ever restricts, so
+# nothing escalates here; the fail-closed half is asserted immediately below,
+# and the bound half (a payload id matching the assert) in the identity section.
 run "$c_assertfile" "$h_full" "$p_src"
 check "ruleB-inert-while-the-unbound-guard-treats-the-tier-assert-as-absent" 0
 
@@ -426,6 +440,299 @@ check "ruleD-does-not-fire-on-a-same-prefix-sibling" 0
 # that truncates the path is a clean bypass of the state-directory deny.
 run "$c_orch" "$h_full" "$p_newline_state"
 check "ruleD-newline-in-path-does-not-truncate-the-state-dir-check" 2 'Rule D'
+
+# --- Rule B: the plans/ allow-list (D6) -------------------------------------
+# writing-plans commits plans to a tracked plans/ directory, so a planning
+# session has to be able to write one. The entry is component-anchored like the
+# three beside it: it admits plans/, never plansX/.
+
+p_plan_doc='{"tool_name":"Write","tool_input":{"file_path":"plans/x.md","content":"x"}}'
+p_plan_lookalike='{"tool_name":"Write","tool_input":{"file_path":"plansX/y.md","content":"x"}}'
+p_src_ts='{"tool_name":"Write","tool_input":{"file_path":"src/x.ts","content":"x"}}'
+pa_plan_doc="$(abs_payload "$c_plan" plans/x.md)"
+
+run "$c_plan" "$h_full" "$p_plan_doc"
+check "ruleB-plans-write-allowed-on-the-planning-tier" 0
+
+run "$c_plan" "$h_full" "$pa_plan_doc"
+check "ruleB-absolute-plans-write-allowed-on-the-planning-tier" 0
+
+run "$c_plan" "$h_full" "$p_plan_lookalike"
+check "ruleB-plans-allow-list-is-component-anchored" 2 'Rule B'
+
+run "$c_plan" "$h_full" "$p_src_ts"
+check "ruleB-src-ts-still-denied" 2 'Rule B'
+
+# --- NotebookEdit joins the Write|Edit class (cv6.6) ------------------------
+# NotebookEdit writes a file the same way Write and Edit do, so leaving it out
+# of Rules B and D advertises a control the guard does not have. It names its
+# path `notebook_path`, not `file_path` — the guard reads both.
+
+nb_payload() { # <path> -> a NotebookEdit payload naming that notebook
+  printf '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"%s","new_source":"x"}}' "$1"
+}
+
+run "$c_plan" "$h_full" "$(nb_payload src/x.ipynb)"
+check "ruleB-notebook-edit-of-a-source-notebook-denied" 2 'Rule B'
+
+run "$c_plan" "$h_full" "$(nb_payload docs/en/x.ipynb)"
+check "ruleB-notebook-edit-inside-docs-allowed" 0
+
+run "$c_orch" "$h_full" "$(nb_payload .internal/pipeline/session.json)"
+check "ruleD-notebook-edit-of-the-state-dir-denied" 2 'Rule D'
+
+# --- Rule D, bounded: the install surface (SEC-D3-RULE-D) -------------------
+# The two anchors, the gate and hook files served THROUGH them, and the
+# integrity record's directory are not model-writable: anything that can edit
+# them can rewrite the gate that is judging it. The bound is the anchor
+# SPELLING — a clone reached as the working project is ordinary source.
+
+home_payload() { # <home> <path-under-home> [tool] -> a Write/Edit payload
+  case "${3:-Write}" in
+    Edit) printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/%s","old_string":"a","new_string":"b"}}' "$1" "$2" ;;
+    NotebookEdit) printf '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"%s/%s","new_source":"x"}}' "$1" "$2" ;;
+    *) printf '{"tool_name":"Write","tool_input":{"file_path":"%s/%s","content":"x"}}' "$1" "$2" ;;
+  esac
+}
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/great_cto)"
+check "ruleD-write-to-the-great_cto-anchor-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers)"
+check "ruleD-write-to-the-beads-superpowers-anchor-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/scripts/pipeline/tier-gate.sh)"
+check "ruleD-write-to-a-gate-through-the-anchor-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/hooks/pipeline-guard Edit)"
+check "ruleD-edit-of-a-hook-through-the-anchor-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/great_cto/scripts/pipeline/x.sh)"
+check "ruleD-write-under-the-great_cto-pipeline-dir-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/great_cto/hooks/session-start)"
+check "ruleD-write-under-the-great_cto-hooks-dir-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/hooks/pipeline-guard NotebookEdit)"
+check "ruleD-notebook-edit-through-the-anchor-denied" 2 'Rule D'
+
+# The integrity record is the thing the whole check rests on (SEC-R3-RECORD).
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .local/state/beads-superpowers/record.json)"
+check "ruleD-write-to-the-integrity-record-denied" 2 'Rule D'
+
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .local/state/beads-superpowers)"
+check "ruleD-write-to-the-record-directory-denied" 2 'Rule D'
+
+# The bound, asserted: the rule covers the gate and hook surfaces served through
+# the anchor, not the whole tree under it. A skill file is prose, not a gate.
+run "$c_orch" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/skills/x/SKILL.md)"
+check "ruleD-does-not-swallow-the-rest-of-the-anchor" 0
+
+# A development clone reached AS THE WORKING PROJECT is ordinary source: an
+# unbounded "and their targets" rule would brick every clone on the machine.
+c_clone="$(make_cwd clone model-orch-only)"
+mkdir -p "$c_clone/scripts/pipeline"
+p_clone_rel='{"tool_name":"Edit","tool_input":{"file_path":"scripts/pipeline/tier-gate.sh","old_string":"a","new_string":"b"}}'
+run "$c_clone" "$h_full" "$p_clone_rel"
+check "ruleD-edit-inside-the-working-project-clone-allowed" 0
+
+run "$c_clone" "$h_full" "$(home_payload "$h_full" .agents/beads-superpowers/scripts/pipeline/tier-gate.sh Edit)"
+check "ruleD-the-same-file-spelled-through-the-anchor-denied" 2 'Rule D'
+
+# --- identity: a state file written by a DIFFERENT session (D4) -------------
+# The payload's session_id is the live identity. The recorded id is read
+# straight out of session.json, so "another session wrote this" stays distinct
+# from "no tier resolved": a mismatch denies Rule A AND Rule B, an unresolved
+# tier denies only Rule A.
+
+make_sid_cwd() { # <name> <model> <recorded-session-id> -> working dir
+  local cwd="$TMP/cwd-$1"; mkdir -p "$cwd/.internal/pipeline"
+  printf '{"model_id":"%s","session_id":"%s","effort":null,"source":"hook","timestamp":"t"}\n' \
+    "$2" "$3" > "$cwd/.internal/pipeline/session.json"
+  printf '%s' "$cwd"
+}
+sid_epic() { printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"bd create -t epic \\"X\\""}}' "$1"; }
+sid_task() { printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"bd create -t task \\"X\\""}}' "$1"; }
+sid_src()  { printf '{"session_id":"%s","tool_name":"Write","tool_input":{"file_path":"src/x.ts","content":"x"}}' "$1"; }
+sid_docs() { printf '{"session_id":"%s","tool_name":"Write","tool_input":{"file_path":"docs/en/x.md","content":"x"}}' "$1"; }
+
+# ONE fixture, both denies. The recorded model sits on a non-planning tier, so
+# neither deny can be explained by the tier: only the identity mismatch produces
+# them, and Rule B could not have been reached by assigning is_planning.
+c_mismatch="$(make_sid_cwd mismatch model-orch-only sess-recorded)"
+
+run "$c_mismatch" "$h_full" "$(sid_epic sess-live)"
+check "identity-mismatch-denies-the-plan-graph" 2 'Rule A'
+check "identity-mismatch-rule-A-names-the-bound-assert-remedy" 2 '\-\-assert <tier> --session sess-live'
+check "identity-mismatch-rule-A-names-an-absolute-gate-path" 2 'bash /.*/scripts/pipeline/tier-gate\.sh --assert'
+
+run "$c_mismatch" "$h_full" "$(sid_src sess-live)"
+check "identity-mismatch-denies-a-source-write" 2 'Rule B'
+check "identity-mismatch-rule-B-names-the-bound-assert-remedy" 2 '\-\-assert <tier> --session sess-live'
+
+# The mismatch is a Phase-2 state: Phase 1 arms on the file's existence, so a
+# mismatched state file can never early-exit its way out of the rules.
+run "$c_mismatch" "$h_full" "$(sid_docs sess-live)"
+check "identity-mismatch-keeps-the-rule-B-allow-list" 0
+
+# The same fixture with the MATCHING id resolves normally — proof the mismatch
+# deny came from the identity check and not from the fixture being unreadable.
+run "$c_mismatch" "$h_full" "$(sid_src sess-recorded)"
+check "identity-match-on-a-non-planning-tier-allows-a-source-write" 0
+
+run "$c_mismatch" "$h_full" "$(sid_epic sess-recorded)"
+check "identity-match-still-denies-the-plan-graph-off-the-planning-tier" 2 'Rule A'
+
+# A matching id on the PLANNING tier: Rule B fires as itself, with its own
+# reason, never the mismatch reason.
+c_plan_sid="$(make_sid_cwd plansid model-plan-1 sess-live)"
+run "$c_plan_sid" "$h_full" "$(sid_src sess-live)"
+check "identity-match-on-the-planning-tier-denies-with-rule-Bs-own-reason" 2 \
+  '^pipeline-guard: planning-tier session cannot write source files \(Rule B\)$'
+
+run "$c_plan_sid" "$h_full" "$(sid_epic sess-live)"
+check "identity-match-on-the-planning-tier-allows-the-plan-graph" 0
+
+# State with NO recorded id is not a mismatch — it is unbindable, so it is
+# treated as absent: Rule A denies, Rule B stays inert (D17a).
+run "$c_plan" "$h_full" "$(sid_epic sess-live)"
+check "identity-unbindable-state-denies-the-plan-graph" 2 'Rule A'
+
+run "$c_plan" "$h_full" "$(sid_src sess-live)"
+check "identity-unbindable-state-leaves-rule-B-inert" 0
+
+# A payload with no session_id at all keeps the pre-identity posture: there is
+# nothing to bind against, so session.json's model is still authoritative and a
+# v2 assert is still treated as absent. Asserting it here is what stops the
+# absent case from silently drifting into the mismatch case.
+run "$c_plan" "$h_full" "$p_src"
+check "identity-absent-payload-id-keeps-the-session-state-authoritative" 2 'Rule B'
+
+# With the live id fed in, a v2 tier-assert bound to THAT session resolves — the
+# other half of D4, and the reason the assert file carries an id at all.
+run "$c_assertfile" "$h_full" "$(sid_src session-assertfile)"
+check "identity-bound-tier-assert-resolves-the-planning-tier" 2 'Rule B'
+
+run "$c_assertfile" "$h_full" "$(sid_src other-session)"
+check "identity-tier-assert-bound-to-another-session-stays-absent" 0
+
+# --- Phase-2 install integrity (D3, R4-004) ---------------------------------
+# verify_record's four failure states are a DENY AT EXIT 2 here: exit 1 does not
+# block a PreToolUse call, so "nonzero" is not the assertion — 2 is. The check
+# lives inside Phase 2, after the activation early exit, so an unarmed project
+# with a corrupted record is still never denied.
+
+if command -v sha256sum >/dev/null 2>&1; then sha_cmd=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then sha_cmd=(shasum -a 256)
+else sha_cmd=(); fi
+sha256_of() { local o; o="$("${sha_cmd[@]}" "$1")"; printf '%s' "${o%% *}"; }
+
+write_record() { # <home> <target> — the out-of-anchor integrity record
+  local rec="$1/.local/state/beads-superpowers" first=1 f
+  mkdir -p "$rec"
+  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"manifest-backed","hashes":{' \
+      "$1" "$2"
+    for f in scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
+             scripts/pipeline/graph-lint.mjs hooks/pipeline-guard; do
+      [ "$first" -eq 1 ] || printf ','
+      first=0
+      printf '"%s":"%s"' "$f" "$(sha256_of "$2/$f")"
+    done
+    printf '}}\n'
+  } > "$rec/record.json"
+}
+
+make_anchor_home() { # <name> -> HOME with a bundle, a populated anchor and a matching record
+  local home="$TMP/home-$1" target="$TMP/target-$1"
+  mkdir -p "$home/.agents" "$target/scripts/pipeline" "$target/hooks"
+  add_bundle "$home" "$minver"; add_tier_map "$home"
+  cp -f "$root/scripts/pipeline/tier-gate.sh" "$root/scripts/pipeline/bundle-root.sh" \
+        "$root/scripts/pipeline/graph-lint.mjs" "$target/scripts/pipeline/"
+  cp -f "$root/hooks/pipeline-guard" "$target/hooks/"
+  ln -sfn "$target" "$home/.agents/beads-superpowers"
+  write_record "$home" "$target"
+  printf '%s' "$home"
+}
+
+if [ "${#sha_cmd[@]}" -eq 0 ]; then
+  echo "SKIP integrity cases (neither sha256sum nor shasum installed)"
+else
+  h_anchor="$(make_anchor_home integrity-ok)"
+  c_int="$(make_cwd integrity model-orch-only)"
+
+  run "$c_int" "$h_anchor" "$p_task"
+  check "integrity-a-record-that-verifies-allows-the-call" 0
+
+  # The Phase-1 contract, unchanged: an unarmed project never reaches Phase 2,
+  # so a deleted record cannot deny it.
+  h_norecord="$(make_anchor_home integrity-norecord)"
+  rm -f "$h_norecord/.local/state/beads-superpowers/record.json"
+  run "$c_unarmed" "$h_norecord" "$p_task"
+  check "integrity-unarmed-project-with-a-deleted-record-is-not-denied" 0
+
+  run "$c_int" "$h_norecord" "$p_task"
+  check "integrity-deleted-record-under-a-present-anchor-denies-at-exit-2" 2 'install\.sh'
+
+  h_tampered="$(make_anchor_home integrity-tampered)"
+  printf '# tampered\n' >> "$TMP/target-integrity-tampered/scripts/pipeline/tier-gate.sh"
+  run "$c_int" "$h_tampered" "$p_task"
+  check "integrity-tampered-hash-denies-at-exit-2" 2 'integrity'
+  # verify_record prints a NOTE line before its ERROR whenever the running gate
+  # is outside the attested target — which is exactly this suite's situation. A
+  # PreToolUse deny reason is ONE line, so the guard must not forward both.
+  if [ "$rc" -eq 2 ] && [ "$(printf '%s\n' "$err" | wc -l)" -eq 1 ]; then
+    echo "PASS integrity-deny-reason-is-one-line"
+  else
+    echo "FAIL integrity-deny-reason-is-one-line: exit $rc, stderr: $err"
+    fails=$((fails+1))
+  fi
+
+  h_unreadable="$(make_anchor_home integrity-unreadable)"
+  printf '{"anchor": ' > "$h_unreadable/.local/state/beads-superpowers/record.json"
+  run "$c_int" "$h_unreadable" "$p_task"
+  check "integrity-unparsable-record-denies-at-exit-2" 2 'install\.sh'
+
+  # A missing hashing tool is treated exactly as an unreadable record: the
+  # alternative is a silent pass on an unverified root.
+  nosha="$TMP/bin-nosha"; mkdir -p "$nosha"
+  for b in bash jq cat dirname sort head mkdir chmod stat id; do
+    bp="$(command -v "$b")" && ln -sf "$bp" "$nosha/$b"
+  done
+  PATH_OVERRIDE="$nosha"
+  run "$c_int" "$h_anchor" "$p_task"
+  unset PATH_OVERRIDE
+  check "integrity-missing-hash-tool-denies-at-exit-2" 2 'sha256'
+
+  # Hashing every gate file on every Bash/Write/Edit call would be a fork storm
+  # on the hot path, so a PASS is cached once per session, keyed on the RECORD's
+  # mtime. The three cases below are that contract: cached, still cached after a
+  # hashed file changes (between-call detection, disclosed), re-verified the
+  # moment the record itself is rewritten.
+  h_cache="$(make_anchor_home integrity-cache)"
+  c_cache="$(make_cwd cache model-orch-only)"
+  rec_cache="$h_cache/.local/state/beads-superpowers/record.json"
+  touch -m -t 202001010000 "$rec_cache"
+  run "$c_cache" "$h_cache" "$(sid_task sess-cache)"
+  check "integrity-cached-verification-allows-the-call" 0
+  if find "$TMP/xdg" -name 'integrity-sess-cache-*' 2>/dev/null | grep -q .; then
+    echo "PASS integrity-verification-is-cached-per-session"
+  else
+    echo "FAIL integrity-verification-is-cached-per-session: no marker under $TMP/xdg"
+    fails=$((fails+1))
+  fi
+
+  printf '# tampered\n' >> "$TMP/target-integrity-cache/scripts/pipeline/tier-gate.sh"
+  run "$c_cache" "$h_cache" "$(sid_task sess-cache)"
+  check "integrity-cache-key-is-the-record-not-the-hashed-files" 0
+
+  touch -m -t 202001010001 "$rec_cache"
+  run "$c_cache" "$h_cache" "$(sid_task sess-cache)"
+  check "integrity-a-rewritten-record-re-verifies-and-denies" 2 'integrity'
+
+  # A failure is never cached: the very next call must deny again.
+  run "$c_cache" "$h_cache" "$(sid_task sess-cache)"
+  check "integrity-a-failure-is-never-cached" 2 'integrity'
+fi
 
 # --- unarmed: no pipeline state -> allow everything, cost nothing -----------
 # No bundle root, no tier-map and no jq on PATH, because phase 1 must not touch

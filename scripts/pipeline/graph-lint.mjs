@@ -181,7 +181,19 @@ if (anchorPresent()) {
   const declared = typeof record?.target === "string" && record.target !== "" ? record.target : null;
   const target = declared === null ? null : (canonical(declared) ?? declared);
   const anchorTarget = canonical(ANCHOR);
-  if (record && anchorTarget === null) {
+  // The record is selected BY ANCHOR PATH (semantics 2), so a record naming a
+  // different anchor describes some other install and attests nothing about
+  // this one: unreadable, which is the same deny as absent. Checked first and
+  // reported as itself, exactly as the bash verify_record does — a record the
+  // hook rejects must not be one the lint accepts.
+  const recordedAnchor = typeof record?.anchor === "string" ? record.anchor : null;
+  if (record && recordedAnchor !== ANCHOR) {
+    violation(
+      "graph-lint",
+      "record",
+      `record '${RECORD_PATH}' does not describe anchor '${ANCHOR}' (it records anchor '${recordedAnchor ?? "(unset)"}') — treat it as unreadable`,
+    );
+  } else if (record && anchorTarget === null) {
     violation(
       "graph-lint",
       "record",

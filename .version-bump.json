@@ -42,6 +42,11 @@
       "path": "scripts/pipeline/tier-gate.sh",
       "prefix": "BSP_PIPELINE_VERSION=\"",
       "suffix": "\""
+    },
+    {
+      "path": "scripts/pipeline/graph-lint.mjs",
+      "prefix": "BSP_PIPELINE_VERSION = \"",
+      "suffix": "\""
     }
   ],
   "audit": {

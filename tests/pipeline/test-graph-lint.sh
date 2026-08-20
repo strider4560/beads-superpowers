@@ -450,7 +450,7 @@ else
   check "anchor-without-a-record-names-the-record-path" 1 'record\.json' stderr
 
   RUN_HOME="$(make_anchored_home advisory)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
     '{anchor:$a, target:$a, posture:"dev-clone-advisory", version:"0.0.0"}')"
   run_state "$valid"
   check "dev-clone-advisory-record-exits-0" 0
@@ -533,7 +533,7 @@ else
   check "dangling-anchor-with-a-record-names-the-anchor" 1 'beads-superpowers' stderr
 
   RUN_HOME="$(make_anchored_home manifest-no-hashes)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
     '{anchor:$a, target:$a, posture:"manifest-backed", version:"0.0.0"}')"
   run_state "$valid"
   check "manifest-backed-record-without-hashes-exits-1" 1
@@ -543,8 +543,19 @@ else
   run_state "$valid"
   check "unparsable-record-exits-1" 1
 
+  # A record that describes a DIFFERENT anchor buys this anchor nothing: it is
+  # unreadable, which is the same deny as absent. The bash verify_record has
+  # said so since it shipped; the lint has to agree, or one gate trusts a record
+  # the other rejects and the two surfaces disagree about the same install.
+  RUN_HOME="$(make_linked_home foreign-anchor "$root_canon")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "$(sha256_of "$lint")" |
+    jq '.anchor = "/somewhere/else/.agents/beads-superpowers"')"
+  run_state "$valid"
+  check "record-describing-another-anchor-exits-1" 1
+  check "record-describing-another-anchor-names-the-mismatch" 1 'does not describe' stderr
+
   RUN_HOME="$(make_anchored_home unknown-posture)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
     '{anchor:$a, target:$a, posture:"something-else", version:"0.0.0"}')"
   run_state "$valid"
   check "record-with-an-unknown-posture-exits-1" 1

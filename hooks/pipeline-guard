@@ -22,10 +22,11 @@ state_dir=".internal/pipeline"
 # --- Phase 2 ----------------------------------------------------------------
 deny() { echo "pipeline-guard: $1" >&2; exit 2; }
 
-# normalize_path <path> — lexical, cwd-relative normalization of a tool-supplied
-# file_path. ONE helper with two callers, Rule D and Rule B, because both ask the
-# same question — where does this write land? — and neither can answer it from the
-# raw string:
+# normalize_path <path> — lexical normalization of a tool-supplied file_path,
+# printing the cleaned ABSOLUTE path. ONE helper with three callers — Rule D's
+# state-directory half, Rule D's install-surface half and Rule B — because all
+# three ask the same question — where does this write land? — and none can
+# answer it from the raw string:
 #   * The Write and Edit tools document file_path as "must be absolute", so the
 #     value that actually arrives is /home/u/proj/docs/x.md, not docs/x.md. An
 #     allow-list anchored to a relative path matches none of it.
@@ -38,9 +39,11 @@ deny() { echo "pipeline-guard: $1" >&2; exit 2; }
 # Residual, accepted: a PRE-EXISTING symlink into the state directory defeats
 # Rule D's Write/Edit half — .internal/specs -> .internal/pipeline makes a write
 # to .internal/specs/tier-assert normalize to itself and Rule D does not fire.
-# Prints the path relative to $PWD when it is inside the project, otherwise the
-# cleaned absolute path — which matches no allow-list prefix, so outside-the-
-# project writes stay denied on the planning tier.
+# The absolute form is what Rule D's install-surface half compares against the
+# anchors; the call site re-spells it relative to $PWD for the rules that read
+# project paths. A path outside the project keeps its absolute spelling there,
+# which matches no allow-list prefix, so outside-the-project writes stay denied
+# on the planning tier.
 normalize_path() {
   local raw="$1" abs out seg
   case "$raw" in
@@ -60,11 +63,7 @@ normalize_path() {
       *)    out="$out/$seg" ;;
     esac
   done
-  [ "$out" = "$PWD" ] && return 0
-  case "$out" in
-    "$PWD"/*) printf '%s' "${out#"$PWD"/}" ;;
-    *)        printf '%s' "$out" ;;
-  esac
+  printf '%s' "$out"
 }
 
 command -v jq >/dev/null || deny "jq is required once the pipeline is active"
@@ -74,8 +73,100 @@ jq -e . >/dev/null 2>&1 <<< "$payload" || deny "PreToolUse payload is not valid 
 
 tool="$(jq -r '.tool_name // empty' <<< "$payload")"
 cmd="$(jq -r '.tool_input.command // empty' <<< "$payload")"
-path="$(jq -r '.tool_input.file_path // empty' <<< "$payload")"
-npath="$(normalize_path "$path")"
+# NotebookEdit is in the Write|Edit class of Rules B and D — it writes a file the
+# same way they do — but it names its path `notebook_path`, not `file_path`
+# (verified against the shipped tool schema; the plan assumed `file_path`). Both
+# spellings are read here so the rules below stay path-shaped and tool-agnostic.
+path="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<< "$payload")"
+nabs="$(normalize_path "$path")"
+# The project-relative spelling, for the rules that read project paths. A path
+# outside the project keeps its absolute form and so matches no allow-list.
+npath="$nabs"
+case "$nabs" in
+  "$PWD")   npath="" ;;
+  "$PWD"/*) npath="${nabs#"$PWD"/}" ;;
+esac
+
+# --- session identity (D4) --------------------------------------------------
+# The live identity is the PreToolUse payload's session_id. Per the Task 1 spike
+# it is the MAIN session's id for a subagent's tool call too (a subagent payload
+# only ADDS agent_id/agent_type), so there is no subagent carve-out: comparing
+# session_id alone behaves identically for both.
+live_sid="$(jq -r '.session_id // empty' <<< "$payload")"
+# The recorded id is read STRAIGHT out of the state file, never inferred from
+# resolve_session_tier's empty output: that output collapses "written by another
+# session" into "no tier", and D4 needs the two apart — an unresolved tier
+# leaves Rule B inert, a mismatch denies it.
+recorded_sid=""
+if [ -f "$state_dir/session.json" ]; then
+  recorded_sid="$(jq -r '.session_id // empty' "$state_dir/session.json" 2>/dev/null)" ||
+    recorded_sid=""
+fi
+# A mismatch needs BOTH sides present. An absent payload id is not a mismatch —
+# it is an unbindable surface, handled by the `-` sentinel at the resolve call
+# below, which keeps the pre-identity posture rather than inventing a third
+# state; an absent recorded id is state no session claims, which
+# resolve_session_tier already treats as absent once a live id is bound.
+identity_mismatch=0
+if [ -n "$live_sid" ] && [ -n "$recorded_sid" ] && [ "$live_sid" != "$recorded_sid" ]; then
+  identity_mismatch=1
+fi
+
+# The remedy, spelled absolutely and bound to this session. A remedy the user has
+# to translate is a remedy that does not get run (SD-03), and an assert with no
+# recorded identifier is treated as absent (D4), so the id is filled in here.
+gate_dir="$(cd "$(dirname "$0")/../scripts/pipeline" 2>/dev/null && pwd -P)" ||
+  gate_dir="$(dirname "$0")/../scripts/pipeline"
+assert_remedy="bash $gate_dir/tier-gate.sh --assert <tier> --session ${live_sid:-<session-id>}"
+
+# --- install integrity (D3, R4-004) -----------------------------------------
+# bundle-root.sh is sourced HERE, ahead of the rules, for two reasons: it owns
+# the fixed anchor and record spellings Rule D reads, and its own integrity is
+# what the verification below establishes. Trusting it and then checking it
+# would be the wrong order.
+# shellcheck source=scripts/pipeline/bundle-root.sh
+. "$(dirname "$0")/../scripts/pipeline/bundle-root.sh" 2>/dev/null ||
+  deny "cannot load scripts/pipeline/bundle-root.sh"
+
+# verify_record's four failure states — record absent under a present anchor, a
+# hash mismatch, an unreadable record, no hashing tool — deny at exit 2 on this
+# surface, because exit 1 does not block a PreToolUse call. This runs inside
+# Phase 2, AFTER the Phase-1 activation early exit, so an unarmed project is
+# never denied by a corrupted record (R4-004).
+# Hashing every gate file on every Bash/Write/Edit call would be a fork storm on
+# the hot path, so a PASS is cached once per session, keyed on the record's mtime
+# — session-start's marker pattern. Only a pass is cached: a failure must keep
+# denying on every call. Disclosed consequence: detection is between-call, not
+# per-call, which is the same property the manifest already has between
+# maintainer runs.
+integrity_marker() { # -> the per-session, per-record-mtime marker path, or ""
+  local mt dir
+  mt="$(stat -c %Y "$RECORD_PATH" 2>/dev/null)" || mt=""
+  [ -n "$mt" ] || mt="$(stat -f %m "$RECORD_PATH" 2>/dev/null)" || mt=""
+  # No mtime (no record) and no live id are both "nothing stable to key on":
+  # verify every call rather than cache under a key that cannot be invalidated.
+  [ -n "$mt" ] && [ -n "$live_sid" ] || return 0
+  dir="${XDG_RUNTIME_DIR:-/tmp}/beads-superpowers-$(id -u 2>/dev/null || echo u)"
+  mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 0
+  # The id reaches the filename, so everything outside a safe set is folded away
+  # rather than trusted to be path-shaped.
+  printf '%s/integrity-%s-%s' "$dir" "${live_sid//[!A-Za-z0-9_-]/_}" "$mt"
+}
+integrity_mark="$(integrity_marker)"
+# A planted symlink is refused rather than followed: the marker is a cache slot,
+# not a capability, and one we do not own is one we do not trust.
+if [ -z "$integrity_mark" ] || [ -L "$integrity_mark" ] || [ ! -f "$integrity_mark" ]; then
+  if ! integrity_why="$(verify_record "$(dirname "$0")/../scripts/pipeline" 2>&1)"; then
+    # verify_record may print a NOTE before its ERROR; a PreToolUse deny reason
+    # is one line, so only the last line — the ERROR — survives.
+    integrity_why="${integrity_why##*$'\n'}"
+    deny "install integrity: ${integrity_why#ERROR: }"
+  fi
+  # noclobber, so the marker is CREATED or nothing happens: it refuses to write
+  # through an existing entry, symlink included, which is the same posture
+  # session-start takes with its own dedup marker.
+  [ -n "$integrity_mark" ] && ( set -C; : > "$integrity_mark" ) 2>/dev/null
+fi
 
 # --- Rule C: --assert is human-only (D13, D13a) -----------------------------
 # tier-gate.sh's own `[ -t 0 ]` check is a heuristic a model can defeat by
@@ -102,27 +193,51 @@ fi
 # the Bash half as a boundary; it catches the obvious redirect, and it stays a
 # bare substring test on purpose: narrowing it would only shrink what it catches.
 case "$tool" in
-  Write|Edit) case "$npath" in
+  Write|Edit|NotebookEdit) case "$npath" in
     .internal/pipeline|.internal/pipeline/*|*/.internal/pipeline|*/.internal/pipeline/*)
       deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
   Bash) case "$cmd" in *".internal/pipeline"*)
     deny "the pipeline state directory is not model-writable (Rule D)" ;; esac ;;
 esac
 
+# Rule D's second half: the INSTALL surface (SEC-D3-RULE-D). Anything that can
+# edit a gate, a hook, an anchor entry or the integrity record rewrites the
+# control that is judging the call — the same self-authorization the state
+# directory half closes, one level up.
+# The match set is deliberately BOUNDED, and the bound is the anchor SPELLING:
+# the two anchor entries themselves, the gate and hook files reached THROUGH an
+# anchor, and the integrity record's directory. It is not "and their targets" —
+# a development clone reached as the working project is ordinary source, and an
+# unbounded rule would brick every clone on the machine. Residual, stated: with
+# the clone as the working project, editing its own gates is not denied, which
+# is consistent with dev-clone roots being advisory.
+# The great_cto anchor is spelled here rather than imported because
+# bundle-root.sh keeps it local to resolve_bundle_root; both spellings are fixed
+# literals for the reason stated there — four actors resolve env vars in four
+# process trees, so an env-derived path would read as a different anchor.
+gc_anchor="${HOME}/.agents/great_cto"
+record_dir="${RECORD_PATH%/*}"
+case "$tool" in
+  Write|Edit|NotebookEdit) case "$nabs" in
+    "$gc_anchor"|"$BSP_ANCHOR"|"$record_dir"|"$record_dir"/*|\
+    "$gc_anchor"/scripts/pipeline/*|"$gc_anchor"/hooks/*|\
+    "$BSP_ANCHOR"/scripts/pipeline/*|"$BSP_ANCHOR"/hooks/*)
+      deny "the beads-superpowers install surface is not model-writable (Rule D)" ;; esac ;;
+esac
+
 # --- session tier -----------------------------------------------------------
-# shellcheck source=scripts/pipeline/bundle-root.sh
-. "$(dirname "$0")/../scripts/pipeline/bundle-root.sh" 2>/dev/null ||
-  deny "cannot load scripts/pipeline/bundle-root.sh"
 bundle="$(resolve_bundle_root 2>/dev/null)" || deny "great_cto bundle root missing or below the required version"
 map="$bundle/shared/tier-map.json"
 [ -f "$map" ] || deny "tier-map missing at $map — update great_cto"
-# `-` is the explicit "no live identity on this surface" sentinel: the live
-# session id lives in the PreToolUse payload and wiring it through is the sibling
-# identity task's work. Until then the unbound path is spelled, not defaulted —
-# session.json binding is skipped and a v2 tier-assert is treated as absent, so
-# the guard falls to its unresolved-tier posture below rather than trusting an
-# assert nothing verified.
-tiers="$(resolve_session_tier "$state_dir" "$map" - 2>/dev/null)" ||
+# The live id binds both state sources (D4): state written by a different session
+# and an assert recorded for one are treated as ABSENT rather than trusted.
+# `-` is the explicit "no live identity in this payload" sentinel. Every payload
+# the Task 1 spike observed carried session_id, but absence is spelled rather
+# than assumed, and it keeps the pre-identity posture — session.json's model
+# stays authoritative and a v2 assert is treated as absent — rather than
+# inventing a third state. It is NOT the mismatch state: a mismatch is decided
+# above, from the two ids directly.
+tiers="$(resolve_session_tier "$state_dir" "$map" "${live_sid:--}" 2>/dev/null)" ||
   deny "session tier could not be resolved from $state_dir"
 
 # An unresolved tier (a session state file with a null model and no asserted
@@ -207,24 +322,41 @@ bd_re='[^[:alnum:]_-]bd[[:space:]]'
 epic_flag_re='(-t|--type)[[:space:]='"'"'"]*epic'
 import_re='[^[:alnum:]_-]import[^[:alnum:]_-]'
 bulk_re='(--graph|--file)[[:space:]=]'
-if [ "$tool" = "Bash" ] && [ "$is_planning" -eq 0 ] && [[ "$padded" =~ $bd_re ]]; then
+# An identity mismatch denies Rule A whatever tier resolved, which is why it is
+# a term of its own here and not a value assigned into is_planning: state written
+# by another session cannot authorize a plan-graph mutation, and neither can an
+# assert that happens to bind while the state file does not.
+if [ "$tool" = "Bash" ] &&
+   { [ "$is_planning" -eq 0 ] || [ "$identity_mismatch" -eq 1 ]; } &&
+   [[ "$padded" =~ $bd_re ]]; then
   if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]] ||
      [[ "$padded" =~ $bulk_re ]]; then
+    [ "$identity_mismatch" -eq 1 ] &&
+      deny "session state was written by a different session, so the plan graph is not mutable — ask the user to run '$assert_remedy' (Rule A)"
     [ "$has_tier" -eq 1 ] &&
       deny "only a planning-tier session mutates the plan graph (Rule A)"
-    deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run 'bash scripts/pipeline/tier-gate.sh --assert <tier>' (Rule A)"
+    deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run '$assert_remedy' (Rule A)"
   fi
 fi
 
 # --- Rule B: a planning-tier session cannot write source files -------------
 # The allow-list is read off the NORMALIZED path, so it matches the absolute
 # file_path the harness actually sends and is not fooled by docs/../src/x.js.
-if [ "$is_planning" -eq 1 ]; then
+# `plans/*` joined it with D6: writing-plans commits plans to a tracked plans/
+# directory, so a planning session has to be able to write one. It stays narrow
+# — a plan is a planning artifact, not source — and is component-anchored like
+# the three beside it, so it admits plans/ and never plansX/.
+# An identity mismatch restricts writes exactly as the planning tier does, and
+# for the same allow-list: state written by another session says nothing about
+# what this one may write, so the restrictive reading is the fail-closed one.
+if [ "$is_planning" -eq 1 ] || [ "$identity_mismatch" -eq 1 ]; then
   case "$tool" in
-    Write|Edit)
+    Write|Edit|NotebookEdit)
       case "$npath" in
-        .internal/*|.mex/*|docs/*) ;;
-        *) deny "planning-tier session cannot write source files (Rule B)" ;;
+        .internal/*|.mex/*|docs/*|plans/*) ;;
+        *) [ "$identity_mismatch" -eq 1 ] &&
+             deny "session state was written by a different session, so writes are restricted — ask the user to run '$assert_remedy' (Rule B)"
+           deny "planning-tier session cannot write source files (Rule B)" ;;
       esac ;;
   esac
 fi

@@ -39,9 +39,9 @@ Run it from the repo root — the gate reads session state from `./.internal/pip
 | 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
 | other | Any exit outside {0, 1, 2, 4}, including 127 (missing file). | Fail-closed: stop and report. |
 
-Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
+Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier> --session <id>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
 
-When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier>`. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
+When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier> --session <id>`, with the live session identifier it read filled in. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
 
 ## Knowledge Check
 
