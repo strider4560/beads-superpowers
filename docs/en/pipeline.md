@@ -8,6 +8,8 @@ description: The five-stage pipeline that runs a change from idea to reviewed ep
 
 # The Pipeline
 
+[Example Workflow](workflow.md) describes the single-session flow this pipeline replaced; read it for how the individual skills route to each other, and read this page for the stage and tier contract that now sits over them.
+
 Work travels through five stages split across two sessions: a planning session that ends with a bead graph, and an implementation session that reads that graph and builds against it. Nothing is handed between them in prose. The plan of record is the bead graph plus the `.mex/` knowledge store, so the implementation session never parses a document the planning session wrote.
 
 The pipeline spans two repositories. beads-superpowers owns the process mechanics - stage contracts, the bead and mex schema, and the scripts under `scripts/pipeline/`. [great_cto](https://github.com/strider4560/great_cto) owns the deployment bindings - the agent roster, the review contracts, the agent prompts, and the map from capability tier to concrete model. beads-superpowers resolves that bundle at `~/.agents/great_cto/` and refuses to run without it:
@@ -45,15 +47,15 @@ Skills in this repo name four tiers and nothing else:
 - **implementation tier** - task implementers, which a plan may raise for an individual task
 - **review tier** - epic reviewers and the per-group task review
 
-Model identifiers and default effort levels appear only in great_cto's tier map. This repo ships to ten harnesses where a specific model name means nothing, so a guard rejects one in harness-neutral content. If you need to know which model a tier resolves to, read the tier map, not a skill.
+Model identifiers and default effort levels appear only in great_cto's tier map. The harnesses this repo ships to name their models differently or not at all, so a guard rejects a model name in harness-neutral content. If you need to know which model a tier resolves to, read the tier map, not a skill.
 
 ## What fails closed
 
 Four gates, all of them tooling rather than prose. None of them asks the agent to police itself.
 
-**The hard-dependency check.** `install.sh` verifies the bundle root before it detects tools or touches anything, and every pipeline script resolves the bundle root as its first act. A missing bundle root prints the install command above and exits nonzero. The session-start hook reports bundle-root presence too, by directory existence alone, because that hook only ever reads files.
+**The hard-dependency check.** `install.sh` verifies the bundle root before it detects tools or touches anything. `--uninstall` is the single exemption, because removing beads-superpowers must never require the dependency beads-superpowers needs to run. In the pipeline scripts the bundle root is resolved before any tier decision, but two paths return ahead of it: `tier-gate.sh --assert`, which only writes down a tier you supplied by hand, and the secondary-harness SKIP below. A missing bundle root prints the install command above and exits nonzero. The session-start hook reports bundle-root presence too, by directory existence alone, because that hook only ever reads files.
 
-**The tier gate.** Stage skills call `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing` at stage entry. The gate reads the session's model from the state file the session-start hook wrote, maps it through the tier map, and exits nonzero on a mismatch so the skill can stop and ask you to switch models. Where the harness never reported a model, the gate does not guess: it refuses stage entry until you - never the agent - record the session's tier by hand. Session effort is checked the same way when the harness exposes it and is advisory when it does not. A secondary harness that cannot expose a model id gets a visible SKIP with a warning, which no caller may read as a pass.
+**The tier gate.** Stage skills call `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing` at stage entry. The gate reads the session's model from the state file the session-start hook wrote, maps it through the tier map, and exits nonzero on a mismatch so the skill can stop and ask you to switch models. Where the harness never reported a model, the gate does not guess: it refuses stage entry until you - never the agent - record the session's tier by hand. Session effort is checked the same way when the harness exposes it and is advisory when it does not. A caller that knows its harness cannot expose a model id sets `BEADS_SP_HARNESS=secondary`, and the gate short-circuits to a visible SKIP with its own exit code, which no caller may read as a pass.
 
 **The PreToolUse backstop.** Where hooks exist, four hard denies apply once a project is armed, with no ask-or-confirm middle ground. A session outside the planning tier cannot mutate the plan graph, though plain task creation still passes, since fix tasks and `needs-planning` beads are legitimate implementation writes. A planning-tier session cannot write source files outside `.internal/`, `.mex/`, and `docs/`. The agent cannot record a session tier by hand, which is a human's job. And the pipeline's own state directory is not agent-writable at any tier, evaluated ahead of the planning allowance so the allowance cannot swallow it. The hook denies on internal error rather than allowing, and it does not depend on the agent choosing to call the gate.
 
@@ -118,7 +120,7 @@ Three failures have a remedy you can act on directly. All three deny rather than
 
 | What the gate reports | What clears it |
 |-----------------------|----------------|
-| The integrity record is missing or unreadable, or a file `does not match its recorded hash` | Re-run `install.sh`. The record is written by whichever maintainer owns the channel, and only that maintainer can rewrite it - on the plugin channel, that means starting a fresh session so the session-start hook re-attests the root. |
+| The integrity record is missing or unreadable, or a file `does not match its recorded hash` | Re-run `install.sh`. The record is written by its channel's maintainer - `install.sh` on the scripted tiers, session-start on the plugin channel - and only that maintainer can rewrite it; on the plugin channel, that means starting a fresh session so the hook re-attests the root. |
 | `is running against beads-superpowers root`, naming a version that is not the gate's own | Re-run `install.sh`, or refresh the plugin, so the gates and the installed root are the same version. |
 | `session state was written by a different session` | Delete `.internal/pipeline/session.json` yourself and start a fresh session. Recording a tier with `--assert` binds to your live session but does not clear a stale foreign state file, so the plan graph stays denied while that file sits there - and the state directory is not agent-writable, so the agent cannot remove it for you. |
 
