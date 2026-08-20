@@ -235,6 +235,24 @@ run "$fbin"
 check "binary-file-with-an-embedded-key-is-not-reported-clean" 1
 check "binary-file-names-itself-as-unscannable" 1 'non-text file'
 
+# The detector must read the WHOLE file, not a prefix of it. grep decides
+# text-vs-binary from its first input buffer (~96 KiB) and stops looking, while
+# the pattern greps below read to EOF — so a file whose first NUL sits past that
+# buffer is called TEXT by a prefix detector and then answered with "binary file
+# matches" (no line numbers) by every pattern, scoring clean. This fixture puts
+# the first NUL at ~100 KiB with an AWS-shaped key after it: exactly the
+# fail-open shape, and the reason the detector and the scanner must agree.
+# The padding is whole 64-byte LINES, not one long one: a prefix detector only
+# stops short when its first buffer ends on complete lines, so a single
+# 100 KB line would force it to read past the boundary and hide the bug.
+flate="$TMP/late-nul.bin"
+pad="$(head -c 63 /dev/zero | LC_ALL=C tr '\000' 'a')"
+for _ in $(seq 1600); do printf '%s\n' "$pad"; done > "$flate"   # 102400 bytes
+printf '\000\n%s\n' "AK""IA0123456789ABCDEF" >> "$flate"          # first NUL at 102401
+run "$flate"
+check "late-nul-past-greps-first-buffer-is-not-reported-clean" 1
+check "late-nul-file-names-itself-as-unscannable" 1 'non-text file'
+
 # ...and a text plan is still text: UTF-8 prose and blank-only lines are not
 # binaries, or the guard above would stop every Chinese-language plan.
 mkfix utf8 <<'EOF'

@@ -24,10 +24,14 @@ fi
 # numbers, so every pattern below comes back empty and the file scores clean
 # while carrying the secret verbatim. Since the pre-commit hook matches
 # everything under plans/ rather than `*.md` alone, that path is reachable, and
-# a false clean on the one control D6 rests on is worse than a stop. The test is
-# grep's OWN binary determination (`-I` suppresses a binary match), so the
-# detector and the scanner can never disagree about what a given file is.
-if [ -s "$file" ] && ! grep -qI '' "$file" 2>/dev/null; then
+# a false clean on the one control D6 rests on is worse than a stop. The test
+# reads the WHOLE file — strip every NUL and compare against the original, so
+# any byte anywhere decides the answer. grep's own `-I` cannot be used for this:
+# it judges from its first input buffer (~96 KiB) and stops, while the pattern
+# greps below read to EOF, so a NUL past that boundary makes them disagree and
+# the file scores clean. (`grep -c` short-circuits the same way when stdout is
+# /dev/null.) Reading all of both sides is what keeps them in agreement.
+if [ -s "$file" ] && ! LC_ALL=C tr -d '\000' < "$file" | cmp -s - "$file"; then
   printf '%s:0: non-text file — this scanner cannot read it; review it by hand or keep it out of plans/\n' "$file"
   exit 1
 fi
