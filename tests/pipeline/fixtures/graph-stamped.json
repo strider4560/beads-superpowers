@@ -1,0 +1,276 @@
+[
+  {
+    "id": "fx-ini",
+    "title": "Fixture initiative",
+    "description": "The initiative epic. Its own description carries no ## Success Criteria heading on purpose: that check belongs to the child epics, and this fixture proves the lint scopes it there.",
+    "status": "open",
+    "priority": 1,
+    "issue_type": "epic",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:17:44Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:17:44Z",
+    "labels": [
+      "initiative"
+    ],
+    "dependent_count": 2,
+    "comment_count": 0,
+    "metadata": {
+      "plan_path": "plans/2026-08-19-fixture.md"
+    }
+  },
+  {
+    "id": "fx-ep1",
+    "title": "First child epic",
+    "description": "Ship the first slice.\n\n## Success Criteria\n- the slice is shipped\n- its tests pass\n",
+    "status": "open",
+    "priority": 1,
+    "issue_type": "epic",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:18:02Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:18:02Z",
+    "metadata": {
+      "reviewers": [
+        "architect",
+        "code-reviewer"
+      ]
+    },
+    "labels": [
+      "initiative"
+    ],
+    "dependencies": [
+      {
+        "issue_id": "fx-ep1",
+        "depends_on_id": "fx-ini",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:18:02Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 1,
+    "dependent_count": 2,
+    "comment_count": 0,
+    "parent": "fx-ini"
+  },
+  {
+    "id": "fx-ep2",
+    "title": "Second child epic",
+    "description": "Ship the second slice.\n\n## Success Criteria\n- the second slice is shipped\n",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "epic",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:18:11Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:18:11Z",
+    "metadata": {
+      "reviewers": [
+        "qa-engineer",
+        "security-officer"
+      ]
+    },
+    "labels": [
+      "initiative"
+    ],
+    "dependencies": [
+      {
+        "issue_id": "fx-ep2",
+        "depends_on_id": "fx-ini",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:18:11Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      },
+      {
+        "issue_id": "fx-ep2",
+        "depends_on_id": "fx-ep1",
+        "type": "blocks",
+        "created_at": "2026-08-19T17:18:11Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 2,
+    "dependent_count": 1,
+    "comment_count": 0,
+    "parent": "fx-ini"
+  },
+  {
+    "id": "fx-t1",
+    "title": "First task",
+    "description": "Build the first thing.\n\n## Acceptance Criteria\n- `bash tests/pipeline/test-graph-lint.sh` passes\n",
+    "status": "open",
+    "priority": 1,
+    "issue_type": "task",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:19:00Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:19:00Z",
+    "metadata": {
+      "tier": "implementation",
+      "implementation_agent": "senior-dev",
+      "required_skills": [
+        "test-driven-development"
+      ],
+      "paths": [
+        "scripts/pipeline/graph-lint.mjs",
+        "tests/pipeline/test-graph-lint.sh"
+      ]
+    },
+    "labels": [
+      "initiative"
+    ],
+    "dependencies": [
+      {
+        "issue_id": "fx-t1",
+        "depends_on_id": "fx-ep1",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:19:00Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 1,
+    "dependent_count": 1,
+    "comment_count": 0,
+    "parent": "fx-ep1"
+  },
+  {
+    "id": "fx-t2",
+    "title": "Second task",
+    "description": "Build the second thing.\n\n## Acceptance Criteria\n- the second thing works\n",
+    "status": "open",
+    "priority": 1,
+    "issue_type": "task",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:19:20Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:19:20Z",
+    "metadata": {
+      "tier": "implementation",
+      "implementation_agent": "senior-dev",
+      "required_skills": [
+        "test-driven-development"
+      ],
+      "paths": [
+        "src/"
+      ]
+    },
+    "labels": [
+      "initiative"
+    ],
+    "dependencies": [
+      {
+        "issue_id": "fx-t2",
+        "depends_on_id": "fx-ep1",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:19:20Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      },
+      {
+        "issue_id": "fx-t2",
+        "depends_on_id": "fx-t1",
+        "type": "blocks",
+        "created_at": "2026-08-19T17:19:20Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 2,
+    "dependent_count": 1,
+    "comment_count": 0,
+    "parent": "fx-ep1"
+  },
+  {
+    "id": "fx-t3",
+    "title": "Third task",
+    "description": "Build the third thing.\n\n## Acceptance Criteria\n- the third thing works\n",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:19:40Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:19:40Z",
+    "metadata": {
+      "tier": "implementation",
+      "implementation_agent": "senior-dev",
+      "required_skills": [
+        "verification-before-completion"
+      ],
+      "paths": [
+        "docs/en/pipeline.md"
+      ]
+    },
+    "labels": [
+      "initiative"
+    ],
+    "dependencies": [
+      {
+        "issue_id": "fx-t3",
+        "depends_on_id": "fx-ep2",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:19:40Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      },
+      {
+        "issue_id": "fx-t3",
+        "depends_on_id": "fx-t2",
+        "type": "blocks",
+        "created_at": "2026-08-19T17:19:40Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 2,
+    "comment_count": 0,
+    "parent": "fx-ep2"
+  },
+  {
+    "id": "fx-out-ep",
+    "title": "An epic outside this initiative",
+    "description": "Unrelated work. No Success Criteria heading, no reviewers: a real state dump is the whole database, and the lint must not judge beads outside the initiative it was pointed at.",
+    "status": "open",
+    "priority": 3,
+    "issue_type": "epic",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:20:00Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:20:00Z",
+    "dependent_count": 1,
+    "comment_count": 0
+  },
+  {
+    "id": "fx-out-t",
+    "title": "A task outside this initiative",
+    "description": "Unrelated work, with no Acceptance Criteria heading.",
+    "status": "open",
+    "priority": 3,
+    "issue_type": "task",
+    "owner": "dev@example.com",
+    "created_at": "2026-08-19T17:20:10Z",
+    "created_by": "Fixture",
+    "updated_at": "2026-08-19T17:20:10Z",
+    "metadata": {
+      "tier": "not-a-tier",
+      "implementation_agent": "not-an-agent"
+    },
+    "dependencies": [
+      {
+        "issue_id": "fx-out-t",
+        "depends_on_id": "fx-out-ep",
+        "type": "parent-child",
+        "created_at": "2026-08-19T17:20:10Z",
+        "created_by": "Fixture",
+        "metadata": "{}"
+      }
+    ],
+    "dependency_count": 1,
+    "comment_count": 0,
+    "parent": "fx-out-ep"
+  }
+]

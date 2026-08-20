@@ -7,6 +7,7 @@ set -uo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 lint="$root/scripts/pipeline/graph-lint.mjs"
 valid="$root/tests/pipeline/fixtures/graph-valid.json"
+stamped="$root/tests/pipeline/fixtures/graph-stamped.json"
 roster="$root/tests/pipeline/fixtures/roster.mjs"
 tiermap="$root/tests/pipeline/fixtures/tier-map.json"
 fails=0
@@ -15,23 +16,51 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 command -v node >/dev/null 2>&1 || { echo "SKIP (node not installed)"; exit 0; }
 command -v jq   >/dev/null 2>&1 || { echo "SKIP (jq not installed — mutations need it)"; exit 0; }
 
+# --- sandbox HOME -----------------------------------------------------------
+# The lint reads the anchor $HOME/.agents/beads-superpowers and the integrity
+# record under $HOME/.local/state, so every case runs under a scratch HOME. A
+# suite that used the real one would read the operator's own install and, on the
+# anchor cases, create directories inside it.
+
+sandbox_home="$TMP/home"
+if [ -z "$sandbox_home" ] || [ "$sandbox_home" = "$HOME" ]; then
+  echo "FAIL sandbox-home-differs-from-the-real-home: refusing to run against '$HOME'"
+  exit 1
+fi
+mkdir -p "$sandbox_home"
+echo "PASS sandbox-home-differs-from-the-real-home"
+
 # --- runner + assertion -----------------------------------------------------
 
+RUN_CWD=""   # per-case cwd; --require-stamps resolves stamps against it
+RUN_HOME=""  # per-case HOME; the anchor and the record hang off it
+RUN_LINT=""  # per-case script path; the version self-check reads ../../package.json
+
 run() { # <args...> — raw argv for the lint; sets rc, out (stdout), err (stderr)
-  out="$(node "$lint" "$@" 2>"$TMP/stderr" </dev/null)"
+  out="$(cd "${RUN_CWD:-$root}" && HOME="${RUN_HOME:-$sandbox_home}" \
+    node "${RUN_LINT:-$lint}" "$@" 2>"$TMP/stderr" </dev/null)"
   rc=$?
   err="$(cat "$TMP/stderr")"
 }
 
-run_state() { # <state-file> — the standard invocation against one state dump
-  run --initiative fx-ini --state "$1" --roster "$roster" --tier-map "$tiermap"
+run_state() { # <state-file> [extra-args...] — the standard invocation
+  local state="$1"; shift
+  run --initiative fx-ini --state "$state" --roster "$roster" --tier-map "$tiermap" "$@"
 }
 
-mutate() { # <name> <jq-filter> — sets $f to the path of the mutated state file.
+mutate_from() { # <base-fixture> <name> <jq-filter> — sets $f to the mutated file.
   # Runs in the current shell, not a command substitution: a subshell's
   # fails=$((fails+1)) never reaches the summary.
-  f="$TMP/state-$1.json"
-  jq "$2" "$valid" > "$f" || { echo "FAIL $1: jq mutation failed"; fails=$((fails+1)); }
+  f="$TMP/state-$2.json"
+  jq "$3" "$1" > "$f" || { echo "FAIL $2: jq mutation failed"; fails=$((fails+1)); }
+}
+
+mutate() { # <name> <jq-filter> — a mutation of the unstamped valid fixture
+  mutate_from "$valid" "$@"
+}
+
+mutate_stamped() { # <name> <jq-filter> — a mutation of the stamped fixture
+  mutate_from "$stamped" "$@"
 }
 
 check() { # <name> <want-exit> [<ere-pattern> [stdout|stderr]] — one PASS/FAIL line
@@ -246,6 +275,218 @@ run_state "$f"
 check "two-violations-exit-1" 1
 check "two-violations-report-the-task" 1 '^fx-t1: metadata\.implementation_agent:' stderr
 check "two-violations-report-the-epic" 1 '^fx-ep2: description:' stderr
+
+# --- --require-stamps: the flag itself ---------------------------------------
+# A hermetic cwd holding exactly what the stamped fixture claims: the plan the
+# initiative names, and the one directory a task's paths entry claims. The stamp
+# checks resolve against the cwd, so judging them against this repo's own tree
+# would make the suite depend on files no case created.
+
+plan_cwd="$TMP/plan-cwd"; mkdir -p "$plan_cwd/plans" "$plan_cwd/src"
+: > "$plan_cwd/plans/2026-08-19-fixture.md"
+
+run --require-stamps --initiative fx-ini --state "$valid" --roster "$roster" --tier-map "$tiermap"
+check "require-stamps-is-a-boolean-flag-not-a-usage-error" 1
+
+RUN_CWD="$plan_cwd"
+run_state "$stamped" --require-stamps
+check "stamped-fixture-with-require-stamps-exits-0" 0
+check "stamped-fixture-with-require-stamps-reports-the-initiative" 0 '^graph-lint OK: fx-ini'
+RUN_CWD=""
+
+# Without the flag the stamps are not read at all: a pre-stamp graph stays in
+# contract for the structural checks (the unstamped valid fixture exiting 0
+# above is the other half of that pair).
+run_state "$stamped"
+check "stamped-fixture-without-the-flag-exits-0" 0
+
+run_state "$valid" --require-stamps
+check "unstamped-fixture-with-require-stamps-exits-1" 1
+check "unstamped-fixture-with-require-stamps-names-the-plan-path" 1 '^fx-ini: metadata\.plan_path:' stderr
+check "unstamped-fixture-with-require-stamps-names-a-task-paths-field" 1 '^fx-t[123]: metadata\.paths:' stderr
+
+# --- --require-stamps: the initiative's plan_path ----------------------------
+# The initiative bead is outside the member walk, so this check is written
+# against it directly rather than inside the task loop.
+
+RUN_CWD="$plan_cwd"
+
+mutate_stamped ini-plan-missing-file '(.[] | select(.id=="fx-ini") | .metadata.plan_path) = "plans/does-not-exist.md"'
+run_state "$f" --require-stamps
+check "plan-path-naming-a-missing-file-exits-1" 1
+check "plan-path-naming-a-missing-file-names-id-and-field" 1 '^fx-ini: metadata\.plan_path:' stderr
+check "plan-path-naming-a-missing-file-names-the-path" 1 'plans/does-not-exist\.md' stderr
+
+mutate_stamped ini-plan-not-md '(.[] | select(.id=="fx-ini") | .metadata.plan_path) = "plans/2026-08-19-fixture.txt"'
+run_state "$f" --require-stamps
+check "plan-path-that-is-not-a-markdown-file-exits-1" 1
+check "plan-path-that-is-not-a-markdown-file-names-id-and-field" 1 '^fx-ini: metadata\.plan_path:' stderr
+
+mutate_stamped ini-plan-empty '(.[] | select(.id=="fx-ini") | .metadata.plan_path) = ""'
+run_state "$f" --require-stamps
+check "empty-plan-path-exits-1" 1
+check "empty-plan-path-names-id-and-field" 1 '^fx-ini: metadata\.plan_path:' stderr
+
+mutate_stamped ini-plan-absent 'del(.[] | select(.id=="fx-ini") | .metadata.plan_path)'
+run_state "$f" --require-stamps
+check "absent-plan-path-exits-1" 1
+check "absent-plan-path-names-id-and-field" 1 '^fx-ini: metadata\.plan_path:' stderr
+
+# A markdown file that exists on the host but resolves outside the cwd is not a
+# plan inside the repo: the check is existence *and* in-repo resolution.
+: > "$TMP/outside.md"
+mutate_stamped ini-plan-outside '(.[] | select(.id=="fx-ini") | .metadata.plan_path) = "../outside.md"'
+run_state "$f" --require-stamps
+check "plan-path-resolving-outside-the-cwd-exits-1" 1
+check "plan-path-resolving-outside-the-cwd-names-id-and-field" 1 '^fx-ini: metadata\.plan_path:' stderr
+
+# --- --require-stamps: canonical metadata.paths ------------------------------
+
+mutate_stamped task-paths-absent 'del(.[] | select(.id=="fx-t2") | .metadata.paths)'
+run_state "$f" --require-stamps
+check "task-without-paths-exits-1" 1
+check "task-without-paths-names-id-and-field" 1 '^fx-t2: metadata\.paths:' stderr
+
+mutate_stamped task-paths-empty '(.[] | select(.id=="fx-t2") | .metadata.paths) = []'
+run_state "$f" --require-stamps
+check "task-with-an-empty-paths-array-exits-1" 1
+check "task-with-an-empty-paths-array-names-id-and-field" 1 '^fx-t2: metadata\.paths:' stderr
+
+# One case per rejected spelling: each is a distinct rule, and a single "some
+# path is wrong" case would pass with any one of them implemented.
+noncanonical() { # <name> <json-array-literal> <ere-naming-the-entry>
+  mutate_stamped "$1" "(.[] | select(.id==\"fx-t2\") | .metadata.paths) = $2"
+  run_state "$f" --require-stamps
+  check "paths-$1-exits-1" 1
+  check "paths-$1-names-id-and-field" 1 '^fx-t2: metadata\.paths:' stderr
+  check "paths-$1-names-the-entry" 1 "$3" stderr
+}
+
+noncanonical leading-dot-slash   '["./x.md"]'            '\./x\.md'
+noncanonical absolute            '["/abs"]'              '/abs'
+noncanonical empty-segment       '["a//b"]'              'a//b'
+noncanonical dot-dot-segment     '["a/../b"]'            'a/\.\./b'
+noncanonical backslash           '["a\\b"]'              'a\\b'
+noncanonical duplicate-entries   '["src/a.ts","src/a.ts"]' 'src/a\.ts'
+noncanonical directory-without-a-trailing-slash '["src"]' "'src'"
+
+# The accepted spellings, byte-exact: a relative file and a directory claim.
+mutate_stamped task-paths-canonical '(.[] | select(.id=="fx-t2") | .metadata.paths) = ["src/a.ts","src/"]'
+run_state "$f" --require-stamps
+check "canonical-paths-exit-0" 0
+
+RUN_CWD=""
+
+# --- version self-check ------------------------------------------------------
+# The pinned constant is compared against the version file of the root the
+# script was loaded from, so a copy of the lint under a skewed root fails while
+# the same copy under a matching root passes.
+
+pkg_version="$(jq -r .version "$root/package.json")"
+
+make_root() { # <name> <version> -> path to a root holding a copy of the lint
+  local r="$TMP/root-$1"
+  mkdir -p "$r/scripts/pipeline"
+  cp -f "$lint" "$r/scripts/pipeline/graph-lint.mjs"
+  printf '{"name":"fixture-root","version":"%s"}\n' "$2" > "$r/package.json"
+  printf '%s' "$r"
+}
+
+RUN_LINT="$(make_root skewed 0.0.0-not-the-pinned-version)/scripts/pipeline/graph-lint.mjs"
+run_state "$valid"
+check "root-version-skew-exits-1" 1
+check "root-version-skew-names-the-version-field" 1 '^graph-lint: version:' stderr
+
+RUN_LINT="$(make_root matching "$pkg_version")/scripts/pipeline/graph-lint.mjs"
+run_state "$valid"
+check "matching-root-version-exits-0" 0
+
+RUN_LINT="$(make_root no-package-json "$pkg_version")/scripts/pipeline/graph-lint.mjs"
+rm -f "$TMP/root-no-package-json/package.json"
+run_state "$valid"
+check "unreadable-root-version-exits-1" 1
+check "unreadable-root-version-names-the-version-field" 1 '^graph-lint: version:' stderr
+
+RUN_LINT=""
+
+# --- integrity record --------------------------------------------------------
+# Anchor absent is the dev-clone case and skips silently — the valid fixture
+# above already asserts an empty stderr under a HOME with no anchor.
+
+sha256_of() { # <file> -> lowercase hex digest
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
+make_anchored_home() { # <name> -> path to a HOME holding the anchor, no record
+  local h="$TMP/home-$1"
+  mkdir -p "$h/.agents/beads-superpowers"
+  printf '%s' "$h"
+}
+
+write_record() { # <home> <json>
+  mkdir -p "$1/.local/state/beads-superpowers"
+  printf '%s\n' "$2" > "$1/.local/state/beads-superpowers/record.json"
+}
+
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+  echo "SKIP record cases (neither sha256sum nor shasum installed)"
+else
+  RUN_HOME="$(make_anchored_home no-record)"
+  run_state "$valid"
+  check "anchor-without-a-record-exits-1" 1
+  check "anchor-without-a-record-names-the-record-path" 1 'record\.json' stderr
+
+  RUN_HOME="$(make_anchored_home advisory)"
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+    '{anchor:$a, target:$a, posture:"dev-clone-advisory", version:"0.0.0"}')"
+  run_state "$valid"
+  check "dev-clone-advisory-record-exits-0" 0
+  check "dev-clone-advisory-record-notes-the-posture-on-stderr" 0 'advisory' stderr
+
+  manifest_json() { # <home> <graph-lint-digest> -> the record JSON
+    jq -n --arg a "$1/.agents/beads-superpowers" --arg v "$pkg_version" \
+      --arg tg "$(sha256_of "$root/scripts/pipeline/tier-gate.sh")" \
+      --arg br "$(sha256_of "$root/scripts/pipeline/bundle-root.sh")" \
+      --arg gl "$2" \
+      --arg pg "$(sha256_of "$root/hooks/pipeline-guard")" \
+      '{anchor:$a, target:$a, posture:"manifest-backed", version:$v,
+        hashes:{"scripts/pipeline/tier-gate.sh":$tg,
+                "scripts/pipeline/bundle-root.sh":$br,
+                "scripts/pipeline/graph-lint.mjs":$gl,
+                "hooks/pipeline-guard":$pg}}'
+  }
+
+  RUN_HOME="$(make_anchored_home manifest-ok)"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$(sha256_of "$lint")")"
+  run_state "$valid"
+  check "manifest-backed-record-matching-the-root-exits-0" 0
+
+  RUN_HOME="$(make_anchored_home manifest-tampered)"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "0000000000000000000000000000000000000000000000000000000000000000")"
+  run_state "$valid"
+  check "manifest-backed-record-with-a-wrong-hash-exits-1" 1
+  check "manifest-backed-record-with-a-wrong-hash-names-the-file" 1 'graph-lint\.mjs' stderr
+
+  RUN_HOME="$(make_anchored_home manifest-no-hashes)"
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+    '{anchor:$a, target:$a, posture:"manifest-backed", version:"0.0.0"}')"
+  run_state "$valid"
+  check "manifest-backed-record-without-hashes-exits-1" 1
+
+  RUN_HOME="$(make_anchored_home unparsable-record)"
+  write_record "$RUN_HOME" '{"posture": '
+  run_state "$valid"
+  check "unparsable-record-exits-1" 1
+
+  RUN_HOME="$(make_anchored_home unknown-posture)"
+  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+    '{anchor:$a, target:$a, posture:"something-else", version:"0.0.0"}')"
+  run_state "$valid"
+  check "record-with-an-unknown-posture-exits-1" 1
+
+  RUN_HOME=""
+fi
 
 # --- summary ----------------------------------------------------------------
 
