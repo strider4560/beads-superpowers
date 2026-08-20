@@ -10,16 +10,17 @@
 // `dependencies[].depends_on_id` is the target of the edge — for a parent-child
 // edge, the parent. See .internal/research/2026-08-19-bd-json-shape.md.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BSP_PIPELINE_VERSION = "0.18.0"; // synced by bump-version.sh
 
-// The root this script was loaded from: the version file and the manifest's
-// hashed files are both read relative to it, so a copy under another root is
-// judged against that root, not against wherever it was invoked.
+// The root this script was loaded from: the version file is read relative to
+// it, so a copy under another root is judged against that root, not against
+// wherever it was invoked. The manifest's hashed files are NOT read from here —
+// they belong to the anchor's attested target (see the record block below).
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Fixed spellings, never through an env var: the installer, the hooks and the
 // gates resolve their environment in four different process trees, and a
@@ -134,10 +135,37 @@ if (rootVersion !== BSP_PIPELINE_VERSION) {
   );
 }
 
-// No anchor means no anchor claim to verify — a dev clone run in place, which
-// is the repo's own case. An anchor with no readable record is the tampered
-// case, not the dev case, so it denies.
-if (existsSync(ANCHOR)) {
+// D3 record-binding semantics, identical to the bash `verify_record`:
+//   1. presence is lstat on the anchor entry itself — a dangling symlink is
+//      PRESENT, so its record check applies and fails closed on the missing
+//      target rather than silently skipping;
+//   2. the record is selected by anchor path, and the anchor's canonical target
+//      must equal record.target — a mismatch is a repoint, reported as one;
+//   3. hashes are verified over the files under record.target, the attested
+//      root, never under this script's own root;
+//   4. a root outside record.target is a repo-relative/dev invocation —
+//      supported, not denied — and says so on stderr while still doing 1-3.
+// No anchor at all means no anchor claim to verify: a dev clone run in place,
+// which is this repo's own case.
+
+const canonical = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+};
+const anchorPresent = () => {
+  try {
+    lstatSync(ANCHOR);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const inside = (path, root) => path === root || path.startsWith(root + sep);
+
+if (anchorPresent()) {
   let record = null;
   try {
     record = JSON.parse(readFileSync(RECORD_PATH, "utf8"));
@@ -148,36 +176,66 @@ if (existsSync(ANCHOR)) {
       `anchor '${ANCHOR}' exists but its integrity record '${RECORD_PATH}' is absent or unreadable: ${e.code ?? e.message}`,
     );
   }
-  const posture = record?.posture;
-  if (record && posture === "manifest-backed") {
-    const hashes = record.hashes;
-    if (hashes === null || typeof hashes !== "object" || Object.keys(hashes).length === 0) {
-      violation("graph-lint", "record", `manifest-backed record '${RECORD_PATH}' carries no 'hashes' map`);
-    } else {
-      for (const [relative, want] of Object.entries(hashes)) {
-        let got = null;
-        try {
-          got = createHash("sha256").update(readFileSync(join(ROOT, relative))).digest("hex");
-        } catch {
-          // An unreadable gate file cannot match its recorded hash.
-        }
-        if (got !== want) {
-          violation(
-            "graph-lint",
-            "record",
-            `hash mismatch for '${relative}' under root '${ROOT}': recorded ${want}, found ${got ?? "(unreadable)"}`,
-          );
-        }
-      }
-    }
-  } else if (record && posture === "dev-clone-advisory") {
-    console.error(`graph-lint: record: advisory (unpinned root) — posture 'dev-clone-advisory' for anchor '${ANCHOR}'`);
-  } else if (record) {
+  // The target the record attests, canonicalised where it resolves so the two
+  // sides of the comparison are spelled the same way.
+  const declared = typeof record?.target === "string" && record.target !== "" ? record.target : null;
+  const target = declared === null ? null : (canonical(declared) ?? declared);
+  const anchorTarget = canonical(ANCHOR);
+  if (record && anchorTarget === null) {
     violation(
       "graph-lint",
       "record",
-      `record '${RECORD_PATH}' declares neither posture: found '${posture ?? "(unset)"}'`,
+      `anchor '${ANCHOR}' does not resolve — the record attests '${declared ?? "(unset)"}', which is unreachable`,
     );
+  } else if (record && target === null) {
+    violation("graph-lint", "record", `record '${RECORD_PATH}' names no 'target' for anchor '${ANCHOR}'`);
+  } else if (record && anchorTarget !== target) {
+    violation(
+      "graph-lint",
+      "record",
+      `anchor '${ANCHOR}' resolves to '${anchorTarget}' but the record attests '${target}' — the anchor was repointed`,
+    );
+  } else if (record) {
+    // The anchor and the record agree, so the attested root is known and the
+    // remaining checks read from it.
+    if (!inside(canonical(ROOT) ?? ROOT, target)) {
+      console.error(
+        `graph-lint: record: running unpinned copy (not the anchored install) — root '${ROOT}' is outside the attested target '${target}'`,
+      );
+    }
+    const posture = record.posture;
+    if (posture === "manifest-backed") {
+      const hashes = record.hashes;
+      if (hashes === null || typeof hashes !== "object" || Object.keys(hashes).length === 0) {
+        violation("graph-lint", "record", `manifest-backed record '${RECORD_PATH}' carries no 'hashes' map`);
+      } else {
+        for (const [relative, want] of Object.entries(hashes)) {
+          let got = null;
+          try {
+            got = createHash("sha256").update(readFileSync(join(target, relative))).digest("hex");
+          } catch {
+            // An unreadable gate file cannot match its recorded hash.
+          }
+          if (got !== want) {
+            violation(
+              "graph-lint",
+              "record",
+              `hash mismatch for '${relative}' under target '${target}': recorded ${want}, found ${got ?? "(unreadable)"}`,
+            );
+          }
+        }
+      }
+    } else if (posture === "dev-clone-advisory") {
+      console.error(
+        `graph-lint: record: advisory (unpinned root) — posture 'dev-clone-advisory' for anchor '${ANCHOR}'`,
+      );
+    } else {
+      violation(
+        "graph-lint",
+        "record",
+        `record '${RECORD_PATH}' declares neither posture: found '${posture ?? "(unset)"}'`,
+      );
+    }
   }
 }
 
@@ -286,6 +344,7 @@ function canonicalPathViolation(entry) {
   if (directoryClaim) segments.pop();
   if (segments.includes("")) return "has an empty path segment";
   if (segments.includes("..")) return "has a '..' segment";
+  if (segments.includes(".")) return "has a '.' segment";
   // The trailing slash is the directory claim, so where the entry already
   // exists the filesystem decides the 'if and only if'. A path the task will
   // create does not exist yet and cannot be judged either way.

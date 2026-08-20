@@ -366,6 +366,7 @@ noncanonical leading-dot-slash   '["./x.md"]'            '\./x\.md'
 noncanonical absolute            '["/abs"]'              '/abs'
 noncanonical empty-segment       '["a//b"]'              'a//b'
 noncanonical dot-dot-segment     '["a/../b"]'            'a/\.\./b'
+noncanonical interior-dot-segment '["src/./a.ts"]'       'src/\./a\.ts'
 noncanonical backslash           '["a\\b"]'              'a\\b'
 noncanonical duplicate-entries   '["src/a.ts","src/a.ts"]' 'src/a\.ts'
 noncanonical directory-without-a-trailing-slash '["src"]' "'src'"
@@ -418,9 +419,20 @@ sha256_of() { # <file> -> lowercase hex digest
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
+canon() { # <dir> -> its canonical path (no realpath(1) dependency)
+  (cd "$1" && pwd -P)
+}
+
 make_anchored_home() { # <name> -> path to a HOME holding the anchor, no record
   local h="$TMP/home-$1"
   mkdir -p "$h/.agents/beads-superpowers"
+  printf '%s' "$h"
+}
+
+make_linked_home() { # <name> <target> -> HOME whose anchor is a symlink to <target>
+  local h="$TMP/home-$1"
+  mkdir -p "$h/.agents"
+  ln -sfn "$2" "$h/.agents/beads-superpowers"
   printf '%s' "$h"
 }
 
@@ -438,38 +450,90 @@ else
   check "anchor-without-a-record-names-the-record-path" 1 'record\.json' stderr
 
   RUN_HOME="$(make_anchored_home advisory)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
     '{anchor:$a, target:$a, posture:"dev-clone-advisory", version:"0.0.0"}')"
   run_state "$valid"
   check "dev-clone-advisory-record-exits-0" 0
   check "dev-clone-advisory-record-notes-the-posture-on-stderr" 0 'advisory' stderr
 
-  manifest_json() { # <home> <graph-lint-digest> -> the record JSON
-    jq -n --arg a "$1/.agents/beads-superpowers" --arg v "$pkg_version" \
+  manifest_json() { # <home> <target> <graph-lint-digest> -> the record JSON
+    jq -n --arg a "$1/.agents/beads-superpowers" --arg t "$2" --arg v "$pkg_version" \
       --arg tg "$(sha256_of "$root/scripts/pipeline/tier-gate.sh")" \
       --arg br "$(sha256_of "$root/scripts/pipeline/bundle-root.sh")" \
-      --arg gl "$2" \
+      --arg gl "$3" \
       --arg pg "$(sha256_of "$root/hooks/pipeline-guard")" \
-      '{anchor:$a, target:$a, posture:"manifest-backed", version:$v,
+      '{anchor:$a, target:$t, posture:"manifest-backed", version:$v,
         hashes:{"scripts/pipeline/tier-gate.sh":$tg,
                 "scripts/pipeline/bundle-root.sh":$br,
                 "scripts/pipeline/graph-lint.mjs":$gl,
                 "hooks/pipeline-guard":$pg}}'
   }
 
-  RUN_HOME="$(make_anchored_home manifest-ok)"
-  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$(sha256_of "$lint")")"
-  run_state "$valid"
-  check "manifest-backed-record-matching-the-root-exits-0" 0
+  # The attested root is the anchor's target, so an anchor that resolves to this
+  # repo is what a manifest of this repo's files describes. Hashing under the
+  # *running* script's root instead would deny an untampered dev clone.
+  root_canon="$(canon "$root")"
 
-  RUN_HOME="$(make_anchored_home manifest-tampered)"
-  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "0000000000000000000000000000000000000000000000000000000000000000")"
+  RUN_HOME="$(make_linked_home manifest-ok "$root_canon")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "$(sha256_of "$lint")")"
+  run_state "$valid"
+  check "manifest-backed-record-matching-the-target-exits-0" 0
+  if printf '%s' "$err" | grep -qE 'unpinned'; then
+    echo "FAIL manifest-backed-record-run-from-the-anchored-root-prints-no-unpinned-note: $err"; fails=$((fails+1))
+  else
+    echo "PASS manifest-backed-record-run-from-the-anchored-root-prints-no-unpinned-note"
+  fi
+
+  RUN_HOME="$(make_linked_home manifest-tampered "$root_canon")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "0000000000000000000000000000000000000000000000000000000000000000")"
   run_state "$valid"
   check "manifest-backed-record-with-a-wrong-hash-exits-1" 1
   check "manifest-backed-record-with-a-wrong-hash-names-the-file" 1 'graph-lint\.mjs' stderr
 
+  # Running a copy of the lint from somewhere else is a repo-relative/dev
+  # invocation: supported, and the hashes are still verified — under the
+  # attested target, not under the copy's own root, which holds none of the
+  # manifest's files. It says so on stderr rather than denying.
+  RUN_LINT="$(make_root unpinned "$pkg_version")/scripts/pipeline/graph-lint.mjs"
+  RUN_HOME="$(make_linked_home manifest-unpinned "$root_canon")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "$(sha256_of "$lint")")"
+  run_state "$valid"
+  check "manifest-verified-under-the-target-from-another-root-exits-0" 0
+  check "running-outside-the-attested-target-self-reports-on-stderr" 0 \
+    'running unpinned copy \(not the anchored install\)' stderr
+  RUN_LINT=""
+
+  # A repointed anchor is a repoint, not a hash mismatch: the record attests one
+  # target and the anchor now resolves to another, so the manifest describes
+  # files the anchor no longer serves.
+  mkdir -p "$TMP/elsewhere"
+  RUN_HOME="$(make_linked_home repointed "$(canon "$TMP/elsewhere")")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "$(sha256_of "$lint")")"
+  run_state "$valid"
+  check "repointed-anchor-exits-1" 1
+  check "repointed-anchor-names-the-repoint" 1 "resolves to .*elsewhere.* but the record attests" stderr
+  if printf '%s' "$err" | grep -qE 'hash mismatch'; then
+    echo "FAIL repointed-anchor-does-not-report-a-hash-mismatch: $err"; fails=$((fails+1))
+  else
+    echo "PASS repointed-anchor-does-not-report-a-hash-mismatch"
+  fi
+
+  # lstat semantics: a dangling anchor symlink is PRESENT, so its record check
+  # applies. Testing the resolved entry instead would let a deleted target
+  # silently skip the whole check.
+  RUN_HOME="$(make_linked_home dangling-no-record "$TMP/gone")"
+  run_state "$valid"
+  check "dangling-anchor-without-a-record-exits-1" 1
+  check "dangling-anchor-without-a-record-names-the-record-path" 1 'record\.json' stderr
+
+  RUN_HOME="$(make_linked_home dangling-with-record "$TMP/gone")"
+  write_record "$RUN_HOME" "$(manifest_json "$RUN_HOME" "$root_canon" "$(sha256_of "$lint")")"
+  run_state "$valid"
+  check "dangling-anchor-with-a-record-exits-1" 1
+  check "dangling-anchor-with-a-record-names-the-anchor" 1 'beads-superpowers' stderr
+
   RUN_HOME="$(make_anchored_home manifest-no-hashes)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
     '{anchor:$a, target:$a, posture:"manifest-backed", version:"0.0.0"}')"
   run_state "$valid"
   check "manifest-backed-record-without-hashes-exits-1" 1
@@ -480,7 +544,7 @@ else
   check "unparsable-record-exits-1" 1
 
   RUN_HOME="$(make_anchored_home unknown-posture)"
-  write_record "$RUN_HOME" "$(jq -n --arg a "$RUN_HOME/.agents/beads-superpowers" \
+  write_record "$RUN_HOME" "$(jq -n --arg a "$(canon "$RUN_HOME/.agents/beads-superpowers")" \
     '{anchor:$a, target:$a, posture:"something-else", version:"0.0.0"}')"
   run_state "$valid"
   check "record-with-an-unknown-posture-exits-1" 1
