@@ -325,7 +325,7 @@ fi
 # machine — or a pre-rework great_cto that ships no tier-map — never has a project
 # armed underneath it. A machine with the root but no tier-map prints "present" and
 # stays unarmed.
-_bsp_bundle_root="$HOME/.agents/great_cto"
+_bsp_bundle_root="${HOME%/}/.agents/great_cto"
 if [ -d "$_bsp_bundle_root" ]; then
   printf '%s\n' "great_cto bundle root: present" >&2
 else
@@ -383,8 +383,17 @@ fi
 # envelope is already emitted and must survive any failure here. When no record can
 # be written, no anchor is created either — an anchor without a record is the state
 # the gates deny.
-_bsp_anchor="$HOME/.agents/beads-superpowers"
-_bsp_record="$HOME/.local/state/beads-superpowers/record.json"
+# `${HOME%/}`, not `$HOME`, at all three sites above and below — the spelling
+# every other actor uses (bundle-root.sh's BSP_ANCHOR/RECORD_PATH, the guard's
+# pre-source literals, Rule D's great_cto anchor). This hook WRITES the anchor
+# path into the record, so a trailing-slash HOME would record
+# `/home/u//.agents/beads-superpowers`, which no reader's `${HOME%/}` spelling
+# equals: every gate reads the record as describing a different anchor and
+# denies. Worse, the anchor symlink still resolves and still matches
+# record.target, so the refresh branch stands down and rewrites the identical
+# broken record every session.
+_bsp_anchor="${HOME%/}/.agents/beads-superpowers"
+_bsp_record="${HOME%/}/.local/state/beads-superpowers/record.json"
 _bsp_manifest=(scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
                scripts/pipeline/graph-lint.mjs hooks/pipeline-guard)
 

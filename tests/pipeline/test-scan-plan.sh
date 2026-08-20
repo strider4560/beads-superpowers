@@ -221,6 +221,33 @@ else
   fails=$((fails+1))
 fi
 
+# --- a non-text file is a finding, never a silent pass -----------------------
+# The pre-commit hook matches everything under plans/, not just `*.md`, so a
+# binary can reach this scanner. grep answers a binary file with "binary file
+# matches" on stderr and prints NO line numbers, so every pattern above comes
+# back empty and the file scores clean while carrying the secret verbatim. That
+# is a false assurance on the one control D6 rests on, so a file grep will not
+# read as text stops the commit and goes to a human.
+fbin="$TMP/blob.bin"
+head -c 512 /dev/zero > "$fbin"
+printf 'AKIA0123456789ABCDEF\n' >> "$fbin"
+run "$fbin"
+check "binary-file-with-an-embedded-key-is-not-reported-clean" 1
+check "binary-file-names-itself-as-unscannable" 1 'non-text file'
+
+# ...and a text plan is still text: UTF-8 prose and blank-only lines are not
+# binaries, or the guard above would stop every Chinese-language plan.
+mkfix utf8 <<'EOF'
+# 计划：部件上线
+
+## 任务 1
+
+- 文件：`src/widget.js`
+EOF
+printf '\n\n' >> "$f"
+run "$f"
+check "utf8-and-blank-lines-are-still-scanned-as-text" 0
+
 # --- hook level: pre-commit batches filenames onto one entry ----------------
 # pre-commit appends every matched path to a SINGLE invocation of the hook's
 # `entry`, so the entry — not the scanner — owns the multi-file case. The entry

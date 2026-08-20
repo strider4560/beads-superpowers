@@ -604,4 +604,27 @@ assert "a regular file at the anchor path is left untouched" "content: $(cat "$a
 assert "no record is written for a regular file at the anchor path" "record written" \
     test ! -e "$record"
 
+# --- Case AB: a HOME with a trailing slash -----------------------------------
+# Every OTHER actor — bundle-root.sh's BSP_ANCHOR/RECORD_PATH, the guard's
+# pre-source literals, Rule D's great_cto anchor — builds its paths from
+# `${HOME%/}`. If this hook builds the anchor it RECORDS from a bare `$HOME`,
+# a trailing-slash HOME writes `/home/u//.agents/beads-superpowers` into
+# record.anchor, which no reader's `${HOME%/}` spelling ever equals: every gate
+# reads the record as "does not describe this anchor" and denies. And because
+# the anchor symlink still resolves and still matches record.target, the
+# refresh branch stands down and rewrites the same broken record every session
+# — a permanent brick, not a transient one.
+home=$(mk_anchor_home none); ws=$(mk_ws)
+clone="$home/dev/beads-superpowers"; mk_root "$clone" 1.0.0
+anchor=$(anchor_of "$home"); record=$(record_of "$home")
+ROOT_OVERRIDE="$clone"; out=$(run_hook "$home/" "$ws" "$(payload AB '')" ""); rc=$?; unset ROOT_OVERRIDE
+assert "hook exits 0 with a trailing slash in HOME" "rc=$rc (out: $out)" test "$rc" -eq 0
+assert "record written under a trailing-slash HOME" "$record missing" test -f "$record"
+if [ -f "$record" ]; then
+    assert "record.anchor carries no doubled slash under a trailing-slash HOME" \
+        "got $(jqr '.anchor' "$record")" jqok '.anchor | test("//") | not' "$record"
+    assert "record.anchor is the \${HOME%/} spelling every reader builds" \
+        "got $(jqr '.anchor' "$record")" jqok ".anchor == \"$anchor\"" "$record"
+fi
+
 [ "$fail" -eq 0 ] && echo "PASS: session-start pipeline state" || exit 1

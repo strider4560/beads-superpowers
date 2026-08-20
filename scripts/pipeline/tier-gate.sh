@@ -81,10 +81,18 @@ session="$state_dir/session.json"
 # `-` is rejected here for the same reason and on the same path: it is
 # resolve_session_tier's in-band "no live identity" sentinel, so forwarding it
 # would SKIP the binding — and this variable is settable by the very model whose
-# tier is being gated. The check must stay AHEAD of resolve_session_tier; the
-# guard's own hardcoded `-` call site is a different, non-model-settable caller
-# and is unaffected.
-live_sid="${CLAUDE_CODE_SESSION_ID:-}"
+# tier is being gated. The check must stay AHEAD of resolve_session_tier. The
+# guard's own `-` call site is a different caller: it derives the sentinel from
+# the PreToolUse payload's absent session_id, and a PreToolUse payload is
+# harness-supplied, not model-settable env, so that path is unaffected.
+# THE SHARED SESSION-ID RULE: every actor folds a session id through
+# `tr -cd 'a-zA-Z0-9_-' | cut -c1-64` before it stores or compares it —
+# hooks/session-start when it RECORDS the id, this gate and hooks/pipeline-guard
+# when they compare against it. Raw-versus-folded is one spelling short of a
+# match on any harness whose id carries a dot, a colon, or more than 64 bytes,
+# and the whole session then reads as another session's state. The fold runs
+# BEFORE the sentinel check, so an id that folds to `-` is rejected as `-`.
+live_sid="$(printf '%s' "${CLAUDE_CODE_SESSION_ID:-}" | tr -cd 'a-zA-Z0-9_-' | cut -c1-64)"
 if [ -z "$live_sid" ] || [ "$live_sid" = "-" ]; then
   echo "ERROR: no live session identifier — CLAUDE_CODE_SESSION_ID is unset or set to '-' (the reserved no-identity sentinel, which this gate never accepts), and an absent identifier is treated as absent session data. Run the stage from a session whose harness exports it." >&2
   exit 1

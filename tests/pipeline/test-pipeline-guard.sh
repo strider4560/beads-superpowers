@@ -666,6 +666,30 @@ check "e2e-hook-written-state-resolves-the-planning-tier-and-rule-B-denies" 2 'R
 run "$c_e2e" "$h_e2e" "$(sid_docs sess-e2e)"
 check "e2e-hook-written-state-keeps-the-rule-B-allow-list" 0
 
+# The two sides have to SPELL the id the same way. session-start records it
+# through `tr -cd 'a-zA-Z0-9_-' | cut -c1-64`; a guard that compared the payload
+# raw would read every call of a session whose id carries anything else — a dot,
+# a colon, or more than 64 bytes — as an identity mismatch, denying Rules A and B
+# for the whole session and printing a remedy that carries the raw id the writer
+# would mangle again. The fixture model sits on a NON-planning tier, so a source
+# write is allowed when the id binds and denied only if it reads as a mismatch.
+h_e2ed="$(make_home e2edot)"; add_bundle "$h_e2ed" "$minver"; add_tier_map "$h_e2ed"
+c_e2ed="$TMP/cwd-e2edot"; mkdir -p "$c_e2ed"
+( cd "$c_e2ed" && HOME="$h_e2ed" XDG_RUNTIME_DIR="$TMP/xdg" "$BASH" "$root/hooks/session-start" \
+    <<<'{"session_id":"sess.dot.e2e","source":"startup","hook_event_name":"SessionStart","model":"model-orch-only"}' \
+  ) >/dev/null 2>&1
+run "$c_e2ed" "$h_e2ed" "$(sid_src sess.dot.e2e)"
+check "e2e-a-dotted-session-id-binds-instead-of-reading-as-a-mismatch" 0
+
+run "$c_e2ed" "$h_e2ed" "$(sid_epic sess.dot.e2e)"
+check "e2e-a-dotted-session-id-denies-the-plan-graph-on-its-own-tier-not-on-a-mismatch" 2 \
+  '^pipeline-guard: only a planning-tier session mutates the plan graph \(Rule A\)$'
+
+# Sanitizing is not the same as ignoring: a genuinely different session is still
+# a mismatch after both sides are folded.
+run "$c_e2ed" "$h_e2ed" "$(sid_src other.session.id)"
+check "e2e-sanitization-still-catches-a-genuinely-different-session" 2 'Rule B'
+
 # --- Phase-2 install integrity (D3, R4-004) ---------------------------------
 # verify_record's four failure states are a DENY AT EXIT 2 here: exit 1 does not
 # block a PreToolUse call, so "nonzero" is not the assertion — 2 is. The check
@@ -828,6 +852,84 @@ else
   run "$c_int" "$h_advisory" "$(sid_task sess-advisory)"
   check "integrity-dev-clone-advisory-posture-is-not-denied" 0
   unset GUARD_OVERRIDE
+
+  # --- the pre-source check hashes the ATTESTED copy, not a sibling ---------
+  # The record attests files under record.target. A guard running from OUTSIDE
+  # that target — two supported channels installed at skewed versions, or a
+  # repo-relative invocation — has a sibling bundle-root.sh that the record
+  # says nothing about, so comparing THAT file against the record's hash denies
+  # every single tool call, with a remedy (re-run install.sh) that re-attests
+  # the other root and changes nothing. The three cases below fix the subject of
+  # the hash to the copy the record actually attests, which is the same subject
+  # verify_record uses for the rest of the manifest.
+  h_skew="$(make_anchor_home integrity-skew)"
+  printf '\n# skewed channel: this copy is not byte-identical to the repo sibling\n' \
+    >> "$TMP/target-integrity-skew/scripts/pipeline/bundle-root.sh"
+  write_record "$h_skew" "$TMP/target-integrity-skew"
+  run "$c_int" "$h_skew" "$p_task"
+  check "integrity-skewed-channels-hash-the-attested-copy-not-the-guards-sibling" 0
+
+  # ...and SOURCE it too. The attested copy here raises the great_cto floor to a
+  # version no fixture bundle satisfies, so the deny reason names the floor only
+  # if the attested copy is what got sourced; the repo's own sibling would have
+  # accepted the fixture bundle and allowed the call.
+  h_skewsrc="$(make_anchor_home integrity-skew-sourced)"
+  sed -i.bak 's/^GREAT_CTO_MIN_VERSION=.*/GREAT_CTO_MIN_VERSION="999.0.0"/' \
+    "$TMP/target-integrity-skew-sourced/scripts/pipeline/bundle-root.sh"
+  rm -f "$TMP/target-integrity-skew-sourced/scripts/pipeline/bundle-root.sh.bak"
+  write_record "$h_skewsrc" "$TMP/target-integrity-skew-sourced"
+  run "$c_int" "$h_skewsrc" "$p_task"
+  check "integrity-skewed-channels-source-the-attested-copy" 2 'below the required version'
+
+  # A tampered attested copy is caught by the PRE-SOURCE check — before the
+  # function it defines is trusted — not later by verify_record. The message
+  # tells the two apart: the pre-source deny names the manifest key, the
+  # verify_record deny names an absolute path under the target.
+  h_skewtamper="$(make_anchor_home integrity-skew-tampered)"
+  printf 'verify_record() { return 0; }\n' \
+    >> "$TMP/target-integrity-skew-tampered/scripts/pipeline/bundle-root.sh"
+  run "$c_int" "$h_skewtamper" "$p_task"
+  check "integrity-a-tampered-attested-copy-is-caught-before-it-is-sourced" 2 \
+    'install integrity: scripts/pipeline/bundle-root\.sh does not match its recorded hash'
+
+  # Nothing to hash and nothing to source is a deny, never a fall-back to the
+  # unattested sibling.
+  h_skewgone="$(make_anchor_home integrity-skew-missing)"
+  rm -f "$TMP/target-integrity-skew-missing/scripts/pipeline/bundle-root.sh"
+  run "$c_int" "$h_skewgone" "$p_task"
+  check "integrity-a-missing-attested-copy-denies-at-exit-2" 2 'bundle-root\.sh'
+
+  # --- end to end on the plugin channel, with a trailing slash in HOME ------
+  # The record's WRITER is hooks/session-start on this channel and its READER is
+  # this guard, and the two build the anchor path independently. Every reader
+  # spells it `${HOME%/}`; a writer using a bare `$HOME` records
+  # `/home/u//.agents/beads-superpowers` under a trailing-slash HOME, which no
+  # reader's spelling equals — so the record describes "some other anchor" and
+  # every tool call is denied. It also self-perpetuates: the anchor still
+  # resolves and still matches record.target, so the refresh branch stands down
+  # and rewrites the identical broken record next session. Writer and reader are
+  # therefore run against each other here rather than checked apart.
+  h_slash="$(make_home trailing-slash)"; add_bundle "$h_slash" "$minver"; add_tier_map "$h_slash"
+  managed="$h_slash/.claude/plugins/cache/beads-superpowers"
+  mkdir -p "$managed/scripts/pipeline" "$managed/hooks"
+  cp -f "$root/scripts/pipeline/tier-gate.sh" "$root/scripts/pipeline/bundle-root.sh" \
+        "$root/scripts/pipeline/graph-lint.mjs" "$managed/scripts/pipeline/"
+  cp -f "$root/hooks/pipeline-guard" "$managed/hooks/"
+  cp -f "$root/package.json" "$managed/package.json"
+  c_slash="$TMP/cwd-trailing-slash"; mkdir -p "$c_slash"
+  ( cd "$c_slash" && HOME="$h_slash/" XDG_RUNTIME_DIR="$TMP/xdg" \
+      CLAUDE_PLUGIN_ROOT="$managed" "$BASH" "$root/hooks/session-start" \
+      <<<'{"session_id":"sess-slash","source":"startup","hook_event_name":"SessionStart","model":"model-orch-only"}' \
+    ) >/dev/null 2>&1
+  rec_slash="$h_slash/.local/state/beads-superpowers/record.json"
+  if [ "$(jq -r '.anchor' "$rec_slash" 2>/dev/null)" = "$h_slash/.agents/beads-superpowers" ]; then
+    echo "PASS e2e-trailing-slash-HOME-records-the-anchor-every-reader-spells"
+  else
+    echo "FAIL e2e-trailing-slash-HOME-records-the-anchor-every-reader-spells: $(jq -r '.anchor' "$rec_slash" 2>&1)"
+    fails=$((fails+1))
+  fi
+  run "$c_slash" "$h_slash/" "$(sid_task sess-slash)"
+  check "e2e-trailing-slash-HOME-record-is-accepted-by-the-guard-that-reads-it" 0
 fi
 
 # --- unarmed: no pipeline state -> allow everything, cost nothing -----------

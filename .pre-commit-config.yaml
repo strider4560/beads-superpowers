@@ -65,4 +65,12 @@ repos:
         name: Plan secret/PII scan (scan-plan)
         entry: bash -c 'rc=0; for f; do bash scripts/scan-plan.sh "$f" || rc=1; done; exit $rc' --
         language: system
-        files: ^plans/.*\.md$
+        # Everything under plans/, not `*.md` alone: scan-plan greps for text
+        # shapes and has no use for the extension, and a secret pasted into a
+        # plans/config.json or a plans/notes.txt is the same leak. A file grep
+        # will not read as text (a binary) is reported by scan-plan as a
+        # `non-text file` finding at exit 1 rather than scanned — grep prints no
+        # line numbers for one, so scanning it would score it clean while it
+        # carried the secret. The remedy is human: review it, or keep it out of
+        # plans/.
+        files: ^plans/

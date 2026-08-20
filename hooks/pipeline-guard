@@ -93,6 +93,17 @@ esac
 # only ADDS agent_id/agent_type), so there is no subagent carve-out: comparing
 # session_id alone behaves identically for both.
 live_sid="$(jq -r '.session_id // empty' <<< "$payload")"
+# THE SHARED SESSION-ID RULE: every actor folds a session id through
+# `tr -cd 'a-zA-Z0-9_-' | cut -c1-64` before it stores or compares it.
+# hooks/session-start applies it when it RECORDS the id, so a comparison against
+# the raw payload value is a comparison of two different spellings: on any
+# harness whose id carries a dot, a colon, or more than 64 bytes, EVERY call of
+# the session reads as an identity mismatch — Rules A and B denied for the whole
+# session, with a printed remedy carrying an id the writer would mangle again.
+# Fail-closed, but the wrong diagnosis and nothing the user can act on. The
+# other compare site is scripts/pipeline/tier-gate.sh; the two must stay
+# byte-identical in this expression.
+live_sid="$(printf '%s' "$live_sid" | tr -cd 'a-zA-Z0-9_-' | cut -c1-64)"
 # The recorded id is read STRAIGHT out of the state file, never inferred from
 # resolve_session_tier's empty output: that output collapses "written by another
 # session" into "no tier", and D4 needs the two apart — an unresolved tier
@@ -140,6 +151,31 @@ bsp_record_lit="${HOME%/}/.local/state/beads-superpowers/record.json"
 bundle_lib="$(dirname "$0")/../scripts/pipeline/bundle-root.sh"
 if { [ -e "$bsp_anchor_lit" ] || [ -L "$bsp_anchor_lit" ]; } && [ -r "$bsp_record_lit" ] &&
    [ "$(jq -r '.posture // empty' "$bsp_record_lit" 2>/dev/null)" = "manifest-backed" ]; then
+  # WHICH bundle-root.sh the record's hash is a claim about: the copy under
+  # record.target, never "whatever sits next to this hook". The two coincide
+  # only when this guard is itself running out of the attested root. When it is
+  # not — two supported channels installed at skewed versions, or a
+  # repo-relative/dev invocation — the sibling is a file the record says nothing
+  # about, and comparing it against the record's hash denies every tool call
+  # with a remedy that re-attests the OTHER root and so never clears (verified:
+  # the plugin-channel guard against a scripted-tier record). record.target is
+  # also the root verify_record hashes the rest of the manifest under, so this
+  # keeps one subject for the whole check. CRITICAL-2's property is unchanged:
+  # whatever is about to be sourced is hashed first, and an attested copy that
+  # is missing or unreadable denies rather than falling back to the sibling.
+  rec_target="$(jq -r '.target // empty' "$bsp_record_lit" 2>/dev/null)" || rec_target=""
+  if [ -n "$rec_target" ]; then
+    rec_tcanon="$(cd "$rec_target" 2>/dev/null && pwd -P)" || rec_tcanon=""
+    [ -n "$rec_tcanon" ] || rec_tcanon="$rec_target"
+    own_libdir="$(cd "$(dirname "$0")/../scripts/pipeline" 2>/dev/null && pwd -P)" ||
+      own_libdir=""
+    case "$own_libdir" in
+      "$rec_tcanon"|"$rec_tcanon"/*) ;;   # inside the attested root: sibling IS the copy
+      *) bundle_lib="$rec_tcanon/scripts/pipeline/bundle-root.sh"
+         [ -r "$bundle_lib" ] ||
+           deny "install integrity: the attested scripts/pipeline/bundle-root.sh is missing or unreadable under $rec_tcanon — re-run beads-superpowers' install.sh to re-attest the root" ;;
+    esac
+  fi
   want_lib_hash="$(jq -r '.hashes["scripts/pipeline/bundle-root.sh"] // empty' \
                       "$bsp_record_lit" 2>/dev/null)"
   if command -v sha256sum >/dev/null 2>&1; then

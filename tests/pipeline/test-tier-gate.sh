@@ -127,8 +127,10 @@ run_pty_cmd() { # <cwd> <home> <shell-command> — run one command line under a 
   # Used verbatim on the printed --assert remedy: the contract is that the
   # remedy string the gate prints is runnable as-is from the invoking directory.
   local cmd
+  # PTY_SID overrides the live identifier for the cases that exercise a
+  # non-UUID-shaped harness id.
   cmd="$(printf 'cd %q && HOME=%q CLAUDE_CODE_SESSION_ID=%q %s' \
-           "$1" "$2" "$LIVE_SID" "$3")"
+           "$1" "$2" "${PTY_SID:-$LIVE_SID}" "$3")"
   out="$(script -qec "$cmd" /dev/null | tr -d '\r')"
   rc=$?
   err="$out"   # a pty merges stdout and stderr into one stream
@@ -362,6 +364,23 @@ check "legacy-tier-assert-still-offers-the-assert-remedy" 1 '--assert <tier> --s
 run "$c_foreign" "$h_full" "$gate" --stage planning
 check "tier-assert-bound-to-another-session-is-treated-as-absent" 1
 
+# The gate compares the live id against an id hooks/session-start RECORDED
+# through `tr -cd 'a-zA-Z0-9_-' | cut -c1-64`. Both compare sites — this one and
+# hooks/pipeline-guard — have to fold the live id the same way, or a session
+# whose harness id carries a dot, a colon, or more than 64 bytes never binds to
+# its own state file and the gate refuses stage entry for the whole session.
+c_dotted="$TMP/cwd-dotted"; mkdir -p "$c_dotted/.internal/pipeline"
+printf '{"model_id":"model-plan-1","effort":null,"session_id":"sessdote2e","source":"hook","timestamp":"t"}\n' \
+  > "$c_dotted/.internal/pipeline/session.json"
+SID_ENV=(CLAUDE_CODE_SESSION_ID="sess.dot.e2e")
+run "$c_dotted" "$h_full" "$gate" --stage planning
+check "dotted-live-identifier-binds-to-the-sanitized-recorded-id" 0
+# Sanitizing is not ignoring: a genuinely different session still fails to bind.
+SID_ENV=(CLAUDE_CODE_SESSION_ID="other.session.id")
+run "$c_dotted" "$h_full" "$gate" --stage planning
+check "sanitization-still-rejects-a-genuinely-different-session" 1
+SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
+
 # --- resolve_session_tier arity + the `-` sentinel (D4) ---------------------
 # The live identifier is a REQUIRED third argument. An optional one makes the
 # unbound path the silent default, so a caller that simply forgot it gets
@@ -506,6 +525,28 @@ if [ "$pty_ok" -eq 1 ]; then
     echo "FAIL round-trip-printed-remedy-runs-verbatim: no remedy on stderr: $err"
     fails=$((fails+1))
   fi
+
+  # The same round trip on a harness whose session id is NOT UUID-shaped. The
+  # gate folds the live id before comparing (the shared session-id rule), so the
+  # remedy it prints has to carry the folded spelling — otherwise the human
+  # remedy records an id the next --stage can no longer bind to, and the deny it
+  # was printed for never clears.
+  c_rtdot="$(make_cwd rtdot)"
+  PTY_SID="sess.dot.rt"; SID_ENV=(CLAUDE_CODE_SESSION_ID="sess.dot.rt")
+  run "$c_rtdot" "$h_full" "$gate" --stage planning
+  check "dotted-round-trip-starts-from-a-deny" 1
+  remedy="$(printf '%s\n' "$err" | sed -n 's/.*Ask the user to run: //p' | head -1)"
+  remedy="${remedy/<tier>/planning}"
+  if [ -n "$remedy" ]; then
+    run_pty_cmd "$c_rtdot" "$h_full" "$remedy"
+    check "dotted-round-trip-printed-remedy-runs-verbatim" 0
+    run "$c_rtdot" "$h_full" "$gate" --stage planning
+    check "dotted-round-trip-gate-passes-after-the-remedy" 0
+  else
+    echo "FAIL dotted-round-trip-printed-remedy-runs-verbatim: no remedy on stderr: $err"
+    fails=$((fails+1))
+  fi
+  unset PTY_SID; SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
 else
   echo "SKIP assert-with-a-tty-* and round-trip-*: no working 'script' pty helper on this machine"
 fi

@@ -621,6 +621,11 @@ populate_anchor_root() {
     [ -e "$source_root/$rel" ] || { error "Install source is incomplete: $source_root/$rel is missing."; exit 1; }
   done
 
+  # review-package is chmod'ed explicitly alongside the gates below, not left to
+  # ride in on `cp -rf skills`: great_cto invokes it as a bare path with no
+  # interpreter, so a source that lost the bit — a tarball unpacked under a umask
+  # that strips it, a checkout with core.fileMode off — turns the third contract
+  # path into a 126 that nothing else on this host reports.
   info "Creating the install root at ${ANCHOR_ROOT/$HOME/\~}..."
   mkdir -p "$(dirname "$ANCHOR_ROOT")" || { error "Cannot create $(dirname "$ANCHOR_ROOT")"; exit 1; }
   new_root="${ANCHOR_ROOT}.new-$$"
@@ -634,7 +639,8 @@ populate_anchor_root() {
       && cp -f "$source_root/package.json" "$new_root/package.json" \
       && chmod +x "$new_root/hooks/session-start" "$new_root/hooks/pipeline-guard" \
                   "$new_root/scripts/scan-plan.sh" "$new_root/scripts/pipeline/tier-gate.sh" \
-                  "$new_root/scripts/pipeline/graph-lint.mjs"; }; then
+                  "$new_root/scripts/pipeline/graph-lint.mjs" \
+                  "$new_root/skills/subagent-driven-development/scripts/review-package"; }; then
     rm -rf "$new_root"
     error "Could not stage the install root at $new_root."
     exit 1

@@ -19,6 +19,18 @@ if [ ! -f "$file" ] || [ ! -r "$file" ]; then
   echo "scan-plan.sh: not a readable file: $file" >&2
   exit 2
 fi
+# A file grep will not read as TEXT is a file this scanner cannot scan. grep
+# answers a binary file with "binary file matches" on stderr and prints no line
+# numbers, so every pattern below comes back empty and the file scores clean
+# while carrying the secret verbatim. Since the pre-commit hook matches
+# everything under plans/ rather than `*.md` alone, that path is reachable, and
+# a false clean on the one control D6 rests on is worse than a stop. The test is
+# grep's OWN binary determination (`-I` suppresses a binary match), so the
+# detector and the scanner can never disagree about what a given file is.
+if [ -s "$file" ] && ! grep -qI '' "$file" 2>/dev/null; then
+  printf '%s:0: non-text file — this scanner cannot read it; review it by hand or keep it out of plans/\n' "$file"
+  exit 1
+fi
 
 found=0
 report() { # <line> <reason>

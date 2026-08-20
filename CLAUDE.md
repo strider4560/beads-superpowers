@@ -270,8 +270,9 @@ test -x "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scri
 # SD-13: the great_cto hard dependency is disclosed before the cut, not after
 grep -q great_cto README.md || { echo "FAIL: README.md does not disclose the great_cto dependency"; exit 1; }
 grep -q great_cto install.sh || { echo "FAIL: install.sh does not disclose the great_cto dependency"; exit 1; }
-# contract pins bump-version does NOT track — BOTH pages must name the pair being cut
+# contract pins bump-version does NOT track — BOTH pages must name BOTH halves of the pair
 { grep -q "$gcver" docs/en/pipeline.md && grep -q "$gcver" docs/zh/pipeline.md; } || { echo "FAIL: docs/en/pipeline.md and docs/zh/pipeline.md must both pin great_cto $gcver"; exit 1; }
+{ grep -q "<ver>" docs/en/pipeline.md && grep -q "<ver>" docs/zh/pipeline.md; } || { echo "FAIL: docs/en/pipeline.md and docs/zh/pipeline.md must both pin beads-superpowers <ver> — the version-pair table and the rollback instruction below it go stale silently, and rollback then names a release that never existed"; exit 1; }
 echo "OK: pipeline preconditions pass — safe to cut <ver>"
 ```
 

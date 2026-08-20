@@ -42,6 +42,13 @@ for rel in scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
            skills/subagent-driven-development/scripts/review-package; do
   assert_file "$ANCHOR/$rel"
 done
+# great_cto invokes review-package as a bare path with no interpreter, so the
+# execute bit at the ANCHOR is part of the contract, not an incidental property
+# of the source tree it was copied from.
+# shellcheck disable=SC2015  # _pass/_fail always succeed, so A && B || C can't misfire
+[ -x "$ANCHOR/skills/subagent-driven-development/scripts/review-package" ] \
+  && _pass "review-package is executable at the install root" \
+  || _fail "not executable: $ANCHOR/skills/subagent-driven-development/scripts/review-package"
 
 # The ownership record: posture DECLARED, the canonical target, the root's own
 # version, and a hash for each of the four gate files.
