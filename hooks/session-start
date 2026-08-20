@@ -338,6 +338,12 @@ if [ -d "$_bsp_bundle_root" ] && [ -f "$_bsp_bundle_root/shared/tier-map.json" ]
   # a user-run --assert, which is the fail-closed direction.
   _bsp_model=$(printf '%s' "$bsp_stdin" | jq -r '.model // empty | select(type == "string")' 2>/dev/null) || _bsp_model=""
   if mkdir -p .internal/pipeline 2>/dev/null; then
+    # UNCONDITIONALLY after the mkdir (the sdd-workspace pattern), not gated on the
+    # file being absent: a state dir left by an earlier version must start being
+    # ignored too, or session.json rides into a commit. Brace-grouped for the same
+    # reason as the state write below — an unwritable dir must not leak a bash
+    # redirect diagnostic onto every session start.
+    { printf '*\n' > .internal/pipeline/.gitignore; } 2>/dev/null || true
     # Written through a temp file: the gate refuses a session.json that is not valid
     # JSON, so a half-written one would cost the session its tier.
     # Brace-grouped so the group's 2>/dev/null is in place BEFORE the inner `>` is
@@ -351,6 +357,128 @@ if [ -d "$_bsp_bundle_root" ] && [ -f "$_bsp_bundle_root/shared/tier-map.json" ]
           timestamp: $ts}' > ".internal/pipeline/session.json.$$" \
         && mv -f ".internal/pipeline/session.json.$$" .internal/pipeline/session.json; } 2>/dev/null || true
     rm -f ".internal/pipeline/session.json.$$" 2>/dev/null || true
+  fi
+fi
+
+# --- distribution anchor + ownership record (best-effort, non-fatal) ---------
+# $HOME/.agents/beads-superpowers is the single path great_cto's spellings resolve
+# through. On the Claude Code plugin channel no installer ever runs, so this hook
+# maintains the anchor — governed by an ownership record kept OUTSIDE both anchors,
+# at a fixed path (never $XDG_STATE_HOME: installer, hooks and gates resolve env
+# vars in different process trees, and a writer/verifier divergence reads as
+# record-absent, which is a hard deny). Every write below is guarded: the bootstrap
+# envelope is already emitted and must survive any failure here. When no record can
+# be written, no anchor is created either — an anchor without a record is the state
+# the gates deny.
+_bsp_anchor="$HOME/.agents/beads-superpowers"
+_bsp_record="$HOME/.local/state/beads-superpowers/record.json"
+_bsp_manifest=(scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
+               scripts/pipeline/graph-lint.mjs hooks/pipeline-guard)
+
+# Canonical path of $1, or $1 unchanged when it does not resolve (absent anchor).
+bsp_canon() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
+
+# sha256 of $1 on stdout; empty when no hashing tool exists or the file is unreadable.
+bsp_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+    fi
+}
+
+# `,"hashes":{...}` for the manifest-backed posture over the root $1. Non-zero when
+# any manifest file cannot be hashed — a partial manifest would attest nothing.
+bsp_hashes() {
+    local rel h out=""
+    for rel in "${_bsp_manifest[@]}"; do
+        h=$(bsp_sha256 "$1/$rel") || h=""
+        [ -n "$h" ] || return 1
+        out="${out},\"${rel}\":\"${h}\""
+    done
+    printf ',"hashes":{%s}' "${out#,}"
+}
+
+# The root's own package.json version — the key the manifest refresh is gated on.
+bsp_root_version() {
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1/package.json" 2>/dev/null | head -1
+}
+bsp_record_field() {
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$_bsp_record" 2>/dev/null | head -1
+}
+
+# $1 target · $2 posture · $3 version · $4 hashes fragment ("" for advisory roots).
+bsp_write_record() {
+    local tmp
+    mkdir -p "$(dirname "$_bsp_record")" 2>/dev/null || return 1
+    tmp="${_bsp_record}.$$"
+    { printf '{"anchor":"%s","target":"%s","posture":"%s","version":"%s"%s}\n' \
+        "$(escape_for_json "$_bsp_anchor")" "$(escape_for_json "$1")" "$2" \
+        "$(escape_for_json "$3")" "$4" > "$tmp" \
+      && mv -f "$tmp" "$_bsp_record"; } 2>/dev/null || {
+        rm -f "$tmp" 2>/dev/null || true
+        return 1
+    }
+    return 0
+}
+
+_bsp_own_root="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
+_bsp_own_canon="$(bsp_canon "$_bsp_own_root")"
+
+# Posture is declared, never inferred: manifest-backed for any canonical root under
+# the harness-managed plugin directory (covers cache/ and marketplaces/ alike — a
+# stock marketplace install is itself a git clone, so "is a working tree" would not
+# discriminate), dev-clone-advisory everywhere else.
+_bsp_posture=dev-clone-advisory
+case "${_bsp_own_canon}/" in
+  "$(bsp_canon "$HOME/.claude/plugins")"/*) _bsp_posture=manifest-backed ;;
+esac
+
+_bsp_action=""
+if [ -d "$_bsp_anchor" ] && [ ! -L "$_bsp_anchor" ]; then
+  : # real directory — installer-populated, installer-recorded; stand down
+elif [ "$_bsp_own_canon" = "$_bsp_anchor" ]; then
+  # The scripted-tier shim exports CLAUDE_PLUGIN_ROOT=<anchor>. With the populated
+  # root gone there is nothing else to point at, and a symlink here would point at
+  # itself — report instead, and let the gates fail closed on the absent record.
+  printf '%s\n' "beads-superpowers root missing — re-run install.sh" >&2
+elif [ -L "$_bsp_anchor" ]; then
+  _bsp_link="$(readlink "$_bsp_anchor" 2>/dev/null)" || _bsp_link=""
+  _bsp_rec_target=""
+  [ -f "$_bsp_record" ] && { _bsp_rec_target="$(bsp_record_field target)" || _bsp_rec_target=""; }
+  if [ -n "$_bsp_rec_target" ] && [ "$_bsp_rec_target" = "$_bsp_link" ]; then
+    # The anchor is ours. Two reasons to rewrite, and only these two: the plugin
+    # root moved (repoint and self-heal), or a manifest-backed root's own version
+    # file changed — so a `claude plugin update` refreshes the manifest and a
+    # routine session does not. What that buys is stated plainly: the manifest
+    # detects tampering BETWEEN maintainer runs, not within one.
+    if [ "$_bsp_link" != "$_bsp_own_canon" ]; then
+      _bsp_action=refresh
+    elif [ "$_bsp_posture" = manifest-backed ] \
+         && [ "$(bsp_record_field version)" != "$(bsp_root_version "$_bsp_own_canon")" ]; then
+      _bsp_action=refresh
+    fi
+  else
+    printf '%s\n' "beads-superpowers anchor $_bsp_anchor points at ${_bsp_link:-?}, which does not match the ownership record — not repointing; re-run install.sh or remove the anchor" >&2
+  fi
+elif [ ! -e "$_bsp_anchor" ]; then
+  _bsp_action=refresh
+fi
+
+if [ -n "$_bsp_action" ]; then
+  _bsp_hashes=""
+  _bsp_hashed=1
+  if [ "$_bsp_posture" = manifest-backed ]; then
+    _bsp_hashes="$(bsp_hashes "$_bsp_own_canon")" || { _bsp_hashed=0; _bsp_hashes=""; }
+  fi
+  if [ "$_bsp_hashed" -eq 0 ]; then
+    printf '%s\n' "beads-superpowers: cannot hash the pipeline manifest (no sha256sum/shasum, or a manifest file is missing) — no ownership record written; pipeline gates will fail closed" >&2
+  elif bsp_write_record "$_bsp_own_canon" "$_bsp_posture" "$(bsp_root_version "$_bsp_own_canon")" "$_bsp_hashes"; then
+    # Record first, anchor second: a record without an anchor is inert, an anchor
+    # without a record is the state the gates deny.
+    mkdir -p "$(dirname "$_bsp_anchor")" 2>/dev/null || true
+    ln -sfn "$_bsp_own_canon" "$_bsp_anchor" 2>/dev/null \
+      || printf '%s\n' "beads-superpowers: could not create the anchor $_bsp_anchor — pipeline gates will fail closed" >&2
+  else
+    printf '%s\n' "beads-superpowers: could not write the ownership record $_bsp_record — pipeline gates will fail closed" >&2
   fi
 fi
 
