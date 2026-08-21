@@ -1,713 +1,168 @@
 #!/usr/bin/env bash
 # test-tier-gate.sh — contract for scripts/pipeline/tier-gate.sh.
-# Every case runs the gate inside a mktemp working dir with HOME pointed at a
-# mktemp home, so neither the real bundle root nor this repo's own session state
-# file is ever read. The sandbox HOME is load-bearing twice over now: the gate
-# reads the install anchor ($HOME/.agents/beads-superpowers) and the integrity
-# record ($HOME/.local/state/beads-superpowers/record.json) off HOME, so a case
-# that leaked to the real HOME would read — and the record fixtures would write —
-# the developer's own install. make_home refuses to hand back the real HOME.
+# Exit: 0 pass, 1 fail-closed, 2 usage.
+#
+# Since the 2026-08-21 agent-authority rework the gate is a pipeline PREFLIGHT:
+# it verifies the install (version handshake, integrity record, great_cto
+# bundle presence at the floor) and reads NOTHING about the session — no model,
+# no effort, no session id, no state files. The retired-behavior section pins
+# that: fixtures that used to deny (unmapped model, absent session id, foreign
+# session state) must now pass, and the removed --assert form is a usage error.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 gate="$root/scripts/pipeline/tier-gate.sh"
 fixture="$root/tests/pipeline/fixtures/tier-map.json"
-real_home="$HOME"
 fails=0
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
-# The live session identifier every fixture session is written under. The gate
-# reads it from CLAUDE_CODE_SESSION_ID (spike:
-# .internal/research/2026-08-19-session-identity-spike.md).
-LIVE_SID="11111111-2222-3333-4444-555555555555"
-SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
+if [ -z "$TMP" ] || [ "$TMP" = "$HOME" ]; then
+  echo "FAIL sandbox-home-differs-from-the-real-home: refusing to run against '$HOME'"
+  exit 1
+fi
+echo "PASS sandbox-home-differs-from-the-real-home"
 
 # --- sandbox builders -------------------------------------------------------
 
-make_home() { # <name> -> path to an empty HOME (no bundle root)
-  local home="$TMP/home-$1"; mkdir -p "$home"
-  # Fatal, not a FAIL line: every anchor/record case below writes under this
-  # path, so a sandbox HOME that equalled the real one would damage the host
-  # rather than report a failing contract.
-  [ "$home" != "$real_home" ] || { echo "FATAL: sandbox HOME is the real HOME" >&2; exit 1; }
-  printf '%s' "$home"
-}
-add_bundle() { # <home> <version> — bundle root with a package.json
+make_home() { local home="$TMP/home-$1"; mkdir -p "$home"; printf '%s' "$home"; }
+add_bundle() { # <home> <version>
   mkdir -p "$1/.agents/great_cto"
   printf '{"version":"%s"}\n' "$2" > "$1/.agents/great_cto/package.json"
 }
-add_tier_map() { # <home> — the fixture tier-map inside that bundle root
+add_tier_map() { # <home>
   mkdir -p "$1/.agents/great_cto/shared"
   cp -f "$fixture" "$1/.agents/great_cto/shared/tier-map.json"
 }
-add_tier_map_no_effort() { # <home> <tier> — the fixture with that tier's session_effort DELETED
-  # The shipped fixture sets session_effort on all four tiers, so nothing in this
-  # suite exercised a map that omits it. A real great_cto map may omit the key on
-  # any tier, and that must not brick the stage.
-  mkdir -p "$1/.agents/great_cto/shared"
-  jq --arg t "$2" 'del(.tiers[$t].session_effort)' "$fixture" \
-    > "$1/.agents/great_cto/shared/tier-map.json"
-}
-make_cwd() { # <name> [model] [effort] -> path to a working dir
-  local cwd="$TMP/cwd-$1" effort="null"; mkdir -p "$cwd"
-  if [ -n "${2:-}" ]; then
-    [ -n "${3:-}" ] && effort="\"$3\""
-    mkdir -p "$cwd/.internal/pipeline"
-    printf '{"model_id":"%s","effort":%s,"session_id":"%s","source":"hook","timestamp":"t"}\n' \
-      "$2" "$effort" "$LIVE_SID" > "$cwd/.internal/pipeline/session.json"
-  fi
-  printf '%s' "$cwd"
-}
 
-# A minimal beads-superpowers root: the two gate scripts plus the package.json
-# the gate version-checks itself against. Used wherever a case needs a root that
-# is NOT this repo (a raised version floor, a skewed version file).
-make_root() { # <name> <package-version> -> path to the root
-  local r="$TMP/root-$1"; mkdir -p "$r/scripts/pipeline"
-  cp -f "$root/scripts/pipeline/bundle-root.sh" "$root/scripts/pipeline/tier-gate.sh" \
-        "$r/scripts/pipeline/"
-  printf '{"version":"%s"}\n' "$2" > "$r/package.json"
-  printf '%s' "$r"
-}
-
-# sha256 over one file, by whichever tool this machine has. Empty sha_cmd means
-# the record cases report a visible SKIP rather than a false PASS.
-if command -v sha256sum >/dev/null 2>&1; then sha_cmd=(sha256sum)
-elif command -v shasum >/dev/null 2>&1; then sha_cmd=(shasum -a 256)
-else sha_cmd=(); fi
-sha() { local o; o="$("${sha_cmd[@]}" "$1")"; printf '%s' "${o%% *}"; }
-
-write_record() { # <home> <target> <posture> — the out-of-anchor integrity record
-  local rec="$1/.local/state/beads-superpowers" first=1 f
-  mkdir -p "$rec"
-  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"%s","version":"%s","hashes":{' \
-      "$1" "$2" "$3" "$selfver"
-    for f in scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
-             scripts/pipeline/graph-lint.mjs hooks/pipeline-guard; do
-      [ "$first" -eq 1 ] || printf ','
-      first=0
-      printf '"%s":"%s"' "$f" "$(sha "$2/$f")"
-    done
-    printf '}}\n'
-  } > "$rec/record.json"
-}
-
-make_anchor_home() { # <name> <posture> -> home whose anchor symlinks a populated root
-  local home target
-  home="$(make_home "$1")"; add_bundle "$home" "$minver"; add_tier_map "$home"
-  target="$TMP/target-$1"
-  mkdir -p "$target/scripts/pipeline" "$target/hooks" "$home/.agents"
-  cp -f "$root/scripts/pipeline/tier-gate.sh" "$root/scripts/pipeline/bundle-root.sh" \
-        "$root/scripts/pipeline/graph-lint.mjs" "$target/scripts/pipeline/"
-  cp -f "$root/hooks/pipeline-guard" "$target/hooks/"
-  cp -f "$root/package.json" "$target/package.json"
-  ln -sfn "$target" "$home/.agents/beads-superpowers"
-  write_record "$home" "$target" "$2"
-  printf '%s' "$home"
-}
-
-# --- runner + assertion -----------------------------------------------------
-
-run() { # <cwd> <home> <prog> [args...] — sets rc, out (stdout), err (stderr)
-  # PATH_OVERRIDE, when set, replaces PATH for the gate only (jq-absence cases).
-  # SID_ENV carries the live session identifier; cases override it to forge a
-  # different session (CLAUDE_CODE_SESSION_ID=other) or to remove it entirely
-  # (-u CLAUDE_CODE_SESSION_ID), which is why this runs through `env`.
-  # stdin comes from /dev/null so it is never a tty, whether this suite is
-  # launched from an interactive terminal or from `just`. --assert refuses
-  # without a tty, so leaving stdin inherited would make the suite non-deterministic.
-  local cwd="$1" home="$2" prog="$3"; shift 3
-  out="$(cd "$cwd" && env "${SID_ENV[@]}" HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" \
-    "$BASH" "$prog" "$@" 2>"$TMP/stderr" </dev/null)"
+run() { # <cwd> <home> <args...> — sets rc, out, err
+  local cwd="$1" home="$2"; shift 2
+  ( cd "$cwd" && HOME="$home" PATH="${PATH_OVERRIDE:-$PATH}" \
+      "$BASH" "${GATE_OVERRIDE:-$gate}" "$@" ) >"$TMP/stdout" 2>"$TMP/stderr"
   rc=$?
-  err="$(cat "$TMP/stderr")"
+  out="$(cat "$TMP/stdout")"; err="$(cat "$TMP/stderr")"
+  return 0
 }
 
-# The human path through --assert needs a real terminal on stdin. `script` is the
-# only portable-ish way to get one; where it is missing or behaves differently
-# (BSD/macOS take different flags) those cases report a visible SKIP.
-pty_ok=0
-if command -v script >/dev/null 2>&1 &&
-   [ "$(script -qec '[ -t 0 ] && echo TTY' /dev/null 2>/dev/null | tr -d '\r\n')" = "TTY" ]; then
-  pty_ok=1
-fi
-
-run_pty_cmd() { # <cwd> <home> <shell-command> — run one command line under a pty
-  # Used verbatim on the printed --assert remedy: the contract is that the
-  # remedy string the gate prints is runnable as-is from the invoking directory.
-  local cmd
-  # PTY_SID overrides the live identifier for the cases that exercise a
-  # non-UUID-shaped harness id.
-  cmd="$(printf 'cd %q && HOME=%q CLAUDE_CODE_SESSION_ID=%q %s' \
-           "$1" "$2" "${PTY_SID:-$LIVE_SID}" "$3")"
-  out="$(script -qec "$cmd" /dev/null | tr -d '\r')"
-  rc=$?
-  err="$out"   # a pty merges stdout and stderr into one stream
-}
-
-run_pty() { # <cwd> <home> <prog> [args...] — same, but with a pty on stdin
-  local cwd="$1" home="$2" prog="$3" cmd a; shift 3
-  cmd="$(printf '%q %q' "$BASH" "$prog")"
-  for a in "$@"; do cmd="$cmd $(printf '%q' "$a")"; done
-  run_pty_cmd "$cwd" "$home" "$cmd"
-}
-
-check() { # <name> <want-exit> [<ere-pattern> [stdout|stderr]] — one PASS/FAIL line
-  local name="$1" want="$2" pattern="${3:-}" stream="${4:-stdout}" detail="" hay=""
+check() { # <name> <want-exit> [<ere on stderr+stdout>]
+  local name="$1" want="$2" pattern="${3:-}" detail=""
   if [ "$rc" -ne "$want" ]; then
-    detail="exit $rc want $want"
+    detail="exit $rc want $want (stderr: $err)"
   elif [ -n "$pattern" ]; then
-    case "$stream" in stderr) hay="$err" ;; *) hay="$out" ;; esac
-    printf '%s' "$hay" | grep -qE -- "$pattern" || detail="no /$pattern/ on $stream: $hay"
+    printf '%s\n%s' "$err" "$out" | grep -qE -- "$pattern" || detail="no /$pattern/ in output: $err $out"
   fi
-  if [ -z "$detail" ]; then
-    echo "PASS $name"
-  else
-    echo "FAIL $name: $detail"
-    fails=$((fails+1))
-  fi
+  if [ -z "$detail" ]; then echo "PASS $name"; else
+    echo "FAIL $name: $detail"; fails=$((fails+1)); fi
 }
-
-# --- fixtures ---------------------------------------------------------------
 
 # The satisfied-bundle version is READ from the shipped bundle-root.sh, never
 # written as a literal: raising GREAT_CTO_MIN_VERSION would otherwise turn every
 # case below into a version-check failure that still looks red for the wrong
-# reason. Same precaution as tests/install-shape/selftest.sh.
+# reason.
 minver="$(sed -n 's/^GREAT_CTO_MIN_VERSION="\([0-9][0-9.]*\)".*/\1/p' "$root/scripts/pipeline/bundle-root.sh")"
 [ -n "$minver" ] || { echo "FAIL: cannot read GREAT_CTO_MIN_VERSION from bundle-root.sh" >&2; exit 1; }
-# Same precaution for the gate's own version constant: a release bump must not
-# turn every case below red on a literal this suite pinned.
-selfver="$(sed -n 's/^BSP_PIPELINE_VERSION="\([0-9][0-9.]*\)".*/\1/p' "$root/scripts/pipeline/tier-gate.sh")"
-[ -n "$selfver" ] || { echo "FAIL: cannot read BSP_PIPELINE_VERSION from tier-gate.sh" >&2; exit 1; }
 
-h_full="$(make_home full)";         add_bundle "$h_full" "$minver"; add_tier_map "$h_full"
+h_full="$(make_home full)";     add_bundle "$h_full" "$minver"; add_tier_map "$h_full"
 h_nobundle="$(make_home nobundle)"
-h_nomap="$(make_home nomap)";       add_bundle "$h_nomap" "$minver"
-# A bundle root that predates great_cto's package.json link — the transition
-# state on every host, not a "0.0.0 installed" bundle.
-h_nopkg="$(make_home nopkg)";       mkdir -p "$h_nopkg/.agents/great_cto"; add_tier_map "$h_nopkg"
-
-c_plan="$(make_cwd plan model-plan-1)"                       # effort null
-c_eff_ok="$(make_cwd eff-ok model-plan-1 high)"
-c_eff_bad="$(make_cwd eff-bad model-plan-1 low)"
-# A tier-map whose planning tier declares no session_effort at all.
-h_noeff="$(make_home noeff)";       add_bundle "$h_noeff" "$minver"
-add_tier_map_no_effort "$h_noeff" planning
-# implementation-orchestration carries session_effort "default" in the fixture —
-# a value $CLAUDE_EFFORT never emits — with a session that reports a real effort.
-c_orch_eff="$(make_cwd orch-eff model-orch-only high)"
-c_unknown="$(make_cwd unknown model-not-in-map)"
-c_none="$(make_cwd none)"                                    # no session state file
-c_assert="$(make_cwd assert)"                                # tier assert file below
-mkdir -p "$c_assert/.internal/pipeline"
-printf 'v2 planning %s\n' "$LIVE_SID" > "$c_assert/.internal/pipeline/tier-assert"
-c_legacy="$(make_cwd legacy)"                                # pre-v2 bare tier name
-mkdir -p "$c_legacy/.internal/pipeline"
-printf 'planning\n' > "$c_legacy/.internal/pipeline/tier-assert"
-c_foreign="$(make_cwd foreign)"                              # v2 assert, another session
-mkdir -p "$c_foreign/.internal/pipeline"
-printf 'v2 planning other-session\n' > "$c_foreign/.internal/pipeline/tier-assert"
-c_noassert="$(make_cwd noassert)"                            # --assert refusal cases
-c_pty="$(make_cwd pty)"                                      # --assert under a pty
-c_rt="$(make_cwd roundtrip)"                                 # printed-remedy round trip
-c_orch_only="$(make_cwd orch-only model-orch-only)"
-c_review_only="$(make_cwd review-only model-review-only)"
-c_multi="$(make_cwd multi model-orch-1)"                     # listed in two tiers
-c_broken="$TMP/cwd-broken"; mkdir -p "$c_broken/.internal/pipeline"
-printf '{"model_id": "model-plan-1",\n' > "$c_broken/.internal/pipeline/session.json"
-
-# A PATH with no jq on it, for the missing-jq diagnosis case.
-nojq="$TMP/bin-nojq"; mkdir -p "$nojq"
-for b in bash dirname sort head cat mkdir; do ln -sf "$(command -v "$b")" "$nojq/$b"; done
-
-# The same PATH with jq restored but neither hash tool on it: a hashing tool
-# that is unavailable at verification time is treated exactly as an unreadable
-# record, so it must not degrade into a pass.
-nohash="$TMP/bin-nohash"; mkdir -p "$nohash"
-for b in bash dirname sort head cat mkdir jq; do ln -sf "$(command -v "$b")" "$nohash/$b"; done
-
-# tier-gate.sh with no bundle-root.sh beside it, for the failed-source case.
-orphan="$TMP/orphan"; mkdir -p "$orphan"
-cp -f "$root/scripts/pipeline/tier-gate.sh" "$orphan/tier-gate.sh"
-
-# A copy of the scripts with the minimum version raised, so the shipped
-# GREAT_CTO_MIN_VERSION stays at great_cto's current version. It is a full mini
-# root, not a bare pair of scripts: the gate version-checks itself against
-# ../../package.json, so a rootless copy would fail that check first and the
-# stale-bundle case would go red for the wrong reason.
-r_stale="$(make_root stale "$selfver")"
-sed -i 's/^GREAT_CTO_MIN_VERSION=.*/GREAT_CTO_MIN_VERSION="999.0.0"/' "$r_stale/scripts/pipeline/bundle-root.sh"
-
-# A mini root whose version file disagrees with the gate's own constant.
-r_verbad="$(make_root verbad 9.9.9)"
-
-# Anchored-install fixtures. Each home carries $HOME/.agents/beads-superpowers
-# as a symlink to a populated root plus the out-of-anchor integrity record.
-if [ "${#sha_cmd[@]}" -gt 0 ]; then
-  h_rec="$(make_anchor_home rec manifest-backed)"
-  t_rec="$TMP/target-rec"
-  h_adv="$(make_anchor_home adv dev-clone-advisory)"
-  printf '\n# tampered\n' >> "$TMP/target-adv/scripts/pipeline/graph-lint.mjs"
-  h_tamper="$(make_anchor_home tamper manifest-backed)"
-  printf '\n# tampered\n' >> "$TMP/target-tamper/scripts/pipeline/graph-lint.mjs"
-  # Anchor present, record deleted: a bare mkdir + stub scripts must be
-  # fail-closed, not a silent win.
-  h_norec="$(make_anchor_home norec manifest-backed)"
-  rm -f "$h_norec/.local/state/beads-superpowers/record.json"
-  # Anchor repointed after the record was written.
-  h_repoint="$(make_anchor_home repoint manifest-backed)"
-  mkdir -p "$TMP/elsewhere-repoint"
-  ln -sfn "$TMP/elsewhere-repoint" "$h_repoint/.agents/beads-superpowers"
-  # Dangling anchor symlink: present as an entry, so its record check applies.
-  h_dangle="$(make_anchor_home dangle manifest-backed)"
-  ln -sfn "$TMP/does-not-exist-dangle" "$h_dangle/.agents/beads-superpowers"
-fi
+h_old="$(make_home old)";       add_bundle "$h_old" "0.0.1";    add_tier_map "$h_old"
+h_nomap="$(make_home nomap)";   add_bundle "$h_nomap" "$minver"
+cwd="$TMP/cwd"; mkdir -p "$cwd"
 
 # --- usage ------------------------------------------------------------------
 
-run "$c_none" "$h_full" "$gate"
-check "usage-no-args-exits-2" 2
-check "usage-says-run-from-the-repo-root" 2 'run from the repo root' stderr
+run "$cwd" "$h_full"
+check "usage-no-args-is-a-usage-error" 2 'usage'
 
-run "$c_none" "$h_full" "$gate" --stage bogus
-check "usage-unknown-stage-exits-2" 2
+run "$cwd" "$h_full" --stage
+check "usage-stage-without-a-name-is-a-usage-error" 2 'usage'
 
-# --- secondary harness ------------------------------------------------------
+run "$cwd" "$h_full" --stage deploying
+check "usage-unknown-stage-is-a-usage-error" 2 'usage'
 
-export BEADS_SP_HARNESS=secondary
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "secondary-harness-exits-4" 4
-check "secondary-harness-stdout-starts-with-SKIP" 4 '^SKIP'
-unset BEADS_SP_HARNESS
+run "$cwd" "$h_full" --stage planning extra
+check "usage-extra-args-are-a-usage-error" 2 'usage'
 
-# --- bundle root ------------------------------------------------------------
+# The retired human-remedy form: an assert has nothing to assert any more, so
+# the spelling is a usage error rather than a state write.
+run "$cwd" "$h_full" --assert planning --session s-1
+check "retired---assert-is-a-usage-error" 2 'usage'
 
-run "$c_plan" "$h_nobundle" "$gate" --stage planning
-check "missing-bundle-root-exits-1" 1
-check "missing-bundle-root-names-install-command" 1 'great_cto/scripts/install\.sh --host all' stderr
+# --- pass: the install preflight --------------------------------------------
 
-run "$c_plan" "$h_full" "$r_stale/scripts/pipeline/tier-gate.sh" --stage planning
-check "bundle-below-min-version-exits-1" 1
-check "bundle-below-min-version-says-update-great_cto" 1 'Update great_cto' stderr
+run "$cwd" "$h_full" --stage planning
+check "preflight-planning-passes" 0 'preflight OK'
 
-run "$c_plan" "$h_nopkg" "$gate" --stage planning
-check "bundle-without-package-json-exits-1" 1
-check "bundle-without-package-json-says-it-predates-the-link" 1 'predates the package\.json link' stderr
-check "bundle-without-package-json-names-the-installer-re-run" 1 'install\.sh --host all' stderr
-if printf '%s' "$err" | grep -q '0\.0\.0'; then
-  echo "FAIL bundle-without-package-json-does-not-report-0.0.0-installed: $err"; fails=$((fails+1))
-else
-  echo "PASS bundle-without-package-json-does-not-report-0.0.0-installed"
-fi
+run "$cwd" "$h_full" --stage implementing
+check "preflight-implementing-passes" 0 'preflight OK'
 
-run "$c_plan" "$h_nomap" "$gate" --stage planning
-check "missing-tier-map-exits-1" 1
-check "missing-tier-map-names-the-tier-map" 1 'tier-map missing' stderr
+run "$cwd" "$h_full" --stage reviewing
+check "preflight-reviewing-passes" 0 'preflight OK'
 
-# --- version pinning --------------------------------------------------------
-# The gate refuses to run against a root it did not ship with: the constant and
-# the version file travel together on both supported channels, so this covers
-# every caller, great_cto's flag-less spellings included.
+# --- fail-closed: the install half ------------------------------------------
 
-run "$c_plan" "$h_full" "$r_verbad/scripts/pipeline/tier-gate.sh" --stage planning
-check "root-version-mismatch-exits-1" 1
-check "root-version-mismatch-names-both-versions" 1 "$selfver.*9\.9\.9|9\.9\.9.*$selfver" stderr
-check "root-version-mismatch-names-a-reinstall-remedy" 1 'install\.sh|plugin' stderr
+run "$cwd" "$h_nobundle" --stage planning
+check "missing-bundle-root-fails-closed" 1 'great_cto'
 
-# --- dependency diagnosis ---------------------------------------------------
+run "$cwd" "$h_old" --stage planning
+check "below-floor-bundle-fails-closed" 1 'required'
 
+run "$cwd" "$h_nomap" --stage planning
+check "missing-tier-map-fails-closed" 1 'tier-map'
+
+# Version handshake: a gate running against a root whose package.json version
+# differs from its own commit-time constant refuses (spec D3). The gate resolves
+# the root two directories up from itself, so the skewed copy gets its own root.
+skew="$TMP/skew-root"; mkdir -p "$skew/scripts/pipeline"
+cp -f "$root/scripts/pipeline/tier-gate.sh" "$root/scripts/pipeline/bundle-root.sh" "$skew/scripts/pipeline/"
+printf '{"version":"0.0.0-skewed"}\n' > "$skew/package.json"
+GATE_OVERRIDE="$skew/scripts/pipeline/tier-gate.sh"
+run "$cwd" "$h_full" --stage planning
+unset GATE_OVERRIDE
+check "version-handshake-mismatch-fails-closed" 1 'install\.sh'
+
+# Missing jq is diagnosed as missing jq, not as a stale great_cto.
+nojq="$TMP/bin-nojq"; mkdir -p "$nojq"
+for b in bash dirname sed head cat grep sort; do ln -sf "$(command -v "$b")" "$nojq/$b"; done
 PATH_OVERRIDE="$nojq"
-run "$c_plan" "$h_nomap" "$gate" --stage planning
-check "missing-jq-exits-1" 1
-check "missing-jq-is-diagnosed-as-jq-not-as-a-stale-bundle" 1 'jq required' stderr
+run "$cwd" "$h_full" --stage planning
 unset PATH_OVERRIDE
+check "missing-jq-fails-closed-and-names-jq" 1 'jq'
 
-run "$c_plan" "$h_full" "$orphan/tier-gate.sh" --stage planning
-check "unloadable-bundle-root-lib-exits-1" 1
-check "unloadable-bundle-root-lib-names-the-lib" 1 'cannot load bundle-root\.sh' stderr
-
-# --- session tier resolution ------------------------------------------------
-
-run "$c_none" "$h_full" "$gate" --stage planning
-check "no-session-and-no-tier-assert-exits-1" 1
-check "no-session-tells-user-to-run-assert" 1 'tier-gate\.sh --assert' stderr
-
-run "$c_assert" "$h_full" "$gate" --stage planning
-check "tier-assert-file-unblocks-stage-entry" 0
-
-# --- session identity (D4) --------------------------------------------------
-# The state file and the tier assert are both bound to the session that wrote
-# them. An absent or mismatched identifier is the same deny as absent session
-# data, and the deny carries the live identifier plus a remedy derived from $0.
-
-SID_ENV=(CLAUDE_CODE_SESSION_ID=live-b)
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "session-written-by-another-session-exits-1" 1
-check "identity-mismatch-prints-the-live-identifier" 1 'live-b' stderr
-check "identity-mismatch-remedy-binds-the-live-identifier" 1 '--assert <tier> --session live-b' stderr
-check "identity-mismatch-remedy-names-the-invoked-path" 1 "bash $gate --assert" stderr
-SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
-
-SID_ENV=(-u CLAUDE_CODE_SESSION_ID)
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "absent-live-identifier-exits-1" 1
-check "absent-live-identifier-names-the-variable" 1 'CLAUDE_CODE_SESSION_ID' stderr
-SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
-
-# `-` is resolve_session_tier's in-band "this surface has no live identity"
-# sentinel, and CLAUDE_CODE_SESSION_ID is settable by the model whose tier is
-# being gated. Passing it through would let a session opt OUT of the D4 binding
-# and inherit whatever state file the last session left behind — exactly the
-# self-authorization path D4 closes. The fixture is the reachable exploit:
-# $c_plan's session.json belongs to another session and names a PLANNING model,
-# so a gate that forwarded `-` would answer --stage planning with exit 0. The
-# gate rejects the sentinel on the unset variable's own path, before
-# resolve_session_tier is called.
-SID_ENV=(CLAUDE_CODE_SESSION_ID=-)
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "sentinel-live-identifier-exits-1" 1
-check "sentinel-live-identifier-names-the-variable" 1 'CLAUDE_CODE_SESSION_ID' stderr
-check "sentinel-live-identifier-names-the-rejected-sentinel" 1 "'-'" stderr
-check "sentinel-live-identifier-keeps-the-live-id-remedy" 1 'Run the stage from a session' stderr
-SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
-
-run "$c_legacy" "$h_full" "$gate" --stage planning
-check "legacy-id-less-tier-assert-is-treated-as-absent" 1
-check "legacy-tier-assert-still-offers-the-assert-remedy" 1 '--assert <tier> --session' stderr
-
-run "$c_foreign" "$h_full" "$gate" --stage planning
-check "tier-assert-bound-to-another-session-is-treated-as-absent" 1
-
-# The gate compares the live id against an id hooks/session-start RECORDED
-# through `tr -cd 'a-zA-Z0-9_-' | cut -c1-64`. Both compare sites — this one and
-# hooks/pipeline-guard — have to fold the live id the same way, or a session
-# whose harness id carries a dot, a colon, or more than 64 bytes never binds to
-# its own state file and the gate refuses stage entry for the whole session.
-c_dotted="$TMP/cwd-dotted"; mkdir -p "$c_dotted/.internal/pipeline"
-printf '{"model_id":"model-plan-1","effort":null,"session_id":"sessdote2e","source":"hook","timestamp":"t"}\n' \
-  > "$c_dotted/.internal/pipeline/session.json"
-SID_ENV=(CLAUDE_CODE_SESSION_ID="sess.dot.e2e")
-run "$c_dotted" "$h_full" "$gate" --stage planning
-check "dotted-live-identifier-binds-to-the-sanitized-recorded-id" 0
-# Sanitizing is not ignoring: a genuinely different session still fails to bind.
-SID_ENV=(CLAUDE_CODE_SESSION_ID="other.session.id")
-run "$c_dotted" "$h_full" "$gate" --stage planning
-check "sanitization-still-rejects-a-genuinely-different-session" 1
-SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
-
-# --- resolve_session_tier arity + the `-` sentinel (D4) ---------------------
-# The live identifier is a REQUIRED third argument. An optional one makes the
-# unbound path the silent default, so a caller that simply forgot it gets
-# unbound behaviour with no signal. A surface that genuinely has no live
-# identity spells that deliberately: `-`.
-# These call the function directly rather than through the gate, because the
-# gate can only ever produce the three-argument form.
-
-check_empty() { # <name> <want-exit> — exit code plus empty stdout
-  if [ "$rc" -ne "$2" ]; then
-    echo "FAIL $1: exit $rc want $2"; fails=$((fails+1))
-  elif [ -n "$out" ]; then
-    echo "FAIL $1: stdout is not empty: $out"; fails=$((fails+1))
-  else
-    echo "PASS $1"
-  fi
-}
-
-rst() { # <args...> — source bundle-root.sh and call resolve_session_tier
-  out="$("$BASH" -c '
-    . "$1/scripts/pipeline/bundle-root.sh"
-    shift
-    resolve_session_tier "$@"' _ "$root" "$@" 2>"$TMP/stderr")"
-  rc=$?
-  err="$(cat "$TMP/stderr")"
-}
-
-arity_msg='resolve_session_tier requires exactly three arguments'
-map_full="$h_full/.agents/great_cto/shared/tier-map.json"
-
-rst "$c_assert/.internal/pipeline" "$map_full"
-check "two-argument-call-exits-1" 1
-check "two-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
-check "two-argument-call-names-the-sentinel" 1 "'-'" stderr
-if [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ]; then
-  echo "PASS arity-error-is-one-line"
+# Integrity: a present anchor whose record does not verify fails the preflight.
+if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+  h_anchor="$(make_home anchor)"; add_bundle "$h_anchor" "$minver"; add_tier_map "$h_anchor"
+  mkdir -p "$h_anchor/.agents" "$TMP/anchor-target"
+  ln -sfn "$TMP/anchor-target" "$h_anchor/.agents/beads-superpowers"
+  mkdir -p "$h_anchor/.local/state/beads-superpowers"
+  printf '{"anchor": ' > "$h_anchor/.local/state/beads-superpowers/record.json"
+  run "$cwd" "$h_anchor" --stage planning
+  check "integrity-unreadable-record-under-a-present-anchor-fails-closed" 1 'install\.sh'
 else
-  echo "FAIL arity-error-is-one-line: $err"; fails=$((fails+1))
-fi
-check_empty "two-argument-call-prints-no-tier" 1
-
-rst "$c_assert/.internal/pipeline" "$map_full" "$LIVE_SID" extra
-check "four-argument-call-exits-1" 1
-check "four-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
-
-rst
-check "zero-argument-call-exits-1" 1
-check "zero-argument-call-names-the-arity-contract" 1 "$arity_msg" stderr
-
-# The sentinel: session.json binding is skipped, tier-assert v2 entries are
-# treated ABSENT. The safer of the two readings — an unverified assert is the
-# self-authorization path D4 exists to close, and an unresolved tier is an
-# already-designed state for both callers (D17a).
-rst "$c_assert/.internal/pipeline" "$map_full" -
-check_empty "sentinel-treats-a-matching-v2-tier-assert-as-absent" 0
-
-rst "$c_foreign/.internal/pipeline" "$map_full" -
-check_empty "sentinel-treats-a-foreign-v2-tier-assert-as-absent" 0
-
-rst "$c_legacy/.internal/pipeline" "$map_full" -
-check_empty "sentinel-treats-a-legacy-tier-assert-as-absent" 0
-
-# The other half of the sentinel: a session.json is still read, whoever wrote it.
-c_othersession="$TMP/cwd-othersession"; mkdir -p "$c_othersession/.internal/pipeline"
-printf '{"model_id":"model-plan-1","effort":null,"session_id":"some-other-session","source":"hook","timestamp":"t"}\n' \
-  > "$c_othersession/.internal/pipeline/session.json"
-rst "$c_othersession/.internal/pipeline" "$map_full" -
-check "sentinel-skips-session-json-binding" 0 '^planning$'
-
-# Bound calls are unchanged by the arity fix.
-rst "$c_assert/.internal/pipeline" "$map_full" "$LIVE_SID"
-check "bound-call-resolves-a-matching-v2-tier-assert" 0 '^planning$'
-
-rst "$c_foreign/.internal/pipeline" "$map_full" "$LIVE_SID"
-check_empty "bound-call-treats-a-foreign-v2-tier-assert-as-absent" 0
-
-rst "$c_othersession/.internal/pipeline" "$map_full" "$LIVE_SID"
-check_empty "bound-call-treats-another-sessions-state-file-as-absent" 0
-
-run "$c_unknown" "$h_full" "$gate" --stage planning
-check "model-absent-from-tier-map-exits-1" 1
-check "model-absent-from-tier-map-names-the-model" 1 "model 'model-not-in-map' not in tier-map" stderr
-
-run "$c_broken" "$h_full" "$gate" --stage planning
-check "unparsable-session-json-exits-1" 1
-check "unparsable-session-json-names-the-file" 1 'session\.json' stderr
-if printf '%s' "$err" | grep -q -- '--assert'; then
-  echo "FAIL unparsable-session-json-does-not-offer-the---assert-remedy: $err"; fails=$((fails+1))
-else
-  echo "PASS unparsable-session-json-does-not-offer-the---assert-remedy"
+  echo "SKIP integrity case (no sha256 tool)"
 fi
 
-# --- --assert is human-only -------------------------------------------------
-# The terminal check sits ahead of the tier-name validation, so a non-tty caller
-# passing a bogus tier is still refused as non-human rather than told its tier
-# name is wrong.
+# --- retired behavior: the session is not read --------------------------------
+# Everything that used to brick a stage under the session-model tier wall must
+# now be invisible to the gate.
 
-run "$c_noassert" "$h_full" "$gate" --assert planning --session "$LIVE_SID"
-check "assert-without-a-tty-exits-1" 1
-check "assert-without-a-tty-says-human-only" 1 'human-only' stderr
-if [ -e "$c_noassert/.internal/pipeline/tier-assert" ]; then
-  echo "FAIL assert-without-a-tty-writes-no-tier-assert-file: the file was written"
-  fails=$((fails+1))
-else
-  echo "PASS assert-without-a-tty-writes-no-tier-assert-file"
-fi
+# A state file recording a model no map ever listed, written by some other
+# session, with no live session id exported: the old gate denied all three ways;
+# the preflight reads none of it.
+mkdir -p "$cwd/.internal/pipeline"
+printf '{"model_id":"some-model[1m]","session_id":"another-session","effort":"low"}\n' \
+  > "$cwd/.internal/pipeline/session.json"
+printf 'v2 review some-other-session\n' > "$cwd/.internal/pipeline/tier-assert"
+( unset CLAUDE_CODE_SESSION_ID 2>/dev/null || true )
+run "$cwd" "$h_full" --stage planning
+check "retired-session-state-is-not-read" 0 'preflight OK'
 
-run "$c_noassert" "$h_full" "$gate" --assert bogus --session "$LIVE_SID"
-check "assert-unknown-tier-without-a-tty-is-refused-before-tier-validation" 1 'human-only' stderr
+run "$cwd" "$h_full" --stage implementing
+check "retired-no-stage-is-tier-walled" 0 'preflight OK'
 
-# An assert with no recorded identifier is treated as absent, so the gate never
-# accepts the id-less form at all: it is a usage error, ahead of the tty check.
-run "$c_noassert" "$h_full" "$gate" --assert planning
-check "assert-without---session-exits-2" 2
-check "assert-without---session-prints-the-four-argument-usage" 2 '--assert <tier> --session <id>' stderr
-
-if [ "$pty_ok" -eq 1 ]; then
-  run_pty "$c_pty" "$h_full" "$gate" --assert planning --session "$LIVE_SID"
-  check "assert-with-a-tty-exits-0" 0
-  if [ "$(cat "$c_pty/.internal/pipeline/tier-assert" 2>/dev/null)" = "v2 planning $LIVE_SID" ]; then
-    echo "PASS assert-with-a-tty-writes-the-v2-session-bound-tier-assert-file"
-  else
-    echo "FAIL assert-with-a-tty-writes-the-v2-session-bound-tier-assert-file: $(cat "$c_pty/.internal/pipeline/tier-assert" 2>/dev/null)"
-    fails=$((fails+1))
-  fi
-  run_pty "$c_pty" "$h_full" "$gate" --assert bogus --session "$LIVE_SID"
-  check "assert-with-a-tty-unknown-tier-exits-2" 2
-
-  # The round trip the acceptance criteria name: the deny prints a remedy, a
-  # human runs it verbatim from a second (interactive) shell, and the gate then
-  # passes. <tier> is the one placeholder the human fills in.
-  run "$c_rt" "$h_full" "$gate" --stage planning
-  check "round-trip-starts-from-a-deny" 1
-  remedy="$(printf '%s\n' "$err" | sed -n 's/.*Ask the user to run: //p' | head -1)"
-  remedy="${remedy/<tier>/planning}"
-  if [ -n "$remedy" ]; then
-    run_pty_cmd "$c_rt" "$h_full" "$remedy"
-    check "round-trip-printed-remedy-runs-verbatim" 0
-    run "$c_rt" "$h_full" "$gate" --stage planning
-    check "round-trip-gate-passes-after-the-remedy" 0
-  else
-    echo "FAIL round-trip-printed-remedy-runs-verbatim: no remedy on stderr: $err"
-    fails=$((fails+1))
-  fi
-
-  # The same round trip on a harness whose session id is NOT UUID-shaped. The
-  # gate folds the live id before comparing (the shared session-id rule), so the
-  # remedy it prints has to carry the folded spelling — otherwise the human
-  # remedy records an id the next --stage can no longer bind to, and the deny it
-  # was printed for never clears.
-  c_rtdot="$(make_cwd rtdot)"
-  PTY_SID="sess.dot.rt"; SID_ENV=(CLAUDE_CODE_SESSION_ID="sess.dot.rt")
-  run "$c_rtdot" "$h_full" "$gate" --stage planning
-  check "dotted-round-trip-starts-from-a-deny" 1
-  remedy="$(printf '%s\n' "$err" | sed -n 's/.*Ask the user to run: //p' | head -1)"
-  remedy="${remedy/<tier>/planning}"
-  if [ -n "$remedy" ]; then
-    run_pty_cmd "$c_rtdot" "$h_full" "$remedy"
-    check "dotted-round-trip-printed-remedy-runs-verbatim" 0
-    run "$c_rtdot" "$h_full" "$gate" --stage planning
-    check "dotted-round-trip-gate-passes-after-the-remedy" 0
-  else
-    echo "FAIL dotted-round-trip-printed-remedy-runs-verbatim: no remedy on stderr: $err"
-    fails=$((fails+1))
-  fi
-  unset PTY_SID; SID_ENV=(CLAUDE_CODE_SESSION_ID="$LIVE_SID")
-else
-  echo "SKIP assert-with-a-tty-* and round-trip-*: no working 'script' pty helper on this machine"
-fi
-
-# --- stage -> tier mapping --------------------------------------------------
-
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "stage-planning-matches-planning-tier" 0
-check "null-effort-prints-human-set-convention-advisory" 0 'intended session effort: high .* human-set convention'
-
-run "$c_plan" "$h_full" "$gate" --stage implementing
-check "stage-implementing-mismatch-exits-1" 1
-check "stage-implementing-requires-implementation-orchestration-tier" 1 "requires tier 'implementation-orchestration'" stderr
-check "stage-implementing-mismatch-names-found-tier" 1 "is 'planning'" stderr
-
-run "$c_plan" "$h_full" "$gate" --stage reviewing
-check "stage-reviewing-mismatch-exits-1" 1
-check "stage-reviewing-requires-review-tier" 1 "requires tier 'review'" stderr
-
-run "$c_orch_only" "$h_full" "$gate" --stage implementing
-check "stage-implementing-passes-for-an-implementation-orchestration-model" 0
-
-run "$c_review_only" "$h_full" "$gate" --stage reviewing
-check "stage-reviewing-passes-for-a-review-model" 0
-
-# A model listed in two tiers is in the wanted tier for both of them.
-run "$c_multi" "$h_full" "$gate" --stage implementing
-check "multi-tier-model-passes-implementing" 0
-check "multi-tier-ok-line-names-one-tier" 0 '^tier-gate OK: implementation-orchestration \('
-
-run "$c_multi" "$h_full" "$gate" --stage reviewing
-check "multi-tier-model-passes-reviewing" 0
-check "multi-tier-ok-line-names-one-tier-reviewing" 0 '^tier-gate OK: review \('
-
-run "$c_multi" "$h_full" "$gate" --stage planning
-check "multi-tier-model-still-fails-a-tier-it-is-not-in" 1
-check "multi-tier-mismatch-lists-found-tiers-on-one-line" 1 \
-  "is 'implementation-orchestration, review'" stderr
-
-# --- session effort ---------------------------------------------------------
-
-run "$c_eff_ok" "$h_full" "$gate" --stage planning
-check "effort-matching-tier-map-exits-0" 0
-
-run "$c_eff_bad" "$h_full" "$gate" --stage planning
-check "effort-mismatch-exits-1" 1
-check "effort-mismatch-names-found-effort" 1 "is 'low'" stderr
-check "effort-mismatch-names-required-effort" 1 "requires session effort 'high'" stderr
-
-# A tier that declares NO session_effort constrains nothing. Defaulting the absent
-# key to the literal "default" compared that string against a session effort that
-# only ever reports low|medium|high|xhigh|max, so every effort-reporting session on
-# such a tier failed closed — the stage was unenterable by anyone who could detect
-# their own effort.
-run "$c_eff_ok" "$h_noeff" "$gate" --stage planning
-check "absent-session_effort-does-not-brick-an-effort-reporting-session" 0
-check "absent-session_effort-says-the-tier-declares-none" 0 'declares no session effort'
-check "absent-session_effort-still-names-the-session-effort" 0 'high'
-
-# The null-effort advisory must not regress into naming an effort the map never set.
-run "$c_plan" "$h_noeff" "$gate" --stage planning
-check "absent-session_effort-with-null-effort-exits-0" 0
-check "absent-session_effort-with-null-effort-declares-none" 0 'declares no session effort'
-
-# Same failure, spelled differently: a tier whose session_effort IS set, to a value
-# the harness never emits. "default" is the tier-map's own idiom for unconstrained,
-# so it must behave as unconstrained rather than as an effort to match.
-run "$c_orch_eff" "$h_full" "$gate" --stage implementing
-check "default-session_effort-does-not-brick-an-effort-reporting-session" 0
-check "default-session_effort-says-the-tier-declares-none" 0 'declares no session effort'
-
-# --- integrity record -------------------------------------------------------
-# Anchor presence is tested on the entry itself, the record is selected by
-# anchor path, the anchor's canonical target must equal record.target, and the
-# hashes are verified over the files under that target — not under whatever root
-# this gate happens to be running from.
-
-run "$c_plan" "$h_full" "$gate" --stage planning
-check "no-anchor-means-no-record-claim" 0
-if printf '%s' "$err" | grep -q 'integrity record'; then
-  echo "FAIL no-anchor-does-not-mention-the-record: $err"; fails=$((fails+1))
-else
-  echo "PASS no-anchor-does-not-mention-the-record"
-fi
-
-if [ "${#sha_cmd[@]}" -eq 0 ]; then
-  echo "SKIP integrity-record-*: no sha256sum or shasum on this machine"
-else
-  run "$c_plan" "$h_rec" "$gate" --stage planning
-  check "valid-record-does-not-block-the-gate" 0
-  check "gate-outside-the-attested-root-self-reports" 0 'running unpinned copy \(not the anchored install\)' stderr
-
-  run "$c_plan" "$h_rec" "$t_rec/scripts/pipeline/tier-gate.sh" --stage planning
-  check "gate-inside-the-attested-root-passes" 0
-  if printf '%s' "$err" | grep -q 'running unpinned copy'; then
-    echo "FAIL gate-inside-the-attested-root-does-not-self-report: $err"; fails=$((fails+1))
-  else
-    echo "PASS gate-inside-the-attested-root-does-not-self-report"
-  fi
-
-  run "$c_plan" "$h_tamper" "$gate" --stage planning
-  check "tampered-manifest-file-exits-1" 1
-  check "tampered-manifest-names-the-file-and-the-hash" 1 'graph-lint\.mjs.*hash' stderr
-
-  run "$c_plan" "$h_norec" "$gate" --stage planning
-  check "anchor-present-with-no-record-exits-1" 1
-  check "record-absent-names-the-record-path" 1 '\.local/state/beads-superpowers/record\.json' stderr
-
-  run "$c_plan" "$h_repoint" "$gate" --stage planning
-  check "repointed-anchor-exits-1" 1
-  check "repointed-anchor-names-the-repoint" 1 'repointed' stderr
-  if printf '%s' "$err" | grep -q 'hash'; then
-    echo "FAIL repointed-anchor-is-not-reported-as-a-hash-mismatch: $err"; fails=$((fails+1))
-  else
-    echo "PASS repointed-anchor-is-not-reported-as-a-hash-mismatch"
-  fi
-
-  run "$c_plan" "$h_dangle" "$gate" --stage planning
-  check "dangling-anchor-symlink-is-present-so-the-record-check-applies" 1
-  check "dangling-anchor-says-it-does-not-resolve" 1 'does not resolve' stderr
-
-  run "$c_plan" "$h_adv" "$gate" --stage planning
-  check "declared-dev-clone-advisory-posture-does-not-block" 0
-  check "advisory-posture-is-reported" 0 'advisory \(unpinned root\)' stderr
-
-  PATH_OVERRIDE="$nohash"
-  run "$c_plan" "$h_rec" "$gate" --stage planning
-  check "missing-hash-tool-is-treated-as-an-unreadable-record" 1
-  check "missing-hash-tool-names-the-tools" 1 'sha256sum|shasum' stderr
-  unset PATH_OVERRIDE
-
-  # A malformed record must land on the unreadable-record deny, not verify
-  # nothing and return 0.
-  h_empty="$(make_anchor_home empty manifest-backed)"
-  jq '.hashes = {}' "$h_empty/.local/state/beads-superpowers/record.json" \
-    > "$TMP/empty-record.json" && cp -f "$TMP/empty-record.json" "$h_empty/.local/state/beads-superpowers/record.json"
-  run "$c_plan" "$h_empty" "$gate" --stage planning
-  check "manifest-backed-record-with-no-hashes-exits-1" 1
-  check "manifest-backed-record-with-no-hashes-says-unreadable" 1 'unreadable' stderr
-
-  h_other="$(make_anchor_home other manifest-backed)"
-  jq '.anchor = "/somewhere/else"' "$h_other/.local/state/beads-superpowers/record.json" \
-    > "$TMP/other-record.json" && cp -f "$TMP/other-record.json" "$h_other/.local/state/beads-superpowers/record.json"
-  run "$c_plan" "$h_other" "$gate" --stage planning
-  check "record-for-another-anchor-exits-1" 1
-  check "record-for-another-anchor-says-it-does-not-describe-this-anchor" 1 'does not describe' stderr
-fi
+# BEADS_SP_HARNESS=secondary used to SKIP at exit 4 because the gate needed the
+# session model and that harness could not supply one. The preflight needs no
+# model, so the same env now runs the same checks.
+( cd "$cwd" && HOME="$h_full" BEADS_SP_HARNESS=secondary "$BASH" "$gate" --stage planning ) \
+  >"$TMP/stdout" 2>"$TMP/stderr"; rc=$?; out="$(cat "$TMP/stdout")"; err="$(cat "$TMP/stderr")"
+check "retired-secondary-harness-no-longer-skips" 0 'preflight OK'
 
 # --- summary ----------------------------------------------------------------
 

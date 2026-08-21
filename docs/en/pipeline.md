@@ -1,14 +1,14 @@
 ---
 sidebar:
   order: 10
-description: The five-stage pipeline that runs a change from idea to reviewed epic across two sessions, the capability tiers each stage runs at, and the gates that fail closed when something is off.
+description: The five-stage pipeline that runs a change from idea to reviewed epic across two sessions, the authority each participant holds, and the gates that fail closed when something is off.
 ---
 
 <!-- Role: the contract between beads-superpowers and great_cto - stages, session roles, tier vocabulary, gates, and the plan of record. Does NOT belong here: per-skill reference detail (skills.md), or the router-style walkthrough of the older single-session flow (workflow.md). -->
 
 # The Pipeline
 
-[Example Workflow](workflow.md) describes the single-session flow this pipeline replaced; read it for how the individual skills route to each other, and read this page for the stage and tier contract that now sits over them.
+[Example Workflow](workflow.md) describes the single-session flow this pipeline replaced; read it for how the individual skills route to each other, and read this page for the stage and authority contract that now sits over them.
 
 Work travels through five stages split across two sessions: a planning session that ends with a bead graph, and an implementation session that reads that graph and builds against it. Nothing is handed between them in prose. The plan of record is the bead graph plus the `.mex/` knowledge store, so the implementation session never parses a document the planning session wrote.
 
@@ -28,7 +28,7 @@ git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Deve
 | 4. Implement one epic | `implementing-epics` (great_cto) | Epic selection, task grouping, worktrees and branches; each task group goes to the task engine in this repo |
 | 5. Epic review | `reviewing-epics` (great_cto) | The built epic goes to the mandatory reviewers plus whichever the plan declared, read-only, in rounds with a breaker |
 
-Each stage's terminal action is invoking the next stage's skill, so the sequence holds without a supervising state machine. A trivial fix - one line, no design question - skips the stages but not the tier walls, because the hook rules below apply to every session regardless of which stage it thinks it is in.
+Each stage's terminal action is invoking the next stage's skill, so the sequence holds without a supervising state machine. A trivial fix - one line, no design question - skips the stages but not the guard rules below, which apply to every session and every subagent regardless of which stage they think they are in.
 
 ## Two session roles
 
@@ -47,19 +47,19 @@ Skills in this repo name four tiers and nothing else:
 - **implementation tier** - task implementers, which a plan may raise for an individual task
 - **review tier** - epic reviewers and the per-group task review
 
-Model identifiers and default effort levels appear only in great_cto's tier map. The harnesses this repo ships to name their models differently or not at all, so a guard rejects a model name in harness-neutral content. If you need to know which model a tier resolves to, read the tier map, not a skill.
+Tiers are dispatch-time economy, not enforcement: since the agent-authority rework (2026-08-21) no gate reads the session's model, and which model a session or a dispatch runs on is a human choice the tier map describes. Model identifiers and default effort levels appear only in great_cto's tier map. The harnesses this repo ships to name their models differently or not at all, so a guard rejects a model name in harness-neutral content. If you need to know which model a tier resolves to, read the tier map, not a skill.
 
 ## What fails closed
 
 Four gates, all of them tooling rather than prose. None of them asks the agent to police itself.
 
-**The hard-dependency check.** `install.sh` verifies the bundle root before it detects tools or touches anything. `--uninstall` is the single exemption, because removing beads-superpowers must never require the dependency beads-superpowers needs to run. In the pipeline scripts the bundle root is resolved before any tier decision, but two paths return ahead of it: `tier-gate.sh --assert`, which only writes down a tier you supplied by hand, and the secondary-harness SKIP below. A missing bundle root prints the install command above and exits nonzero. The session-start hook reports bundle-root presence too, by directory existence alone, because that hook only ever reads files.
+**The hard-dependency check.** `install.sh` verifies the bundle root before it detects tools or touches anything. `--uninstall` is the single exemption, because removing beads-superpowers must never require the dependency beads-superpowers needs to run. In the pipeline scripts the bundle root is resolved after the gate's own version handshake and integrity check, ahead of everything else. A missing bundle root prints the install command above and exits nonzero. The session-start hook reports bundle-root presence too, by directory existence alone, because that hook only ever reads files.
 
-**The tier gate.** Stage skills call `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing` at stage entry. The gate reads the session's model from the state file the session-start hook wrote, maps it through the tier map, and exits nonzero on a mismatch so the skill can stop and ask you to switch models. Where the harness never reported a model, the gate does not guess: it refuses stage entry until you - never the agent - record the session's tier by hand. Session effort is checked the same way when the harness exposes it and is advisory when it does not. A caller that knows its harness cannot expose a model id sets `BEADS_SP_HARNESS=secondary`, and the gate short-circuits to a visible SKIP with its own exit code, which no caller may read as a pass.
+**The preflight gate.** Stage skills call `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing` at stage entry (the filename is historical). The gate verifies the install: the version handshake between the gate and its own root, the integrity record, and the great_cto bundle at the required floor. It reads nothing about the session - no model, no effort, no session id - so no harness or model spelling can brick a stage.
 
-**The PreToolUse backstop.** Where hooks exist, four hard denies apply once a project is armed, with no ask-or-confirm middle ground. A session outside the planning tier cannot mutate the plan graph, though plain task creation still passes, since fix tasks and `needs-planning` beads are legitimate implementation writes. A planning-tier session cannot write source files outside `.internal/`, `.mex/`, `docs/`, and `plans/` - the plan a planning session commits is a planning artifact, so `plans/` is on the list. The agent cannot record a session tier by hand, which is a human's job. And the pipeline's own state directory is not agent-writable at any tier, evaluated ahead of the planning allowance so the allowance cannot swallow it. The hook denies on internal error rather than allowing, and it does not depend on the agent choosing to call the gate.
+**The PreToolUse backstop.** Where hooks exist, two rule families apply once a project is armed, with no ask-or-confirm middle ground. Rule D: the pipeline's own state directory and the installed gate surface are not agent-writable, for any caller - anything that can rewrite the control judging it has self-authorized. Rule S: a subagent - detected mechanically by the `agent_id` the harness stamps on every subagent tool call, never by name - cannot mutate beads (reads and `bd note` on its own task bead stay open), write mex, or edit the plan of record (`plans/`, `.internal/plans/`, `.internal/specs/`); those belong to the orchestrating session that dispatched it, and the deny message tells the subagent to report the need instead. The orchestrating session itself is unrestricted by Rule S. The hook denies on internal error rather than allowing, and it does not depend on the agent choosing to call the gate.
 
-Rule two has known false positives - a trivial fix asked for in a planning-tier session, or work on beads-superpowers or great_cto themselves. The remedy is human: switch to a non-planning-tier session, or turn the hook off deliberately. No skill documents a workaround, because a documented degradation mode is a mode people will use.
+The session-model tier wall that used to sit here - rules keyed on which model the session ran - was removed in the agent-authority rework: it bricked whole sessions whenever a harness spelled a model id in a way the tier map did not list, and the enforcement point never receives a model on PreToolUse anyway. Guard rails now attach to what is mechanically observable: subagent identity.
 
 **graph-lint.** `scripts/pipeline/graph-lint.mjs` reads `bd list --json` and checks that every task's implementation agent and every epic's reviewers exist in the bundle root's roster, that the dependency graph is acyclic, that tier values exist in the tier map, that required body sections are present, and that the initiative-to-epic-to-task structure is intact. The capture stage cannot complete until it passes, and the implementation session reruns it before selecting an epic. A failure means fixing the beads and rerunning; hand-editing around it defeats the point.
 
@@ -85,7 +85,7 @@ great_cto reaches into this repo through three absolute paths. Their spellings, 
 bash "$HOME/.agents/beads-superpowers/scripts/pipeline/tier-gate.sh" --stage <stage>
 node "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" --initiative <id> --state <dump>
 "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scripts/review-package" <plan-path> <MERGE_BASE> HEAD
-# Exit contract: 0/1/2/4 as documented per script. Any other exit — including
+# Exit contract: 0/1/2 as documented per script. Any other exit — including
 # 127 (missing file) — is fail-closed: stop and report. This row is also added
 # to the exit tables in skills/brainstorming and skills/writing-plans.
 ```
@@ -116,12 +116,11 @@ entries are repository-relative; no leading `./` or `/`; no `..`, no interior `.
 
 ### When a gate stops you
 
-Three failures have a remedy you can act on directly. All three deny rather than warn, and none of them has an agent-side fix, which is the point.
+Two failures have a remedy you can act on directly. Both deny rather than warn, and neither has an agent-side fix, which is the point.
 
 | What the gate reports | What clears it |
 |-----------------------|----------------|
 | The integrity record is missing or unreadable, or a file `does not match its recorded hash` | Re-run `install.sh`. The record is written by its channel's maintainer - `install.sh` on the scripted tiers, session-start on the plugin channel - and only that maintainer can rewrite it; on the plugin channel, that means starting a fresh session so the hook re-attests the root. |
 | `is running against beads-superpowers root`, naming a version that is not the gate's own | Re-run `install.sh`, or refresh the plugin, so the gates and the installed root are the same version. |
-| `session state was written by a different session` | Delete `.internal/pipeline/session.json` yourself and start a fresh session. A mismatch applies both denies at once, at whatever tier resolved: the plan graph is not mutable, and writes are restricted to the same allow-list a planning-tier session gets - `.internal/`, `.mex/`, `docs/`, `plans/`. Recording a tier with `--assert` binds to your live session but does not clear a stale foreign state file, so both denies stand while that file sits there - and the state directory is not agent-writable, so the agent cannot remove it for you. |
 
 Accepted risks and residuals for this contract are recorded privately, in the decision record's amendment and in `.mex/private/`, not on this page.

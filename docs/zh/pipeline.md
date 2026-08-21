@@ -2,7 +2,7 @@
 sidebar:
   order: 10
 machine_translated: true
-description: 五阶段流水线如何跨越两类会话，把一个想法推进到经过评审的 epic；每个阶段运行在哪个能力档位；以及出现偏差时哪些门控会在失败时拒绝放行。
+description: 五阶段流水线如何跨越两类会话，把一个想法推进到经过评审的 epic；各参与者各自持有怎样的权限；以及出现偏差时哪些门控会在失败时拒绝放行。
 ---
 
 <!-- Role: the contract between beads-superpowers and great_cto - stages, session roles, tier vocabulary, gates, and the plan of record. Does NOT belong here: per-skill reference detail (skills.md), or the router-style walkthrough of the older single-session flow (workflow.md). -->
@@ -12,7 +12,7 @@ description: 五阶段流水线如何跨越两类会话，把一个想法推进�
 
 # 流水线
 
-[示例工作流](workflow.md)描述的是本流水线所取代的单会话流程：想了解各个技能之间如何相互路由，读那一页；想了解如今覆盖其上的阶段与档位契约，读本页。
+[示例工作流](workflow.md)描述的是本流水线所取代的单会话流程：想了解各个技能之间如何相互路由，读那一页；想了解如今覆盖其上的阶段与权限契约，读本页。
 
 工作流经五个阶段，分属两类会话：规划会话以产出一张 bead 图收尾，实现会话读取这张图并据此构建。两者之间不靠散文交接。计划的权威记录是 bead 图加上 `.mex/` 知识库，因此实现会话从不去解析规划会话写下的文档。
 
@@ -32,7 +32,7 @@ git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Deve
 | 4. 实现单个 epic | `implementing-epics`（great_cto） | 挑选 epic、分组任务、准备 worktree 与分支；每个任务组交给本仓库的任务引擎 |
 | 5. Epic 评审 | `reviewing-epics`（great_cto） | 构建完成的 epic 交给强制评审者以及计划中声明的评审者，只读，分轮进行并设有轮次上限 |
 
-每个阶段的收尾动作就是调用下一阶段的技能，因此这个顺序无需一个监管状态机也能成立。一处琐碎修复——一行代码、没有设计问题——可以跳过这些阶段，但跳不过档位墙，因为下文的钩子规则对每个会话都生效，与它自认为处在哪个阶段无关。
+每个阶段的收尾动作就是调用下一阶段的技能，因此这个顺序无需一个监管状态机也能成立。一处琐碎修复——一行代码、没有设计问题——可以跳过这些阶段，但跳不过下文的守卫规则：它们对每个会话和每个子代理都生效，与其自认为处在哪个阶段无关。
 
 ## 两类会话角色
 
@@ -51,19 +51,19 @@ git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Deve
 - **实现档位**——任务实现者；计划可以为个别任务上调该档位
 - **评审档位**——epic 评审者以及每组任务的评审
 
-模型标识符和默认强度只出现在 great_cto 的档位映射表里。本仓库分发到的各类 harness 对模型的命名各不相同，有的根本不暴露模型名，因此有一道守卫会拒绝在与 harness 无关的内容里出现模型名。想知道某个档位对应哪个模型，请查档位映射表，而不是查技能文件。
+档位是派发期的成本约定，而不是强制边界：自代理权限重构（2026-08-21）起，没有任何门控读取会话的模型；会话或派发运行在哪个模型上由人来选择，档位映射表只是把这一选择记录下来。模型标识符和默认强度只出现在 great_cto 的档位映射表里。本仓库分发到的各类 harness 对模型的命名各不相同，有的根本不暴露模型名，因此有一道守卫会拒绝在与 harness 无关的内容里出现模型名。想知道某个档位对应哪个模型，请查档位映射表，而不是查技能文件。
 
 ## 哪些门控失败即拒绝
 
 四道门控，全部由工具实现而非靠散文约束。没有一道要求智能体自我监管。
 
-**硬依赖检查。** `install.sh` 在探测工具、改动任何东西之前先校验捆绑根目录。唯一的例外是 `--uninstall`：卸载 beads-superpowers 绝不应当反过来要求它运行时所依赖的东西。在流水线脚本里，捆绑根目录会在任何档位判定之前解析，但有两条路径会先一步返回：`tier-gate.sh --assert` 只是把你手工给出的档位记下来，以及下文那条次要 harness 的 SKIP。捆绑根目录缺失时，会打印上文那条安装命令并以非零码退出。会话启动钩子同样会报告捆绑根目录是否存在，判断依据仅为目录是否存在，因为该钩子只读文件。
+**硬依赖检查。** `install.sh` 在探测工具、改动任何东西之前先校验捆绑根目录。唯一的例外是 `--uninstall`：卸载 beads-superpowers 绝不应当反过来要求它运行时所依赖的东西。在流水线脚本里，捆绑根目录在门控自身的版本握手与完整性检查之后、其余一切之前解析。捆绑根目录缺失时，会打印上文那条安装命令并以非零码退出。会话启动钩子同样会报告捆绑根目录是否存在，判断依据仅为目录是否存在，因为该钩子只读文件。
 
-**档位门控。** 阶段技能在进入阶段时调用 `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing`。门控从会话启动钩子写下的状态文件中读取本次会话的模型，经档位映射表换算，不匹配时以非零码退出，技能据此停下并请你切换模型。若 harness 从未上报模型，门控不做猜测：它拒绝进入该阶段，直到你——而不是智能体——手工记录本次会话的档位。harness 暴露会话强度时，强度按同样方式校验；不暴露时仅作提示。调用方若知道自己所在的 harness 无法暴露模型标识符，可以设置 `BEADS_SP_HARNESS=secondary`，门控随即短路为一个可见的 SKIP，并带上它专用的退出码；任何调用方都不得把它当作通过。
+**预检门控。** 阶段技能在进入阶段时调用 `scripts/pipeline/tier-gate.sh --stage planning|implementing|reviewing`（文件名是历史遗留）。门控校验的是安装本身：门控与其根目录之间的版本握手、完整性记录，以及满足版本下限的 great_cto 捆绑。它不读取会话的任何信息——不读模型、不读强度、不读会话标识——因此任何 harness 或模型 id 的写法都不可能卡死一个阶段。
 
-**PreToolUse 兜底。** 在存在钩子的场景下，项目一旦处于启用状态，就有四条硬拒绝生效，没有询问或确认这类中间地带。规划档位之外的会话不能改动计划图，但普通的任务创建仍然放行，因为修复任务和 `needs-planning` bead 都是合法的实现期写入。规划档位的会话不能在 `.internal/`、`.mex/`、`docs/`、`plans/` 之外写源码文件——规划会话提交的计划本身就是规划产物，因此 `plans/` 也在名单里。智能体不能手工记录会话档位，那是人的职责。流水线自身的状态目录在任何档位下都不允许智能体写入，且该判定排在规划期写入豁免之前，以免被豁免吞掉。钩子内部出错时选择拒绝而非放行，并且它不依赖智能体是否愿意调用门控脚本。
+**PreToolUse 兜底。** 在存在钩子的场景下，项目一旦处于启用状态，就有两族规则生效，没有询问或确认这类中间地带。规则 D：流水线自身的状态目录和已安装的门控文件面，任何调用者都不允许写入——能改写正在裁决自己的控制件，就等于自我授权。规则 S：子代理——由 harness 在每次子代理工具调用上盖章的 `agent_id` 机械识别，绝不按名字识别——不能改动 bead（只读命令和对自己任务 bead 的 `bd note` 仍然放行）、不能写 mex、不能编辑计划记录（`plans/`、`.internal/plans/`、`.internal/specs/`）；这些属于派发它的编排会话，拒绝消息会告诉子代理改为在报告中提出需求。编排会话本身不受规则 S 限制。钩子内部出错时选择拒绝而非放行，并且它不依赖智能体是否愿意调用门控脚本。
 
-第二条规则有已知的误判——在规划档位会话里提出的琐碎修复，或者开发 beads-superpowers、great_cto 本身。补救办法只属于人：切换到非规划档位的会话，或者有意识地关掉钩子。任何技能都不记录绕过办法，因为一旦把降级模式写进文档，就会有人照着用。
+过去设在这里的会话模型档位墙——按会话运行的模型来裁决的规则——已在代理权限重构中移除：只要 harness 给出的模型 id 写法不在档位映射表里，整个会话就会被卡死，而 PreToolUse 本来就收不到模型字段。如今护栏只挂在可被机械观测的事实上：子代理身份。
 
 **graph-lint。** `scripts/pipeline/graph-lint.mjs` 读取 `bd list --json`，校验每个任务的实现智能体和每个 epic 的评审者都存在于捆绑根目录的名册中、依赖图无环、档位取值存在于档位映射表、必需的正文小节齐备，以及 initiative 到 epic 再到 task 的结构完整。固化阶段不通过它就无法完成，实现会话在挑选 epic 之前会重新跑一遍。校验失败意味着去修 bead 然后重跑；绕过它手工改动会让这道门控形同虚设。
 
@@ -89,7 +89,7 @@ great_cto 通过三条绝对路径调入本仓库。这些路径的写法、它�
 bash "$HOME/.agents/beads-superpowers/scripts/pipeline/tier-gate.sh" --stage <stage>
 node "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" --initiative <id> --state <dump>
 "$HOME/.agents/beads-superpowers/skills/subagent-driven-development/scripts/review-package" <plan-path> <MERGE_BASE> HEAD
-# Exit contract: 0/1/2/4 as documented per script. Any other exit — including
+# Exit contract: 0/1/2 as documented per script. Any other exit — including
 # 127 (missing file) — is fail-closed: stop and report. This row is also added
 # to the exit tables in skills/brainstorming and skills/writing-plans.
 ```
@@ -120,12 +120,11 @@ node "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" --initiat
 
 ### 门控拦下你时怎么办
 
-有三类失败可以由你直接处置。三者都是拒绝而非警告，也都没有智能体侧的补救办法——这正是设计意图。
+有两类失败可以由你直接处置。两者都是拒绝而非警告，也都没有智能体侧的补救办法——这正是设计意图。
 
 | 门控报告了什么 | 怎样才能解除 |
 |----------------|--------------|
 | 完整性记录缺失或不可读，或某个文件 `does not match its recorded hash` | 重跑 `install.sh`。记录由掌管该渠道的维护者写入——脚本化安装层级由 `install.sh` 写入，插件渠道由会话启动钩子写入——也只有该维护者能重写；在插件渠道上，这意味着开一个新会话，让该钩子重新为根目录背书。 |
 | `is running against beads-superpowers root`，且给出的版本与门控自身的版本不一致 | 重跑 `install.sh`，或刷新插件，让门控与已安装的根目录处于同一版本。 |
-| `session state was written by a different session` | 由你自己删除 `.internal/pipeline/session.json`，然后开一个新会话。身份不匹配会同时触发两条拒绝，且与解析出的档位无关：计划图不可改动，并且写入被限制在与规划档位相同的允许名单内——`.internal/`、`.mex/`、`docs/`、`plans/`。用 `--assert` 记录档位只会绑定到你当前的活动会话，并不能清除一个陌生会话遗留的状态文件，因此只要该文件还在，这两条拒绝就一直生效——而状态目录不允许智能体写入，所以智能体也没法替你删掉它。 |
 
 本契约的既接受风险与残余项记录在私有位置——决策记录的修订件和 `.mex/private/`——而不在本页面上。

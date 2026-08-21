@@ -23,25 +23,20 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 ## Stage Entry
 
-Planning runs on the planning tier. Confirm that before reading the spec:
+Capture runs in the planning session. Verify the pipeline install before reading the spec:
 
 ```bash
 bash scripts/pipeline/tier-gate.sh --stage planning
 ```
 
-Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Route on the exit code. "Stop on any nonzero" is wrong here:
+Run it from the repo root. The gate verifies the INSTALL — the version handshake with its own root, the integrity record, and the great_cto bundle at the required version floor. It reads nothing about the session: no stage is walled by session model, size, or effort (the agent-authority rework, 2026-08-21). Route on the exit code. "Stop on any nonzero" is wrong here:
 
 | Exit | Meaning | What this skill does |
 | --- | --- | --- |
-| 0 | The tier is verified. | Proceed. |
-| 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
+| 0 | The install is verified. | Proceed. |
+| 1 | Fail-closed: missing or untrusted install root, missing or below-floor great_cto bundle. | Stop and report the gate's message. There is no override. |
 | 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
-| 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
-| other | Any exit outside {0, 1, 2, 4}, including 127 (missing file). | Fail-closed: stop and report. |
-
-Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier> --session <id>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
-
-When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier> --session <id>`, with the live session identifier it read filled in. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
+| other | Any exit outside {0, 1, 2}, including 127 (missing file). | Fail-closed: stop and report. There is no SKIP and no ask-the-user path — an unverifiable install is a stop, **NEVER** a pass. |
 
 ## Knowledge Check
 
@@ -442,11 +437,11 @@ git add <plan-path> && git commit -m "docs: plan for <feature-name> (<initiative
 
 ## Execution Handoff
 
-**Initiative work hands off through the graph, not through this session.** The plan is captured and the lint is green, so execution belongs to a separate implementation session running great_cto's `implementing-epics` against the initiative. Report the initiative id, the epic and task counts, and the spec path, then ask the user to start that session. **Never** decide on your own to carry on into implementation here — a planning-tier session that implements is the tier wall failing open.
+**Initiative work hands off through the graph, not through this session.** The plan is captured and the lint is green, so execution belongs to a separate implementation session running great_cto's `implementing-epics` against the initiative. Report the initiative id, the epic and task counts, and the spec path, then ask the user to start that session. **Never** decide on your own to carry on into implementation here — the split into a fresh implementation session is the pipeline's own division of labor, and only the user waives it.
 
 **Every plan this skill produces is initiative work.** Capture to Beads is mandatory and has already run, so an initiative epic exists and you hold its id. Hand off, then stop.
 
-**The one exception, and the test for it.** Once you have presented the plan and the handoff, the user may direct you to execute it here instead. Only a direction given then, against the handoff, opens the in-session path; a standing instruction from the top of the session, such as "plan this and then build it", was given before the plan existed and is not one. The test is a single question: after seeing the handoff, did the user tell you, in words, to execute now? Plan size, task count, an absent great_cto install, and a Stage Entry SKIP are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, in-session execution runs through the same task engine the pipeline uses — there is no second method to choose between:
+**The one exception, and the test for it.** Once you have presented the plan and the handoff, the user may direct you to execute it here instead. Only a direction given then, against the handoff, opens the in-session path; a standing instruction from the top of the session, such as "plan this and then build it", was given before the plan existed and is not one. The test is a single question: after seeing the handoff, did the user tell you, in words, to execute now? Plan size, task count, and an absent great_cto install are **NEVER** substitutes for it. If the answer is no, hand off and stop. If it is yes, in-session execution runs through the same task engine the pipeline uses — there is no second method to choose between:
 
 - **REQUIRED SUB-SKILL:** Use beads-superpowers:subagent-driven-development
 - It works in **task groups** formed from the task beads you just captured: one implementer subagent and one review per group, and it never closes a bead.

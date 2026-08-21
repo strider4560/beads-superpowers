@@ -35,6 +35,14 @@ last_updated: [YYYY-MM-DD]
 
 ## Decision Log
 
+### No OSS "guided harness" to adopt — type-keyed authority builds on native harness primitives
+**Date:** 2026-08-20
+**Status:** Active (research conclusion; the full harness-redesign ADR is pending a planning session)
+**Decision:** The harness redesign does not adopt any external OSS framework, agent library, or methodology; agent-type-keyed authority is expressed as our own small type→authority data table, compiled onto each harness's native enforcement primitives.
+**Reasoning:** A five-lane survey (verified 2026-08-20) found: general multi-agent frameworks (CrewAI, LangGraph, Deep Agents, MAF, ADK) all own the agent loop — wrapping an external harness yields observability, not authority; Claude Code agent libraries (wshobson 39k★, VoltAgent, davila7) declare types but enforce only tool allowlists, with every finer boundary prose-only; SDD methodologies enforce nothing mechanically, and Agent OS shipped exactly this role registry (role → tools+model+standards+verifier) and retired it in v2.1.0 (2025-10-21) as "too complex… added no real benefit"; prompt-declared modes demonstrably leak (Cline issue #4387). Meanwhile the needed primitives exist natively: Claude Code delivers `agent_type` in every hook payload (PreToolUse included) and enforces per-agent `tools`/`disallowedTools`; OpenCode enforces per-agent model+variant+allow/ask/deny permission blocks in its runtime, fail-closed, with parent-deny inheritance to subagents.
+**Alternatives considered:** Cupcake (eqtylab, OPA/Rego at the hook boundary, Apache-2.0) — the only OSS policy engine at the right boundary; kept as a spike-gated option (its `agent_type` input is undocumented, maintenance unverified since 2025-12), and our fail-closed shim is required regardless because Claude Code hooks fail open (only exit 2 blocks; exit 1 and command-hook timeouts proceed). MCP gateways — categorically disqualified: they cannot see local Bash/Write/Edit calls. Roo Code custom modes — archived 2026-05-15.
+**Consequences:** The type vocabulary (planning / orchestration / implementation / review) is ours to define as data, fail-closed on unknown types; since no harness offers type inheritance, type→agent expansion is generated or guard-verified (convention-sync precedent). Enforcement lives in plugin `hooks.json` on Claude Code (plugin subagents ignore `permissionMode`/`hooks`/`mcpServers` frontmatter) and in generated agent `permission` blocks + the existing plugin hook on OpenCode. Authority binds to tools+hooks; per-type model/effort is cost economy only (subagent `model:` frontmatter has a history of being silently ignored).
+
 <!-- Document key decisions using the format below.
      Include decisions that: are non-obvious, have important constraints,
      or where the reasoning prevents future mistakes.

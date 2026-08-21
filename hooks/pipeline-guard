@@ -1,18 +1,39 @@
 #!/usr/bin/env bash
 set -u
-# pipeline-guard — PreToolUse hard deny for Bash|Write|Edit.
+# pipeline-guard — PreToolUse hard deny for Bash|Write|Edit|NotebookEdit.
 # Exit 2 with a one-line stderr reason blocks the tool call; exit 0 allows it.
 #
 # Two phases, and the ordering is the design:
 #
 #   Phase 1 — activation. Dependency-free: pure file-existence tests, no jq, no
-#   bundle root, no tier-map, stdin not even read. This hook fires on EVERY
-#   Bash, Write and Edit call in every project that installs the plugin, so a
-#   project that does not use the pipeline must cost nothing and must never be
-#   blocked by a missing dependency.
+#   bundle root, stdin not even read. This hook fires on EVERY Bash, Write and
+#   Edit call in every project that installs the plugin, so a project that does
+#   not use the pipeline must cost nothing and must never be blocked by a
+#   missing dependency.
 #
 #   Phase 2 — armed. Strict fail-closed: a missing dependency, unreadable stdin
 #   or broken state denies the call rather than waving it through.
+#
+# What this guard enforces (the agent-authority model, 2026-08-21):
+#
+#   Install integrity — the anchored install is verified against its record
+#   before anything from it is trusted or sourced.
+#   Rule D — the pipeline state directory and the install surface are not
+#            model-writable, whatever is calling.
+#   Rule S — subagent authority: a subagent does not manage beads, durable
+#            knowledge, or the plan of record. Those are the orchestrating
+#            session's alone. The main session is unrestricted here.
+#
+# What this guard deliberately does NOT do: key any decision on the session's
+# model id, size, or effort. The former session-model tier wall (Rules A/B/C,
+# resolve_session_tier, tier-assert) bricked whole sessions whenever the
+# harness reported a model spelling the tier-map did not list, and the
+# enforcement point never even receives a model field on PreToolUse. Subagent
+# detection is `has("agent_id")` on the payload — the ADR-0061 amendment's
+# standing rule — which is harness-supplied at dispatch and has no vocabulary
+# to go stale. agent_type rides along for the deny message only: keying
+# enforcement on the NAME would reintroduce the unmapped-key failure the tier
+# wall was removed for.
 
 state_dir=".internal/pipeline"
 
@@ -24,26 +45,21 @@ deny() { echo "pipeline-guard: $1" >&2; exit 2; }
 
 # normalize_path <path> — lexical normalization of a tool-supplied file_path,
 # printing the cleaned ABSOLUTE path. ONE helper with three callers — Rule D's
-# state-directory half, Rule D's install-surface half and Rule B — because all
+# state-directory half, Rule D's install-surface half and Rule S — because all
 # three ask the same question — where does this write land? — and none can
 # answer it from the raw string:
 #   * The Write and Edit tools document file_path as "must be absolute", so the
-#     value that actually arrives is /home/u/proj/docs/x.md, not docs/x.md. An
-#     allow-list anchored to a relative path matches none of it.
+#     value that actually arrives is /home/u/proj/docs/x.md, not docs/x.md. A
+#     deny-list anchored to a relative path matches none of it.
 #   * `..`, `//` and a leading `./` let one file be spelled many ways, so a
 #     substring or prefix test over the raw string is bypassed by rewriting the
 #     spelling: .internal/specs/../pipeline/tier-assert reaches the state file.
 # Purely lexical — no realpath, no stat. The file a Write creates does not exist
 # yet, so there is nothing on disk to canonicalize, and symlink resolution would
 # answer a different question than the one asked.
-# Residual, accepted: a PRE-EXISTING symlink into the state directory defeats
-# Rule D's Write/Edit half — .internal/specs -> .internal/pipeline makes a write
+# Residual, accepted: a PRE-EXISTING symlink into a denied directory defeats
+# the Write/Edit halves — .internal/specs -> .internal/pipeline makes a write
 # to .internal/specs/tier-assert normalize to itself and Rule D does not fire.
-# The absolute form is what Rule D's install-surface half compares against the
-# anchors; the call site re-spells it relative to $PWD for the rules that read
-# project paths. A path outside the project keeps its absolute spelling there,
-# which matches no allow-list prefix, so outside-the-project writes stay denied
-# on the planning tier.
 normalize_path() {
   local raw="$1" abs out seg
   case "$raw" in
@@ -73,62 +89,27 @@ jq -e . >/dev/null 2>&1 <<< "$payload" || deny "PreToolUse payload is not valid 
 
 tool="$(jq -r '.tool_name // empty' <<< "$payload")"
 cmd="$(jq -r '.tool_input.command // empty' <<< "$payload")"
-# NotebookEdit is in the Write|Edit class of Rules B and D — it writes a file the
+# NotebookEdit is in the Write|Edit class of Rules D and S — it writes a file the
 # same way they do — but it names its path `notebook_path`, not `file_path`
-# (verified against the shipped tool schema; the plan assumed `file_path`). Both
-# spellings are read here so the rules below stay path-shaped and tool-agnostic.
+# (verified against the shipped tool schema). Both spellings are read here so
+# the rules below stay path-shaped and tool-agnostic.
 path="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<< "$payload")"
 nabs="$(normalize_path "$path")"
 # The project-relative spelling, for the rules that read project paths. A path
-# outside the project keeps its absolute form and so matches no allow-list.
+# outside the project keeps its absolute form and so matches no relative pattern.
 npath="$nabs"
 case "$nabs" in
   "$PWD")   npath="" ;;
   "$PWD"/*) npath="${nabs#"$PWD"/}" ;;
 esac
 
-# --- session identity (D4) --------------------------------------------------
-# The live identity is the PreToolUse payload's session_id. Per the Task 1 spike
-# it is the MAIN session's id for a subagent's tool call too (a subagent payload
-# only ADDS agent_id/agent_type), so there is no subagent carve-out: comparing
-# session_id alone behaves identically for both.
+# The live session id, used ONLY as the integrity-check cache key below — never
+# as an authority signal. THE SHARED SESSION-ID RULE survives from the old
+# design: every actor folds a session id through `tr -cd 'a-zA-Z0-9_-' | cut
+# -c1-64` before it stores or compares it (hooks/session-start when it RECORDS
+# the id); the fold keeps the marker filename stable and path-safe.
 live_sid="$(jq -r '.session_id // empty' <<< "$payload")"
-# THE SHARED SESSION-ID RULE: every actor folds a session id through
-# `tr -cd 'a-zA-Z0-9_-' | cut -c1-64` before it stores or compares it.
-# hooks/session-start applies it when it RECORDS the id, so a comparison against
-# the raw payload value is a comparison of two different spellings: on any
-# harness whose id carries a dot, a colon, or more than 64 bytes, EVERY call of
-# the session reads as an identity mismatch — Rules A and B denied for the whole
-# session, with a printed remedy carrying an id the writer would mangle again.
-# Fail-closed, but the wrong diagnosis and nothing the user can act on. The
-# other compare site is scripts/pipeline/tier-gate.sh; the two must stay
-# byte-identical in this expression.
 live_sid="$(printf '%s' "$live_sid" | tr -cd 'a-zA-Z0-9_-' | cut -c1-64)"
-# The recorded id is read STRAIGHT out of the state file, never inferred from
-# resolve_session_tier's empty output: that output collapses "written by another
-# session" into "no tier", and D4 needs the two apart — an unresolved tier
-# leaves Rule B inert, a mismatch denies it.
-recorded_sid=""
-if [ -f "$state_dir/session.json" ]; then
-  recorded_sid="$(jq -r '.session_id // empty' "$state_dir/session.json" 2>/dev/null)" ||
-    recorded_sid=""
-fi
-# A mismatch needs BOTH sides present. An absent payload id is not a mismatch —
-# it is an unbindable surface, handled by the `-` sentinel at the resolve call
-# below, which keeps the pre-identity posture rather than inventing a third
-# state; an absent recorded id is state no session claims, which
-# resolve_session_tier already treats as absent once a live id is bound.
-identity_mismatch=0
-if [ -n "$live_sid" ] && [ -n "$recorded_sid" ] && [ "$live_sid" != "$recorded_sid" ]; then
-  identity_mismatch=1
-fi
-
-# The remedy, spelled absolutely and bound to this session. A remedy the user has
-# to translate is a remedy that does not get run (SD-03), and an assert with no
-# recorded identifier is treated as absent (D4), so the id is filled in here.
-gate_dir="$(cd "$(dirname "$0")/../scripts/pipeline" 2>/dev/null && pwd -P)" ||
-  gate_dir="$(dirname "$0")/../scripts/pipeline"
-assert_remedy="bash $gate_dir/tier-gate.sh --assert <tier> --session ${live_sid:-<session-id>}"
 
 # --- install integrity (D3, R4-004) -----------------------------------------
 # bundle-root.sh is sourced HERE, ahead of the rules, because it owns the fixed
@@ -235,25 +216,15 @@ if [ -z "$integrity_mark" ] || [ -L "$integrity_mark" ] || [ ! -f "$integrity_ma
   [ -n "$integrity_mark" ] && ( set -C; : > "$integrity_mark" ) 2>/dev/null
 fi
 
-# --- Rule C: --assert is human-only (D13, D13a) -----------------------------
-# tier-gate.sh's own `[ -t 0 ]` check is a heuristic a model can defeat by
-# wrapping the call in `script`. This is the control. The pattern is matched
-# anywhere in the command string so a nested invocation is caught too, and it
-# applies at every tier.
-if [ "$tool" = "Bash" ] && [[ "$cmd" =~ tier-gate\.sh[[:space:]]+--assert ]]; then
-  deny "--assert is human-only; ask the user to run it (Rule C)"
-fi
-
-# --- Rule D: the pipeline state directory is not model-writable (D13b) ------
-# Anything that can write the tier assert file or the session state file can
-# self-authorize any tier without ever running --assert, so this is denied at
-# every tier and BEFORE Rule B's `.internal/` allowance, which would otherwise
-# swallow it.
+# --- Rule D: the pipeline state directory is not model-writable --------------
+# The state directory arms this guard, so anything that can write it can also
+# disarm or re-arm the guard underneath the session. Denied for every caller,
+# orchestrator included.
 # The Write/Edit half is the reliable one: it inspects a single path the harness
-# hands us, and D13b requires that path to RESOLVE inside the state directory —
-# so it is matched after normalize_path, component-anchored. A substring test
-# would be bypassed by .internal/specs/../pipeline/tier-assert and would also
-# over-deny .internal/pipeline-notes.md.
+# hands us and requires it to RESOLVE inside the state directory — matched after
+# normalize_path, component-anchored. A substring test would be bypassed by
+# .internal/specs/../pipeline/session.json and would also over-deny
+# .internal/pipeline-notes.md.
 # The Bash half is a substring test over a shell command string and is therefore
 # best-effort only — an adversarial command can reach the directory without the
 # literal path ever appearing (variables, encoding, a helper script). Do not read
@@ -269,20 +240,19 @@ esac
 
 # Rule D's second half: the INSTALL surface (SEC-D3-RULE-D). Anything that can
 # edit a gate, a hook, an anchor entry or the integrity record rewrites the
-# control that is judging the call — the same self-authorization the state
-# directory half closes, one level up.
+# control that is judging the call — self-authorization one level up.
 # The match set is deliberately BOUNDED, and the bound is the anchor SPELLING:
 # the two anchor entries themselves, the script and hook files reached THROUGH an
-# anchor, great_cto's tier-map, and the integrity record's directory. It is not
-# "and their targets" — a development clone reached as the working project is
-# ordinary source, and an unbounded rule would brick every clone on the machine.
-# Residual, stated: with the clone as the working project, editing its own gates
-# is not denied, which is consistent with dev-clone roots being advisory.
+# anchor, great_cto's shared/ policy data, and the integrity record's directory.
+# It is not "and their targets" — a development clone reached as the working
+# project is ordinary source, and an unbounded rule would brick every clone on
+# the machine. Residual, stated: with the clone as the working project, editing
+# its own gates is not denied, which is consistent with dev-clone roots being
+# advisory.
 # `scripts/`, not `scripts/pipeline/`: control files live outside the pipeline/
-# subdirectory too (scan-plan.sh among them), and a bound that stops at pipeline/
-# leaves them model-writable through the anchor. shared/tier-map.json is named
-# because the tier wall is READ from it — anything that can rewrite it can put
-# its own model on the planning tier.
+# subdirectory too, and a bound that stops at pipeline/ leaves them
+# model-writable through the anchor. great_cto's shared/ is named because
+# dispatch policy (tier-map roles, review schemas) is READ from it.
 # The great_cto anchor is spelled here rather than imported because
 # bundle-root.sh keeps it local to resolve_bundle_root; both spellings are fixed
 # literals for the reason stated there — four actors resolve env vars in four
@@ -292,159 +262,67 @@ record_dir="${RECORD_PATH%/*}"
 case "$tool" in
   Write|Edit|NotebookEdit) case "$nabs" in
     "$gc_anchor"|"$BSP_ANCHOR"|"$record_dir"|"$record_dir"/*|\
-    "$gc_anchor"/scripts/*|"$gc_anchor"/hooks/*|"$gc_anchor"/shared/tier-map.json|\
+    "$gc_anchor"/scripts/*|"$gc_anchor"/hooks/*|"$gc_anchor"/shared/*|\
     "$BSP_ANCHOR"/scripts/*|"$BSP_ANCHOR"/hooks/*)
       deny "the beads-superpowers install surface is not model-writable (Rule D)" ;; esac ;;
 esac
 
-# --- session tier -----------------------------------------------------------
-bundle="$(resolve_bundle_root 2>/dev/null)" || deny "great_cto bundle root missing or below the required version"
-map="$bundle/shared/tier-map.json"
-[ -f "$map" ] || deny "tier-map missing at $map — update great_cto"
-# The live id binds both state sources (D4): state written by a different session
-# and an assert recorded for one are treated as ABSENT rather than trusted.
-# `-` is the explicit "no live identity in this payload" sentinel. Every payload
-# the Task 1 spike observed carried session_id, but absence is spelled rather
-# than assumed, and it keeps the pre-identity posture — session.json's model
-# stays authoritative and a v2 assert is treated as absent — rather than
-# inventing a third state. It is NOT the mismatch state: a mismatch is decided
-# above, from the two ids directly.
-# 2>&1, not 2>/dev/null: on this path the REASON is the whole value of the deny.
-# A bare "could not be resolved" leaves every Bash, Write and Edit call denied for
-# the rest of the session with nothing the user can act on — and the --assert
-# remedy named under Rule A cannot clear this particular state, because
-# resolve_session_tier reaches its tier-assert fallback only when session.json
-# yields an EMPTY model. A model the tier-map does not list (a harness model id
-# carrying a context-variant suffix, say) returns 1 before that fallback, so
-# pointing at --assert here would send the user to a remedy that never clears.
-# The real remedy is in the function's own message: update the tier-map.
-# Merging the streams is safe: the function prints tiers on stdout only when it
-# succeeds and its ERROR line on stderr only when it fails, never both. A
-# PreToolUse deny reason is one line, so only the last line survives — the same
-# shape the install-integrity check above uses.
-if ! tiers="$(resolve_session_tier "$state_dir" "$map" "${live_sid:--}" 2>&1)"; then
-  tier_why="${tiers##*$'\n'}"
-  deny "session tier could not be resolved from $state_dir: ${tier_why#ERROR: }"
-fi
-
-# An unresolved tier (a session state file with a null model and no asserted
-# tier) denies Rule A and leaves Rule B inert — D17a. The costs are asymmetric:
-# Rule A guards a rare, hard-to-undo plan-graph mutation with a defined human
-# remedy, while Rule B guards every Write and Edit and denying those would brick
-# the session, because --assert is human-only under D13. Rules C and D above
-# already ran, and tier-gate.sh still fails closed at stage entry.
-has_tier=0
-is_planning=0
-while IFS= read -r tier; do
-  [ -n "$tier" ] || continue
-  has_tier=1
-  [ "$tier" = "planning" ] && is_planning=1
-done <<< "$tiers"
-
-# --- Rule A: only a planning-tier session mutates the plan graph ------------
-# The rule keys on independent tokens, wherever they appear in the command
-# string, instead of on bd's subcommand grammar: a `bd` invocation, AND any one
-# of an epic-type flag, an `import` token, or a bulk-creation flag. Guessing the
-# grammar failed three times. Cobra finds the subcommand PAST any leading global
-# flag, so
-# `bd --type epic create` and `bd -C <dir> create -t epic` never match an
-# anchored `bd create`; and `create` is not the only creation path — it carries
-# the alias `new` (`bd create --help` prints `Aliases: create, new`), and `bd q`
-# is "Quick capture creates an issue ... Designed for scripting and AI agent
-# integration". Each of those, and `bd -C <dir> import`, was run against the
-# installed bd v1.1.2 and did create an epic. Enumerating subcommands and
-# aliases loses to the next bd release; independent tokens do not.
-# The type flag is matched in eight spellings, all of which reach bd as
-# `--type epic`: `-t epic`, `-tepic`, `--type epic`, `--type=epic`, `-t=epic`,
-# `--type "epic"`, `-t 'epic'` and `--type='epic'`. bd is Cobra/pflag-based, so
-# it takes the `=`-joined forms (`bd create --help` documents `--type=event`
-# itself), and the shell strips the quotes before bd sees the value. Hence the
-# separator class `[[:space:]='"]*` between the flag and its value.
-# `$padded` is the command with one space added at each end, so the `bd` and
-# `import` token patterns need no ^/$ anchor — a plain character class is the
-# same regex on every libc. It is what rejects `abd` and `bd-helper`.
-# The bulk-creation flags are the third alternative. `bd create` is documented as
-# "Create a new issue (or batch from markdown/graph JSON)", and
-# `bd create --graph plan.json` was run against the installed bd v1.1.2: it
-# created an epic plus a parent-child edge with NO type flag anywhere in the
-# command string, because the type lives in the JSON file. `--file` is the long
-# form of the same flag and is listed too: unambiguous, and cheap.
-# The short form `-f` is deliberately NOT listed. As a bare short flag it would
-# deny any bd command string carrying `-f` before a space or `=`, on any
-# subcommand — `bd list | grep -f pats`, `bd show x && cp -f a b`, a subcommand
-# using `-f` for format or force. Unlike the epic-flag clause below, those false
-# positives are not confined to plan-graph vocabulary. And the path it would
-# cover is unproven: `bd create -f plan.md` was NOT verified to create an epic
-# against bd v1.1.2 (the markdown parser produced tasks in two metadata
-# syntaxes), where `--graph` was. Dropping an unproven path to remove a broad
-# false-positive class is what D20 licenses: Rule A is best-effort
-# defence-in-depth, not a boundary, and the tier wall does not rest on it.
+# --- Rule S: subagent authority (2026-08-21) ---------------------------------
+# A subagent does not manage beads, durable knowledge, or the plan of record —
+# those belong to the orchestrating session, which dispatched the subagent and
+# owns the plan it is executing. The subagent's remedy is always the same:
+# surface the need to the orchestrator in its report instead of mutating state.
 #
-# Rule A is best-effort defence-in-depth. It is NOT a boundary, and a regex over
-# a shell command string cannot be one. What actually enforces the tier wall:
-# `tier-gate.sh --stage` fails closed at stage entry, so a session on the wrong
-# tier cannot COMPLETE a stage whatever it typed; `graph-lint.mjs` validates the
-# captured graph before any implementation session consumes it; and Rules C and D
-# close the two self-authorization paths, at every tier. A bypass of Rule A alone
-# does not ship a bad plan graph — it produces beads the lint and the stage gate
-# still have to accept.
-# What Rule A does not cover is an OPEN set. It includes, but is not limited to:
-# a quoted or expanded command name (`"bd"`, `$BD`, `$(which bd)`); a type value
-# from expansion or split quoting (`--type=$T`, `-t ep'ic'`); `bd create-form`;
-# `bd create -f plan.md` (short-form bulk file, dropped above); a helper script
-# whose own command string never spells `bd`; and any path that puts the type
-# out-of-band in a file not named by the flags above. Do not read a list of
-# uncovered spellings anywhere in this file as complete.
-# The cost is wider denial, taken deliberately: ANY bd command whose string
-# carries an epic-type flag is denied off the planning tier — `bd list -t epic`
-# included — as is a `bd create -t task` whose text quotes `--type epic`, or a
-# `git log --grep="bd import"`. A denied read costs one command; an epic created
-# off the planning tier forks the plan of record. Do NOT narrow these patterns
-# by subcommand to let a read through: that is the grammar-guessing this shape
-# exists to remove.
-# (This widens the plan's literal `-t[[:space:]]+epic`; the deviation is
-# disclosed in the task report.)
-padded=" $cmd "
-bd_re='[^[:alnum:]_-]bd[[:space:]]'
-epic_flag_re='(-t|--type)[[:space:]='"'"'"]*epic'
-import_re='[^[:alnum:]_-]import[^[:alnum:]_-]'
-bulk_re='(--graph|--file)[[:space:]=]'
-# An identity mismatch denies Rule A whatever tier resolved, which is why it is
-# a term of its own here and not a value assigned into is_planning: state written
-# by another session cannot authorize a plan-graph mutation, and neither can an
-# assert that happens to bind while the state file does not.
-if [ "$tool" = "Bash" ] &&
-   { [ "$is_planning" -eq 0 ] || [ "$identity_mismatch" -eq 1 ]; } &&
-   [[ "$padded" =~ $bd_re ]]; then
-  if [[ "$padded" =~ $epic_flag_re ]] || [[ "$padded" =~ $import_re ]] ||
-     [[ "$padded" =~ $bulk_re ]]; then
-    [ "$identity_mismatch" -eq 1 ] &&
-      deny "session state was written by a different session, so the plan graph is not mutable — ask the user to run '$assert_remedy' (Rule A)"
-    [ "$has_tier" -eq 1 ] &&
-      deny "only a planning-tier session mutates the plan graph (Rule A)"
-    deny "session tier is unresolved, so the plan graph is not mutable — ask the user to run '$assert_remedy' (Rule A)"
-  fi
-fi
-
-# --- Rule B: a planning-tier session cannot write source files -------------
-# The allow-list is read off the NORMALIZED path, so it matches the absolute
-# file_path the harness actually sends and is not fooled by docs/../src/x.js.
-# `plans/*` joined it with D6: writing-plans commits plans to a tracked plans/
-# directory, so a planning session has to be able to write one. It stays narrow
-# — a plan is a planning artifact, not source — and is component-anchored like
-# the three beside it, so it admits plans/ and never plansX/.
-# An identity mismatch restricts writes exactly as the planning tier does, and
-# for the same allow-list: state written by another session says nothing about
-# what this one may write, so the restrictive reading is the fail-closed one.
-if [ "$is_planning" -eq 1 ] || [ "$identity_mismatch" -eq 1 ]; then
+# Subagent detection: `has("agent_id")` on the payload — harness-supplied at
+# dispatch, present on every hook event inside a subagent, absent on the main
+# thread. Never keyed on agent_type/name (a table of names goes stale; absence
+# of a name must not grant authority) and never on an env var (model-settable).
+#
+# Like the retired Rule A, the Bash half is best-effort defence-in-depth over a
+# command string, not a boundary — a helper script or expansion can evade it.
+# The per-agent `tools` frontmatter and the prompt-template contracts remain the
+# other layers. A false-positive deny costs the subagent one command and tells
+# it exactly what to do instead.
+if jq -e 'has("agent_id")' >/dev/null 2>&1 <<< "$payload"; then
+  agent_type="$(jq -r '.agent_type // "subagent"' <<< "$payload")"
   case "$tool" in
+    Bash)
+      # `$padded` is the command with one space added at each end, so the token
+      # patterns need no ^/$ anchor — a plain character class is the same regex
+      # on every libc. It is what rejects `abd` and `bd-helper`.
+      padded=" $cmd "
+      mex_write_re='[^[:alnum:]_-]mex[[:space:]]+(log|setup|sync|config)[^[:alnum:]_-]'
+      # Every bd invocation in the command is inspected: the token after each
+      # `bd` must be in the benign set — the reads a reviewer legitimately
+      # runs, plus `note`, the one write great_cto's implementation contract
+      # grants a subagent (notes on its own task beads). Anything else —
+      # create, close, update, import, or a global flag like -C sitting ahead
+      # of the subcommand — denies. Grammar-guessing bd's mutation surface
+      # failed repeatedly under the old Rule A, so this is an ALLOW-set: an
+      # unknown or unparsable spelling denies rather than passes.
+      bd_scan="$padded" bd_bad=0
+      while [[ "$bd_scan" =~ [^[:alnum:]_-]bd[[:space:]]+([[:alnum:]_-]+) ]]; do
+        case "${BASH_REMATCH[1]}" in
+          note|show|list|ready|query|human|prime|help|--help) ;;
+          *) bd_bad=1; break ;;
+        esac
+        bd_scan="${bd_scan#*"${BASH_REMATCH[0]}"}"
+      done
+      if [ "$bd_bad" -eq 1 ]; then
+        deny "beads are managed by the orchestrating session — a subagent only reads beads or runs 'bd note' on its own task; report anything else in your subagent report ('$agent_type', Rule S)"
+      fi
+      if [[ "$padded" =~ $mex_write_re ]]; then
+        deny "durable knowledge is written by the orchestrating session only — surface the lesson in your subagent report instead of writing mex ('$agent_type', Rule S)"
+      fi
+      ;;
     Write|Edit|NotebookEdit)
       case "$npath" in
-        .internal/*|.mex/*|docs/*|plans/*) ;;
-        *) [ "$identity_mismatch" -eq 1 ] &&
-             deny "session state was written by a different session, so writes are restricted — ask the user to run '$assert_remedy' (Rule B)"
-           deny "planning-tier session cannot write source files (Rule B)" ;;
-      esac ;;
+        .mex/*|*/.mex/*)
+          deny "durable knowledge (.mex/) is written by the orchestrating session only — surface it in your subagent report ('$agent_type', Rule S)" ;;
+        plans/*|.internal/plans/*|.internal/specs/*|.worktrees/*/plans/*)
+          deny "the plan of record is managed by the orchestrating session only — report the needed plan change instead of editing it ('$agent_type', Rule S)" ;;
+      esac
+      ;;
   esac
 fi
 

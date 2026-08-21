@@ -152,7 +152,7 @@ The long form lives in [Methodology](https://algocents.com/beads-superpowers/met
 
 ### Prerequisites
 
-**Install great_cto first.** It is the bundle root the pipeline scripts resolve before any tier decision, and the installer aborts without it: `git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all`. Verify with `ls ~/.agents/great_cto`.
+**Install great_cto first.** It is the bundle root the pipeline scripts resolve as their hard dependency, and the installer aborts without it: `git clone https://github.com/strider4560/great_cto ~/Develop/great_cto && ~/Develop/great_cto/scripts/install.sh --host all`. Verify with `ls ~/.agents/great_cto`.
 
 **Install `bd` before the plugin.** Its hook injects `bd` context on every session start; without `bd` that half is skipped and you lose persistent task tracking. Use Homebrew (`brew install beads`) or `npm install -g @beads/bd` on any platform. Verify with `bd version`.
 

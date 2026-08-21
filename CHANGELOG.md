@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (behavioral): the session-model tier wall is retired; enforcement now keys on subagent identity (the agent-authority rework).** No gate or hook reads the session's model id, size, or effort any more. `tier-gate.sh --stage` is now a pipeline preflight — version handshake, integrity record, great_cto bundle at the floor — and its `--assert` form and exit-4 SKIP are gone (an assert has nothing left to assert). `hooks/pipeline-guard` drops Rules A/B/C and all session-identity binding, keeps Rule D (state directory + install surface) and the install-integrity check, and adds Rule S: a subagent — detected by the harness-stamped `agent_id` on the PreToolUse payload, never by name — cannot mutate beads (reads and `bd note` on its own task bead excepted), write mex (`mex log/setup/sync/config` and `.mex/` paths), or edit the plan of record (`plans/`, `.internal/plans/`, `.internal/specs/`); the orchestrating session is unrestricted. Rationale: the model-keyed wall bricked entire sessions whenever a harness spelled a model id the tier map did not list (the `claude-opus-5[1m]` incident), PreToolUse never receives a model field at all, and the guardrails that matter protect the plan of record from subagents, not the orchestrator from itself. `shared/tier-map.json` remains as dispatch-time economy (role → default model via `resolve-role.mjs`), never enforcement. (bead beads-superpowers-use)
+
 ## [0.18.0] - 2026-08-20
 
 ### Changed

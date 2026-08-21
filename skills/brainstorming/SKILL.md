@@ -19,25 +19,20 @@ Do NOT invoke any implementation skill, write any code, scaffold any project, or
 
 ## Stage Entry
 
-Brainstorming runs on the planning tier. Confirm that before exploring the idea:
+Brainstorming opens the planning session. Verify the pipeline install before exploring the idea:
 
 ```bash
 bash scripts/pipeline/tier-gate.sh --stage planning
 ```
 
-Run it from the repo root — the gate reads session state from `./.internal/pipeline/`. Route on the exit code. "Stop on any nonzero" is wrong here:
+Run it from the repo root. The gate verifies the INSTALL — the version handshake with its own root, the integrity record, and the great_cto bundle at the required version floor. It reads nothing about the session: no stage is walled by session model, size, or effort (the agent-authority rework, 2026-08-21). Route on the exit code. "Stop on any nonzero" is wrong here:
 
 | Exit | Meaning | What this skill does |
 | --- | --- | --- |
-| 0 | The tier is verified. | Proceed. |
-| 1 | Fail-closed: wrong tier, missing bundle root, missing tier-map, unknown model, or no session data. | Stop and report the gate's message. There is no override. |
+| 0 | The install is verified. | Proceed. |
+| 1 | Fail-closed: missing or untrusted install root, missing or below-floor great_cto bundle. | Stop and report the gate's message. There is no override. |
 | 2 | Usage error — the command above is malformed. | Stop and report. The bug is in the command, not in the session. |
-| 4 | Visible SKIP: this harness cannot expose the session model. | Report it, then ask the user. See below. |
-| other | Any exit outside {0, 1, 2, 4}, including 127 (missing file). | Fail-closed: stop and report. |
-
-Exit 4 leaves the tier unverified, and a SKIP is **NEVER** a pass, so never continue on it silently. Ask the user with your structured question tool (shape varies by harness — adapt to yours): tell them the tier could not be verified on this harness, then ask them to confirm this is a planning-tier session or to run `tier-gate.sh --assert <tier> --session <id>` themselves. Continue only on an explicit confirmation. A denial is not consent, and neither is an answer that arrives skipped, dismissed, or auto-resolved — treat any of them as no answer and stop, per the **Asking the User** convention in `using-superpowers`.
-
-When the gate reports that the session tier is unknown, it names the remedy: `tier-gate.sh --assert <tier> --session <id>`, with the live session identifier it read filled in. **Never** run `--assert` yourself. Ask the user to run it — anything that can write the tier assert file can grant itself any tier, so that command is the user's alone.
+| other | Any exit outside {0, 1, 2}, including 127 (missing file). | Fail-closed: stop and report. There is no SKIP and no ask-the-user path — an unverifiable install is a stop, **NEVER** a pass. |
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 

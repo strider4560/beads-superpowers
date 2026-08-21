@@ -1,54 +1,31 @@
 #!/usr/bin/env bash
 set -u
-# tier-gate.sh --stage <planning|implementing|reviewing> | --assert <tier> --session <id>
-# Exit: 0 pass, 1 fail-closed, 2 usage, 4 visible SKIP (secondary harness).
+# tier-gate.sh --stage <planning|implementing|reviewing>
+# Exit: 0 pass, 1 fail-closed, 2 usage.
+#
+# Pipeline preflight. The name is historical — kept because it is a contract
+# path great_cto's stage skills and the release preflight invoke verbatim.
+# Since the 2026-08-21 agent-authority rework this gate verifies the INSTALL,
+# never the session: it proves the anchored root is intact and the great_cto
+# bundle is present at the required floor before a stage runs. It reads NOTHING
+# about the session's model, size, or effort — the retired session-model tier
+# wall bricked sessions whenever a harness reported a model spelling its map
+# did not list, and no stage property ever actually depended on the model id.
+# Model/effort per role remain dispatch-time economy (great_cto's
+# shared/tier-map.json via resolve-role.mjs), not gated authority.
 BSP_PIPELINE_VERSION="0.18.0"  # synced by bump-version.sh
 # shellcheck source=scripts/pipeline/bundle-root.sh
 . "$(dirname "$0")/bundle-root.sh" || { echo "ERROR: cannot load bundle-root.sh" >&2; exit 1; }
 
-# Session state is read relative to the working directory, so the gate has to be
-# run from the repo root. The usage string says so.
-state_dir=".internal/pipeline"
 usage() {
-  echo "usage: tier-gate.sh --stage <planning|implementing|reviewing> | --assert <tier> --session <id>" >&2
-  echo "       run from the repo root — session state is read from ./$state_dir/" >&2
+  echo "usage: tier-gate.sh --stage <planning|implementing|reviewing>" >&2
   exit 2
 }
-# Arity is validated per form, ahead of everything else: an assert with no
-# recorded identifier is treated as absent by resolve_session_tier, so the
-# id-less form is a usage error rather than a write that buys nothing.
-case "${1:-}" in
-  --assert) [ $# -eq 4 ] && [ "$3" = "--session" ] && [ -n "$4" ] || usage ;;
-  --stage)  [ $# -eq 2 ] || usage ;;
-  *) usage ;;
-esac
-
-# --assert is the human remedy for a session whose model the harness did not
-# report. Anything that can write the tier assert file can self-authorize any
-# tier, so this branch refuses without an interactive terminal — a model's tool
-# calls are never a tty. The check is the control; the "user-run only" wording
-# below is only its label. Do not remove it as superfluous.
-if [ "$1" = "--assert" ]; then
-  [ -t 0 ] || { echo "ERROR: --assert is human-only; run it in an interactive shell" >&2; exit 1; }
-  case "$2" in planning|implementation-orchestration|implementation|review) ;; *) usage ;; esac
-  mkdir -p "$state_dir"
-  # v2 <tier> <session-id>: the format is self-describing so a legacy, id-less
-  # file is recognisably legacy and treated as absent instead of trusted.
-  printf 'v2 %s %s\n' "$2" "$4" > "$state_dir/tier-assert"
-  echo "tier asserted: $2 for session $4 (user-run only — the model never runs --assert)"
-  exit 0
-fi
+[ "${1:-}" = "--stage" ] && [ $# -eq 2 ] || usage
 case "$2" in
-  planning) want="planning" ;;
-  implementing) want="implementation-orchestration" ;;
-  reviewing) want="review" ;;
+  planning|implementing|reviewing) ;;
   *) usage ;;
 esac
-
-if [ "${BEADS_SP_HARNESS:-}" = "secondary" ]; then
-  echo "SKIP tier-gate: this harness does not expose the session model (secondary harness)"
-  exit 4
-fi
 
 # Checked before the bundle root so a missing jq is diagnosed as a missing jq,
 # not as a stale great_cto (resolve_bundle_root reads the version with jq).
@@ -70,85 +47,10 @@ fi
 verify_record "$(dirname "$0")" || exit 1
 
 bundle="$(resolve_bundle_root)" || exit 1
-map="$bundle/shared/tier-map.json"
-[ -f "$map" ] || { echo "ERROR: tier-map missing at $map — update great_cto (see handoff doc)" >&2; exit 1; }
+# Bundle completeness: shared/tier-map.json is dispatch policy (role → model
+# economy, read by great_cto's resolve-role.mjs), and a bundle without it is a
+# pre-rework great_cto the pipeline cannot dispatch through.
+[ -f "$bundle/shared/tier-map.json" ] || { echo "ERROR: shared/tier-map.json missing under $bundle — update great_cto (see handoff doc)" >&2; exit 1; }
 
-session="$state_dir/session.json"
-# The live session identifier. An absent one is the same deny as absent session
-# data (D4): with nothing to bind state to, no state file and no assert can be
-# attributed to this session, so trusting either would be trusting whatever the
-# last session left behind.
-# `-` is rejected here for the same reason and on the same path: it is
-# resolve_session_tier's in-band "no live identity" sentinel, so forwarding it
-# would SKIP the binding — and this variable is settable by the very model whose
-# tier is being gated. The check must stay AHEAD of resolve_session_tier. The
-# guard's own `-` call site is a different caller: it derives the sentinel from
-# the PreToolUse payload's absent session_id, and a PreToolUse payload is
-# harness-supplied, not model-settable env, so that path is unaffected.
-# THE SHARED SESSION-ID RULE: every actor folds a session id through
-# `tr -cd 'a-zA-Z0-9_-' | cut -c1-64` before it stores or compares it —
-# hooks/session-start when it RECORDS the id, this gate and hooks/pipeline-guard
-# when they compare against it. Raw-versus-folded is one spelling short of a
-# match on any harness whose id carries a dot, a colon, or more than 64 bytes,
-# and the whole session then reads as another session's state. The fold runs
-# BEFORE the sentinel check, so an id that folds to `-` is rejected as `-`.
-live_sid="$(printf '%s' "${CLAUDE_CODE_SESSION_ID:-}" | tr -cd 'a-zA-Z0-9_-' | cut -c1-64)"
-if [ -z "$live_sid" ] || [ "$live_sid" = "-" ]; then
-  echo "ERROR: no live session identifier — CLAUDE_CODE_SESSION_ID is unset or set to '-' (the reserved no-identity sentinel, which this gate never accepts), and an absent identifier is treated as absent session data. Run the stage from a session whose harness exports it." >&2
-  exit 1
-fi
-# Tier resolution is shared with hooks/pipeline-guard — one implementation in
-# bundle-root.sh, two callers.
-tiers="$(resolve_session_tier "$state_dir" "$map" "$live_sid")" || exit 1
-got=""        # every tier this session's model is listed in, joined on one line
-in_want=0     # 1 once the session is known to belong to the wanted tier
-while IFS= read -r tier; do
-  [ -n "$tier" ] || continue
-  [ "$tier" = "$want" ] && in_want=1
-  got="${got:+$got, }$tier"
-done <<< "$tiers"
-effort=""
-# Read only from a state file this session wrote — the same binding the tier
-# resolution applies, so a foreign file never supplies the effort either.
-if [ -f "$session" ] && jq -e --arg s "$live_sid" '.session_id == $s' "$session" >/dev/null 2>&1; then
-  effort="$(jq -r '.effort // empty' "$session")"
-fi
-if [ -z "$got" ]; then
-  # The remedy names the path this gate was actually invoked through and the
-  # identifier the assert has to be bound to, so it is runnable verbatim.
-  echo "ERROR: session tier unknown for live session '$live_sid' — no session state written by it, and no tier assert bound to it." >&2
-  echo "       Ask the user to run: bash $0 --assert <tier> --session $live_sid" >&2
-  exit 1
-fi
-if [ "$in_want" -ne 1 ]; then
-  echo "ERROR: stage '$1 $2' requires tier '$want' but this session is '$got'. Switch sessions/models." >&2
-  exit 1
-fi
-
-# `// empty`, not `// "default"` — and the literal "default" folded in beside it,
-# because both spellings mean the same thing: this tier declares no effort to match.
-# The session effort only ever reports low|medium|high|xhigh|max (Task 1 spike) and
-# never the literal "default". So the old default made a tier that OMITS the key
-# unenterable by every session that can detect its own effort — "requires session
-# effort 'default' but this session is 'high'" — and a tier that SETS it to
-# "default", as the tier-map's own idiom for unconstrained, failed identically.
-# An absent constraint must not read as a constraint nothing can satisfy.
-eff="$(jq -r --arg t "$want" '.tiers[$t].session_effort // empty' "$map")"
-[ "$eff" = "default" ] && eff=""
-if [ -z "$eff" ]; then
-  echo "tier-gate OK: $want (tier declares no session effort${effort:+ — this session is $effort})"
-  exit 0
-fi
-# The session effort is only script-detectable when the model supports the effort
-# parameter (spike: .internal/research/2026-08-19-harness-detection-spike.md). A
-# null effort is normal, not an error — it falls back to the human-set convention.
-if [ -n "$effort" ]; then
-  if [ "$effort" != "$eff" ]; then
-    echo "ERROR: stage '$1 $2' requires session effort '$eff' but this session is '$effort'. Restart at the required effort." >&2
-    exit 1
-  fi
-  echo "tier-gate OK: $want (session effort: $effort)"
-  exit 0
-fi
-echo "tier-gate OK: $want (intended session effort: $eff — human-set convention)"
+echo "pipeline preflight OK ($2): install verified, great_cto bundle present"
 exit 0
