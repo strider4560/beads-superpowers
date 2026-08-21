@@ -1,6 +1,6 @@
 ---
 name: getting-up-to-speed
-description: Orients on an unfamiliar or stale codebase at the start of a session, after compaction, or whenever the project state is unclear. Loads beads context, deep-dives the codebase, and produces a structured 'current state' summary. Triggers on phrases like "catch me up", "where are we", "orient me", "what's the state of this project", "bring me up to speed", "load context", "session orientation".
+description: Orients on an unfamiliar or stale codebase at the start of a session, after compaction, or whenever the project state is unclear. Loads beads context, deep-dives the codebase, and produces a structured 'current state' summary. Triggers on phrases like "catch me up", "where are we", "orient me", "what's the state of this project", "bring me up to speed", "load context", "session orientation", "what's next", "continue where we left off".
 ---
 
 # Getting Up to Speed
@@ -31,6 +31,7 @@ Run `bash <skill-base-dir>/scripts/orient.sh` once. It emits raw labeled section
 
 - No `<beads-context>` block visible this session → run `bd prime` once before the script.
 - bd missing / `.beads` absent → the script's bd branch reads SKIP: skip step 3 and the beads lines of the summary; emit "**Beads:** not installed — skipped".
+- Pipeline project (`scripts/pipeline/tier-gate.sh` exists here, or `$HOME/.agents/beads-superpowers` resolves) → also fire `tier-gate.sh --phase` (repo-root cwd; agent-run, read-only) and carry its `phase:` and `next:` lines into the Current State summary — the user never runs pipeline scripts.
 
 Done when: every orient.sh section is read, and the handoff is read or recorded as "none".
 

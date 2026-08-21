@@ -164,7 +164,101 @@ check "retired-no-stage-is-tier-walled" 0 'preflight OK'
   >"$TMP/stdout" 2>"$TMP/stderr"; rc=$?; out="$(cat "$TMP/stdout")"; err="$(cat "$TMP/stderr")"
 check "retired-secondary-harness-no-longer-skips" 0 'preflight OK'
 
-# --- summary ----------------------------------------------------------------
+# --- --phase: agent-run orientation ------------------------------------------
+# Advisory and read-only: reads the bead graph through a stubbed bd (the stub
+# prints the fixture named by BD_FIXTURE), plus the planning artifacts under
+# the cwd. Only the `phase:` and `next:` prefixes are contract.
+
+stub="$TMP/bin-stub"; mkdir -p "$stub"
+cat > "$stub/bd" << 'STUB'
+#!/usr/bin/env bash
+[ -n "${BD_FIXTURE:-}" ] || { echo "no fixture" >&2; exit 1; }
+cat "$BD_FIXTURE"
+STUB
+chmod +x "$stub/bd"
+
+phase_run() { # <cwd> <fixture-file|-> <args...> — like run(), with the bd stub on PATH
+  local pcwd="$1" fixture="$2"; shift 2
+  ( cd "$pcwd" && HOME="$h_full" BD_FIXTURE="$fixture" PATH="$stub:$PATH" \
+      "$BASH" "$gate" "$@" ) >"$TMP/stdout" 2>"$TMP/stderr"
+  rc=$?
+  out="$(cat "$TMP/stdout")"; err="$(cat "$TMP/stderr")"
+  return 0
+}
+
+fx() { local f="$TMP/fixture-$1.json"; printf '%s' "$2" > "$f"; printf '%s' "$f"; }
+
+fx_empty="$(fx empty '[]')"
+fx_np="$(fx np '[{"id":"np-1","title":"Design question","issue_type":"task","status":"open","labels":["needs-planning"]}]')"
+fx_impl="$(fx impl '[
+ {"id":"in-1","title":"Init","issue_type":"epic","status":"open","labels":["initiative"]},
+ {"id":"ep-1","title":"Epic one","issue_type":"epic","status":"open","dependencies":[{"type":"parent-child","depends_on_id":"in-1"}]},
+ {"id":"t-1","title":"T1","issue_type":"task","status":"open","dependencies":[{"type":"parent-child","depends_on_id":"ep-1"}]},
+ {"id":"t-2","title":"T2","issue_type":"task","status":"closed","dependencies":[{"type":"parent-child","depends_on_id":"ep-1"}]}]')"
+fx_rev="$(fx rev '[
+ {"id":"in-1","title":"Init","issue_type":"epic","status":"open","labels":["initiative"]},
+ {"id":"ep-1","title":"Epic one","issue_type":"epic","status":"open","dependencies":[{"type":"parent-child","depends_on_id":"in-1"}]},
+ {"id":"t-1","title":"T1","issue_type":"task","status":"closed","dependencies":[{"type":"parent-child","depends_on_id":"ep-1"}]}]')"
+fx_capt="$(fx capt '[{"id":"in-1","title":"Init","issue_type":"epic","status":"open","labels":["initiative"]}]')"
+fx_impl_np="$(fx implnp '[
+ {"id":"in-1","title":"Init","issue_type":"epic","status":"open","labels":["initiative"]},
+ {"id":"ep-1","title":"Epic one","issue_type":"epic","status":"open","dependencies":[{"type":"parent-child","depends_on_id":"in-1"}]},
+ {"id":"t-1","title":"T1","issue_type":"task","status":"in_progress","dependencies":[{"type":"parent-child","depends_on_id":"ep-1"}]},
+ {"id":"np-1","title":"Q","issue_type":"task","status":"open","labels":["needs-planning"]}]')"
+
+c_ph="$TMP/cwd-phase"; mkdir -p "$c_ph"
+
+phase_run "$c_ph" "$fx_empty" --phase extra
+check "phase-extra-args-are-a-usage-error" 2 'usage'
+
+# No bd on PATH: fail closed with the reason, never a guessed phase.
+( cd "$c_ph" && HOME="$h_full" PATH="$nojq" "$BASH" "$gate" --phase ) \
+  >"$TMP/stdout" 2>"$TMP/stderr"; rc=$?; out="$(cat "$TMP/stdout")"; err="$(cat "$TMP/stderr")"
+check "phase-missing-jq-fails-closed" 1 'jq'
+
+phase_run "$c_ph" "$fx_empty" --phase
+check "phase-empty-graph-is-idle" 0 'phase: idle'
+check "phase-idle-recommends-brainstorming" 0 'next: .*brainstorming'
+
+phase_run "$c_ph" "$fx_np" --phase
+check "phase-open-needs-planning-wins-with-no-initiative" 0 'phase: planning-needed'
+check "phase-planning-needed-names-the-bead" 0 'np-1'
+
+phase_run "$c_ph" "$fx_impl" --phase
+check "phase-open-tasks-mean-implementing" 0 'phase: implementing'
+check "phase-implementing-names-the-initiative" 0 'next: .*implementing-epics.*in-1'
+
+phase_run "$c_ph" "$fx_rev" --phase
+check "phase-all-tasks-closed-epic-open-means-reviewing" 0 'phase: reviewing'
+check "phase-reviewing-names-the-epic" 0 'next: .*reviewing-epics.*ep-1'
+
+phase_run "$c_ph" "$fx_capt" --phase
+check "phase-bare-initiative-means-capturing" 0 'phase: capturing'
+check "phase-capturing-recommends-writing-plans" 0 'next: .*writing-plans'
+
+# needs-planning rides along as a suffix when the graph is mid-flight.
+phase_run "$c_ph" "$fx_impl_np" --phase
+check "phase-needs-planning-does-not-preempt-implementing" 0 'phase: implementing'
+check "phase-needs-planning-suffix-on-next" 0 'needs-planning bead'
+
+# With no graph in flight, the newest spec decides the planning sub-step:
+# reviews absent -> planning-with-reviews; reviews present -> writing-plans.
+c_spec="$TMP/cwd-phase-spec"; mkdir -p "$c_spec/.internal/specs"
+printf '# spec\n' > "$c_spec/.internal/specs/2026-08-21-widget-frobnicator.md"
+phase_run "$c_spec" "$fx_empty" --phase
+check "phase-spec-without-reviews-is-planning" 0 'phase: planning'
+check "phase-spec-without-reviews-recommends-planning-with-reviews" 0 'next: .*planning-with-reviews'
+
+mkdir -p "$c_spec/.internal/reviews/widget-frobnicator/planning"
+phase_run "$c_spec" "$fx_empty" --phase
+check "phase-spec-with-reviews-recommends-capture" 0 'next: .*writing-plans'
+
+# A broken bd is surfaced, never absorbed into a guessed phase.
+fx_missing="$TMP/no-such-fixture.json"
+phase_run "$c_ph" "$fx_missing" --phase
+check "phase-bd-failure-fails-closed" 1 'bd list failed'
+
+# --summary ----------------------------------------------------------------
 
 if [ "$fails" -ne 0 ]; then echo "FAIL: tier-gate ($fails failing)"; exit 1; fi
 echo "PASS: tier-gate"
