@@ -14,6 +14,12 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 if [ "$#" -gt 0 ]; then ROOTS=("$@"); else ROOTS=(skills hooks docs); fi
+# A missing scan root must fail loud, not pass vacuously: the 2>/dev/null below
+# discards grep's "No such file or directory" and the || true discards its
+# exit 2, so an absent root and a clean scan were indistinguishable (CLI-1).
+for r in "${ROOTS[@]}"; do
+  [ -e "$r" ] || { echo "model-genericization: FAIL — scan root '$r' does not exist"; exit 1; }
+done
 ALLOW_RE='^[^:]*(skills/using-superpowers/references/|example-workflow/agents/yegge\.md)|^docs/decisions/'   # path-field anchored; docs/decisions/ requires path-root position, not substring-at-depth
 VIOLATIONS="$(grep -rniE '\b(haiku|sonnet|opus|fable)\b' "${ROOTS[@]}" 2>/dev/null | grep -Ev "$ALLOW_RE" || true)"
 if [ -n "$VIOLATIONS" ]; then
