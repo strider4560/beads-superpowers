@@ -207,6 +207,36 @@ else
   expect_green "model genericization: allowlisted reference file (control)" \
     bash "$REPO_ROOT/scripts/check-model-genericization.sh" "$SB12/skills"
 fi
+# Default-invocation pair (no path argument): pins that ROOTS defaults to
+# (skills hooks docs) — not (skills hooks), which vacuously passed docs/ until
+# beads-superpowers-cv6.2 — and that the docs/decisions/ allowlist entry is
+# anchored to path-root position, not any-depth substring match. Rig mirrors
+# Mutation 11: copy the real script to $SB12/scripts/ so its
+# `cd "$(dirname "$0")/.."` lands in $SB12, giving the default ROOTS meaning
+# relative to the fixture tree, not the real repo. skills/hooks/docs must all
+# exist so the scan-root existence check (CLI-1) doesn't short-circuit on a
+# root this fixture doesn't care about.
+if ! mkdir -p "$SB12/scripts" "$SB12/hooks" "$SB12/docs/en" "$SB12/docs/decisions"; then
+  echo "SELFTEST FAIL: mutation-12 default-invocation setup mkdir failed (rig broken, not a caught mutation)"; rc=1
+elif ! cp -f "$REPO_ROOT/scripts/check-model-genericization.sh" "$SB12/scripts/check-model-genericization.sh"; then
+  echo "SELFTEST FAIL: mutation-12 default-invocation setup cp failed (rig broken, not a caught mutation)"; rc=1
+else
+  echo 'dispatch with model: "sonnet"' > "$SB12/docs/en/some-page.md"
+  expect_red "model genericization: default invocation, hardcoded model name under docs/en/" \
+    bash "$SB12/scripts/check-model-genericization.sh"
+  rm -f "$SB12/docs/en/some-page.md"
+  echo 'dispatch with model: "sonnet"' > "$SB12/docs/decisions/0099-example.md"
+  expect_green "model genericization: default invocation, docs/decisions/ path-root anchor (control)" \
+    bash "$SB12/scripts/check-model-genericization.sh"
+fi
+# SD-R2-001: pin the CLI-1 existence check itself. Every case above pre-creates
+# every scan root, so the check never fires in this file — a future edit that
+# reorders the loop below the grep, drops it in a merge, or weakens the
+# predicate would restore the original vacuous-pass defect while this whole
+# suite stayed green. $SB12 itself exists (mktemp -d above); only the child
+# path is absent, so this needs no extra setup and runs unconditionally.
+expect_exit_because "model genericization: absent scan root fails loud, not vacuous (SD-R2-001)" 1 "does not exist" \
+  bash "$REPO_ROOT/scripts/check-model-genericization.sh" "$SB12/no-such-root"
 rm -rf "$SB12"
 
 # Mutation 13: check-convention-sync.sh (ADR-0058) — a repo copy whose

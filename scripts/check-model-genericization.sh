@@ -5,12 +5,22 @@
 # Skills phrase model choice as capability tiers ("fast/cheap model",
 # "stronger model"). Allowlisted as deliberately harness-specific (ADR-0041
 # pattern): skills/using-superpowers/references/ and
-# example-workflow/agents/yegge.md.
+# example-workflow/agents/yegge.md. docs/ is scanned too (published site
+# prose ships harness-neutral, same as skills/) except docs/decisions/,
+# which CLAUDE.md documents as gitignored local ADR working notes, not
+# distributed product content — ADR prose narrates real model names on
+# purpose (beads-superpowers-cv6.2).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
-if [ "$#" -gt 0 ]; then ROOTS=("$@"); else ROOTS=(skills hooks); fi
-ALLOW_RE='^[^:]*(skills/using-superpowers/references/|example-workflow/agents/yegge\.md)'   # path-field anchored
+if [ "$#" -gt 0 ]; then ROOTS=("$@"); else ROOTS=(skills hooks docs); fi
+# A missing scan root must fail loud, not pass vacuously: the 2>/dev/null below
+# discards grep's "No such file or directory" and the || true discards its
+# exit 2, so an absent root and a clean scan were indistinguishable (CLI-1).
+for r in "${ROOTS[@]}"; do
+  [ -e "$r" ] || { echo "model-genericization: FAIL — scan root '$r' does not exist"; exit 1; }
+done
+ALLOW_RE='^[^:]*(skills/using-superpowers/references/|example-workflow/agents/yegge\.md)|^docs/decisions/'   # path-field anchored; docs/decisions/ requires path-root position, not substring-at-depth
 VIOLATIONS="$(grep -rniE '\b(haiku|sonnet|opus|fable)\b' "${ROOTS[@]}" 2>/dev/null | grep -Ev "$ALLOW_RE" || true)"
 if [ -n "$VIOLATIONS" ]; then
   echo "model-genericization: FAIL — hardcoded model name outside the allowlist (capability tiers only, bd-1f5w):"

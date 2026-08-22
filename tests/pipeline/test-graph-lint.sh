@@ -157,6 +157,49 @@ run_state "$f"
 check "initiative-with-labels-omitted-entirely-exits-1" 1
 check "initiative-with-labels-omitted-names-id-and-field" 1 '^fx-ini: labels:' stderr
 
+# --- check 8: every initiative member must be an epic or a task -------------
+# checks 2-6 are keyed on issue_type "epic"/"task", so a stray "chore" or "bug"
+# member would otherwise skip every one of them silently. A CLOSED non-task
+# member is exempt (2026-08-22 ruling): the argument for rejecting it is that
+# it can never be dispatched via `bd ready --parent <epic-id> -t task`, and
+# that argument only holds while the member is open.
+
+mutate member-type-chore '(.[] | select(.id=="fx-t2") | .issue_type) = "chore" | (.[] | select(.id=="fx-t2") | .status) = "open"'
+run_state "$f"
+check "member-with-issue-type-chore-exits-1" 1
+check "member-with-issue-type-chore-names-id-and-field" 1 '^fx-t2: issue_type:' stderr
+check "member-with-issue-type-chore-names-the-type" 1 "'chore'" stderr
+
+mutate member-type-bug '(.[] | select(.id=="fx-t3") | .issue_type) = "bug" | (.[] | select(.id=="fx-t3") | .status) = "open"'
+run_state "$f"
+check "member-with-issue-type-bug-exits-1" 1
+check "member-with-issue-type-bug-names-id-and-field" 1 '^fx-t3: issue_type:' stderr
+check "member-with-issue-type-bug-names-the-type" 1 "'bug'" stderr
+
+mutate member-type-chore-closed '(.[] | select(.id=="fx-t2") | .issue_type) = "chore" | (.[] | select(.id=="fx-t2") | .status) = "closed"'
+run_state "$f"
+check "member-with-issue-type-chore-and-closed-status-exits-0" 0
+
+# Absent status must NOT be treated as closed — the exemption is opt-in via an
+# explicit "closed", never the default for a member that omits the field.
+mutate member-type-chore-no-status '(.[] | select(.id=="fx-t2") | .issue_type) = "chore" | del(.[] | select(.id=="fx-t2") | .status)'
+run_state "$f"
+check "member-with-issue-type-chore-and-no-status-field-exits-1" 1
+check "member-with-issue-type-chore-and-no-status-field-names-id-and-field" 1 '^fx-t2: issue_type:' stderr
+
+# --- check 9: the initiative must have at least one epic or task ------------
+# Checks 1-8 are universally quantified over the initiative's children, so an
+# initiative with none passes them all vacuously. A capture stage that
+# silently created nothing must not read as a clean graph (reproduces the
+# Task 5 review finding: a state file holding only the initiative bead printed
+# "graph-lint OK: fx-ini (0 epics, 0 tasks)" at exit 0).
+
+mutate empty-graph '[.[] | select(.id=="fx-ini")]'
+run_state "$f"
+check "initiative-with-no-epics-and-no-tasks-exits-1" 1
+check "initiative-with-no-epics-and-no-tasks-names-id-and-field" 1 '^fx-ini: members:' stderr
+check "initiative-with-no-epics-and-no-tasks-says-zero" 1 'zero child epics and zero tasks' stderr
+
 # --- check 2: child epic Success Criteria ------------------------------------
 
 mutate ep-no-success '(.[] | select(.id=="fx-ep2") | .description) = "No heading here."'
