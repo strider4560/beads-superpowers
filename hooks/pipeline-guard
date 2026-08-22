@@ -264,6 +264,25 @@ fi
 # literal path ever appearing (variables, encoding, a helper script). Do not read
 # the Bash half as a boundary; it catches the obvious redirect, and it stays a
 # bare substring test on purpose: narrowing it would only shrink what it catches.
+#
+# Decision (beads-superpowers-cv6.19, maintainer ruling 2026-08-21): the Bash
+# half's over-match is INTENDED, kept as-is. A command that only MENTIONS the
+# state-dir path in prose (a `bd note` quoting it while describing a remedy)
+# or only READS it (`ls`, `cat`) is denied exactly like a command that writes
+# it, because the substring test cannot tell "prose" or "read" from "write"
+# inside a shell command string. Trade-off accepted: an agent must reword a
+# note or command that quotes the state-dir path, rather than being denied
+# only on an actual write. Reason: parsing intent out of a Bash command
+# string is precisely where a matcher gets bypassed — a narrower rule that
+# tried to separate "read/mention" from "write" would itself become the
+# thing a write gets disguised as. tests/pipeline/test-pipeline-guard.sh pins
+# this so a future well-meaning narrowing fails loudly.
+# (This bead was filed against an OLDER guard that also had a Rule C — denying
+# any Bash command merely mentioning `tier-gate.sh --assert` — with the
+# identical trade-off. Rule C, and the --assert flag it matched, were retired
+# entirely in the 2026-08-21 agent-authority rework (commit 5813616, "retire
+# the session-model tier wall"); no rule named C exists in this file any more,
+# so this decision documents Rule D only.)
 case "$tool" in
   Write|Edit|NotebookEdit) case "$npath" in
     .internal/pipeline|.internal/pipeline/*|*/.internal/pipeline|*/.internal/pipeline/*)
