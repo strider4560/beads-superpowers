@@ -307,6 +307,25 @@ check "ruleD-write-to-session-json-denied" 2 'Rule D'
 run "$c_armed" "$h_plain" "$p_state_bash"
 check "ruleD-bash-redirect-into-the-state-dir-denied" 2 'Rule D'
 
+# Decision (beads-superpowers-cv6.19): the Bash-half substring test cannot
+# tell a write from a MENTION or a READ inside the command string, and that
+# over-match is intentional (see the decision comment above the case
+# statement this pins). These three lock the behaviour in so a future
+# well-meaning narrowing — "only deny on an actual write" — fails loudly
+# instead of silently reopening the false-positive class the bead observed
+# live: a `bd note` quoting the path while documenting a remedy, and a
+# read-only `ls`/`cat` of the state directory, both denied though neither
+# touches the protected surface.
+
+run "$c_armed" "$h_plain" "$(orch "$(bash_frag 'bd note x-1 \"remedy: see .internal/pipeline/tier-assert\"')")"
+check "ruleD-bash-command-that-only-mentions-the-state-dir-path-in-a-note-denied" 2 'Rule D'
+
+run "$c_armed" "$h_plain" "$(orch "$(bash_frag 'cat .internal/pipeline/session.json')")"
+check "ruleD-bash-read-only-cat-of-the-state-dir-denied" 2 'Rule D'
+
+run "$c_armed" "$h_plain" "$(orch "$(bash_frag 'ls .internal/pipeline')")"
+check "ruleD-bash-read-only-ls-of-the-state-dir-denied" 2 'Rule D'
+
 # Four path spellings that all RESOLVE inside the state directory. The rule
 # requires resolution, not a substring test: each reaches the same file.
 run "$c_armed" "$h_plain" "$p_state_dotdot"
