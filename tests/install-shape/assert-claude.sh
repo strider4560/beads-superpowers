@@ -363,6 +363,8 @@ rm -f "$PARTIAL/skills/subagent-driven-development/scripts/review-package"
 shape_sandbox_setup claude
 SHAPE_INSTALL_SOURCE="$PARTIAL"
 shape_install_expect_abort
+# shellcheck disable=SC2034  # consumed by lib.sh:_shape_run_install via source; this
+# line resets it after Sub-case G so the next sub-case's install call is armed with it
 SHAPE_INSTALL_SOURCE="$REPO_ROOT"
 assert_in_log "skills/subagent-driven-development/scripts/review-package is missing"
 assert_no_file "$SANDBOX/.agents/beads-superpowers"
