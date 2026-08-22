@@ -14,7 +14,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 if [ "$#" -gt 0 ]; then ROOTS=("$@"); else ROOTS=(skills hooks docs); fi
-ALLOW_RE='^[^:]*(skills/using-superpowers/references/|example-workflow/agents/yegge\.md|docs/decisions/)'   # path-field anchored
+ALLOW_RE='^[^:]*(skills/using-superpowers/references/|example-workflow/agents/yegge\.md)|^docs/decisions/'   # path-field anchored; docs/decisions/ requires path-root position, not substring-at-depth
 VIOLATIONS="$(grep -rniE '\b(haiku|sonnet|opus|fable)\b' "${ROOTS[@]}" 2>/dev/null | grep -Ev "$ALLOW_RE" || true)"
 if [ -n "$VIOLATIONS" ]; then
   echo "model-genericization: FAIL — hardcoded model name outside the allowlist (capability tiers only, bd-1f5w):"
