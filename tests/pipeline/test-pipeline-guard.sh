@@ -434,11 +434,15 @@ elif command -v shasum >/dev/null 2>&1; then sha_cmd=(shasum -a 256)
 else sha_cmd=(); fi
 sha256_of() { local o; o="$("${sha_cmd[@]}" "$1")"; printf '%s' "${o%% *}"; }
 
-write_record() { # <home> <target> [posture] — the out-of-anchor integrity record
+write_record() { # <home> <target> [posture] [version] — the out-of-anchor integrity record
   local rec="$1/.local/state/beads-superpowers" first=1 f
   mkdir -p "$rec"
-  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"%s","hashes":{' \
+  { printf '{"anchor":"%s/.agents/beads-superpowers","target":"%s","posture":"%s"' \
       "$1" "$2" "${3:-manifest-backed}"
+    # Omitted by default: a record written before this check carries no version,
+    # the cases below pin that such a record is not read as a mismatch.
+    if [ -n "${4:-}" ]; then printf ',"version":"%s"' "$4"; fi
+    printf ',"hashes":{'
     for f in scripts/pipeline/tier-gate.sh scripts/pipeline/bundle-root.sh \
              scripts/pipeline/graph-lint.mjs hooks/pipeline-guard; do
       [ "$first" -eq 1 ] || printf ','
@@ -616,6 +620,66 @@ else
   rm -f "$TMP/target-integrity-skew-missing/scripts/pipeline/bundle-root.sh"
   run "$c_int" "$h_skewgone" "$p_task"
   check "integrity-a-missing-attested-copy-denies-at-exit-2" 2 'bundle-root\.sh'
+
+  # --- version skew between channels (the v0.18.0 brick) --------------------
+  # Sourcing another channel's attested root is legitimate — the cases above fix
+  # that as the correct subject to hash — but only while both halves are the
+  # same release. v0.18.0 shipped a guard calling resolve_session_tier; the
+  # agent-authority rework removed that function from bundle-root.sh, so a
+  # v0.18.0 plugin cache against a post-rework install root denied every Bash,
+  # Write and Edit call with a bash "command not found" and no remedy anywhere
+  # in the message. Comparing the two versions BEFORE the source turns that into
+  # a deny the user can act on.
+  # These run out of a CHANNEL TREE rather than this repo: production skew is a
+  # plugin cache or an install root, neither of which is a git checkout, and the
+  # carve-out case below turns exactly that difference into behavior.
+  make_channel() { # <name> <version> -> a non-git channel tree holding the guard
+    local c="$TMP/channel-$1"
+    mkdir -p "$c/hooks" "$c/scripts/pipeline"
+    cp -f "$root/hooks/pipeline-guard" "$c/hooks/"
+    cp -f "$root/scripts/pipeline/bundle-root.sh" "$c/scripts/pipeline/"
+    printf '{"version":"%s"}\n' "$2" > "$c/package.json"
+    printf '%s' "$c"
+  }
+
+  h_vskew="$(make_anchor_home integrity-vskew)"
+  write_record "$h_vskew" "$TMP/target-integrity-vskew" manifest-backed 9.9.9
+  GUARD_OVERRIDE="$(make_channel vskew 1.2.3)/hooks/pipeline-guard"
+  run "$c_int" "$h_vskew" "$p_task"
+  check "skew-a-version-mismatch-between-channels-denies" 2 'install skew'
+  check "skew-the-deny-names-the-running-hook-version" 2 '1\.2\.3'
+  check "skew-the-deny-names-the-attested-root-version" 2 '9\.9\.9'
+  check "skew-the-deny-carries-a-remedy" 2 'install\.sh|plugin update'
+
+  # Same release on both sides is the normal case and must cost nothing.
+  h_vmatch="$(make_anchor_home integrity-vmatch)"
+  write_record "$h_vmatch" "$TMP/target-integrity-vmatch" manifest-backed 1.2.3
+  GUARD_OVERRIDE="$(make_channel vmatch 1.2.3)/hooks/pipeline-guard"
+  run "$c_int" "$h_vmatch" "$p_task"
+  check "skew-matching-versions-allow-the-call" 0
+
+  # A record written before this check existed carries no version at all. There
+  # is nothing to compare, so it stands down rather than denying every call on
+  # an install that predates it.
+  h_vnone="$(make_anchor_home integrity-vnone)"
+  GUARD_OVERRIDE="$(make_channel vnone 1.2.3)/hooks/pipeline-guard"
+  run "$c_int" "$h_vnone" "$p_task"
+  check "skew-a-record-without-a-version-is-not-a-mismatch" 0
+
+  # THE CARVE-OUT. A development checkout is SUPPOSED to run ahead of the
+  # installed root — CLAUDE.md tells maintainers to symlink the plugin cache
+  # straight at the repo, and every version bump puts the two out of step until
+  # the next install.sh. Denying there would brick the documented maintainer
+  # workflow on every bump, which is the same over-block the session-model tier
+  # wall was retired for. A .git beside the hook's tree is what separates a
+  # working clone from a shipped channel.
+  h_vdev="$(make_anchor_home integrity-vdev)"
+  write_record "$h_vdev" "$TMP/target-integrity-vdev" manifest-backed 9.9.9
+  dev="$(make_channel vdev 1.2.3)"; mkdir -p "$dev/.git"
+  GUARD_OVERRIDE="$dev/hooks/pipeline-guard"
+  run "$c_int" "$h_vdev" "$p_task"
+  check "skew-a-git-checkout-is-expected-to-run-ahead-and-is-not-denied" 0
+  unset GUARD_OVERRIDE
 fi
 
 # --- retired behavior: nothing about the session model is read any more ------

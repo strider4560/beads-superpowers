@@ -154,7 +154,41 @@ if { [ -e "$bsp_anchor_lit" ] || [ -L "$bsp_anchor_lit" ]; } && [ -r "$bsp_recor
       "$rec_tcanon"|"$rec_tcanon"/*) ;;   # inside the attested root: sibling IS the copy
       *) bundle_lib="$rec_tcanon/scripts/pipeline/bundle-root.sh"
          [ -r "$bundle_lib" ] ||
-           deny "install integrity: the attested scripts/pipeline/bundle-root.sh is missing or unreadable under $rec_tcanon — re-run beads-superpowers' install.sh to re-attest the root" ;;
+           deny "install integrity: the attested scripts/pipeline/bundle-root.sh is missing or unreadable under $rec_tcanon — re-run beads-superpowers' install.sh to re-attest the root"
+         # VERSION SKEW. Reaching this branch means the hook and the library it
+         # is about to source come from two different installed channels. That
+         # is supported — the block above fixes the attested copy as the right
+         # subject to hash — but only while both halves are the same release.
+         # They are two halves of one contract, and v0.18.0 priced the split:
+         # its guard called resolve_session_tier, the agent-authority rework
+         # deleted that function from bundle-root.sh, and a v0.18.0 plugin cache
+         # against a post-rework install root killed every Bash, Write and Edit
+         # call in the session with a bash "command not found" and no remedy
+         # anywhere in the line. Comparing versions BEFORE the source turns that
+         # into a deny that names the fix, instead of an undefined function
+         # three lines later.
+         # Either side missing a version stands the check down rather than
+         # denying. A record written before this check existed carries no version,
+         # channel with no package.json beside its hooks/ is a shape this check
+         # cannot speak about; denying on silence would brick exactly the
+         # installs it exists to rescue. The manifest hashes above stay the
+         # tamper control — this separates two honest halves of different ages,
+         # and it is forward-only by construction, since only a side carrying
+         # the check can report the skew.
+         # A git checkout is a development tree, and it is SUPPOSED to run
+         # ahead of the installed root: CLAUDE.md has maintainers symlink the
+         # plugin cache straight at the repo, so every version bump puts the two
+         # out of step until the next install.sh. Denying there would brick the
+         # documented maintainer workflow on every bump — the same over-block
+         # the session-model wall was retired for, reintroduced one level down.
+         # `-e`, not `-d`: a linked worktree spells .git as a file.
+         if [ ! -e "$(dirname "$0")/../.git" ]; then
+           own_ver="$(jq -r '.version // empty' "$(dirname "$0")/../package.json" 2>/dev/null)" || own_ver=""
+           rec_ver="$(jq -r '.version // empty' "$bsp_record_lit" 2>/dev/null)" || rec_ver=""
+           if [ -n "$own_ver" ] && [ -n "$rec_ver" ] && [ "$own_ver" != "$rec_ver" ]; then
+             deny "install skew: this hook is beads-superpowers $own_ver but the attested install root is $rec_ver — the two are halves of one contract and must be the same release; refresh the stale channel (plugin: 'claude plugin update beads-superpowers'; scripted: re-run install.sh)"
+           fi
+         fi ;;
     esac
   fi
   want_lib_hash="$(jq -r '.hashes["scripts/pipeline/bundle-root.sh"] // empty' \
