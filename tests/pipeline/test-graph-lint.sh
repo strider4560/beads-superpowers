@@ -157,6 +157,35 @@ run_state "$f"
 check "initiative-with-labels-omitted-entirely-exits-1" 1
 check "initiative-with-labels-omitted-names-id-and-field" 1 '^fx-ini: labels:' stderr
 
+# --- check 8: every initiative member must be an epic or a task -------------
+# checks 2-6 are keyed on issue_type "epic"/"task", so a stray "chore" or "bug"
+# member would otherwise skip every one of them silently.
+
+mutate member-type-chore '(.[] | select(.id=="fx-t2") | .issue_type) = "chore"'
+run_state "$f"
+check "member-with-issue-type-chore-exits-1" 1
+check "member-with-issue-type-chore-names-id-and-field" 1 '^fx-t2: issue_type:' stderr
+check "member-with-issue-type-chore-names-the-type" 1 "'chore'" stderr
+
+mutate member-type-bug '(.[] | select(.id=="fx-t3") | .issue_type) = "bug"'
+run_state "$f"
+check "member-with-issue-type-bug-exits-1" 1
+check "member-with-issue-type-bug-names-id-and-field" 1 '^fx-t3: issue_type:' stderr
+check "member-with-issue-type-bug-names-the-type" 1 "'bug'" stderr
+
+# --- check 9: the initiative must have at least one epic or task ------------
+# Checks 1-8 are universally quantified over the initiative's children, so an
+# initiative with none passes them all vacuously. A capture stage that
+# silently created nothing must not read as a clean graph (reproduces the
+# Task 5 review finding: a state file holding only the initiative bead printed
+# "graph-lint OK: fx-ini (0 epics, 0 tasks)" at exit 0).
+
+mutate empty-graph '[.[] | select(.id=="fx-ini")]'
+run_state "$f"
+check "initiative-with-no-epics-and-no-tasks-exits-1" 1
+check "initiative-with-no-epics-and-no-tasks-names-id-and-field" 1 '^fx-ini: members:' stderr
+check "initiative-with-no-epics-and-no-tasks-says-zero" 1 'zero child epics and zero tasks' stderr
+
 # --- check 2: child epic Success Criteria ------------------------------------
 
 mutate ep-no-success '(.[] | select(.id=="fx-ep2") | .description) = "No heading here."'
