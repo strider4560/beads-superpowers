@@ -229,6 +229,14 @@ else
   expect_green "model genericization: default invocation, docs/decisions/ path-root anchor (control)" \
     bash "$SB12/scripts/check-model-genericization.sh"
 fi
+# SD-R2-001: pin the CLI-1 existence check itself. Every case above pre-creates
+# every scan root, so the check never fires in this file — a future edit that
+# reorders the loop below the grep, drops it in a merge, or weakens the
+# predicate would restore the original vacuous-pass defect while this whole
+# suite stayed green. $SB12 itself exists (mktemp -d above); only the child
+# path is absent, so this needs no extra setup and runs unconditionally.
+expect_exit_because "model genericization: absent scan root fails loud, not vacuous (SD-R2-001)" 1 "does not exist" \
+  bash "$REPO_ROOT/scripts/check-model-genericization.sh" "$SB12/no-such-root"
 rm -rf "$SB12"
 
 # Mutation 13: check-convention-sync.sh (ADR-0058) — a repo copy whose
