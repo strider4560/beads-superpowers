@@ -100,13 +100,13 @@ Two channels: an `install.sh` scripted-tier install (local, tarball, or git), an
 
 ### Version pairs and rollback
 
-The two bundles are pinned to each other in pairs. great_cto 3.0.x goes with beads-superpowers 0.17.x, and great_cto 3.1.0 goes with beads-superpowers 0.18.0. The 0.17.x half is defined as "no anchor present", so which half a host is on is checkable rather than a matter of memory: `$HOME/.agents/beads-superpowers` exists on 0.18.0 and does not exist on 0.17.x.
+The two bundles are pinned to each other in pairs. great_cto 3.0.x goes with beads-superpowers 0.17.x, great_cto 3.1.0 goes with beads-superpowers 0.18.0, and great_cto 3.2.0 goes with beads-superpowers 0.19.0. The 0.17.x half is defined as "no anchor present", so which half a host is on is checkable rather than a matter of memory: `$HOME/.agents/beads-superpowers` exists on 0.18.0 and later, and does not exist on 0.17.x.
 
 Rolling back runs in this order, and the first step is the one that is easy to get wrong:
 
-1. Run **0.18.0's own** `install.sh --uninstall` first, before installing anything older. The installer that removes an artifact has to be the one that created it, and 0.17.x's installer knows nothing about the anchor directory or the integrity record, so it will leave both behind. This step removes `$HOME/.agents/beads-superpowers` and the record under `$HOME/.local/state/beads-superpowers/`.
-2. Check out great_cto `v3.0.0` and re-run its installer.
-3. Install beads-superpowers 0.17.0.
+1. Run **the installed release's own** `install.sh --uninstall` first — 0.19.0's, if you are on the current pair — before installing anything older. The installer that removes an artifact has to be the one that created it, and 0.17.x's installer knows nothing about the anchor directory or the integrity record, so it will leave both behind. This step removes `$HOME/.agents/beads-superpowers` and the record under `$HOME/.local/state/beads-superpowers/`.
+2. Check out the great_cto tag for the pair you are returning to — `v3.1.0` for 0.18.0, `v3.0.0` for 0.17.x — and re-run its installer.
+3. Install that pair's beads-superpowers release.
 
 The `paths` and `plan_path` stamps a plan leaves on its beads need no undoing. They are additive metadata that the 0.17.x toolchain ignores, so rollback is forward-fix only. To reset pipeline session state, delete `.internal/pipeline/`.
 
@@ -124,5 +124,6 @@ Two failures have a remedy you can act on directly. Both deny rather than warn, 
 |-----------------------|----------------|
 | The integrity record is missing or unreadable, or a file `does not match its recorded hash` | Re-run `install.sh`. The record is written by its channel's maintainer - `install.sh` on the scripted tiers, session-start on the plugin channel - and only that maintainer can rewrite it; on the plugin channel, that means starting a fresh session so the hook re-attests the root. |
 | `is running against beads-superpowers root`, naming a version that is not the gate's own | Re-run `install.sh`, or refresh the plugin, so the gates and the installed root are the same version. |
+| `install skew`, naming this hook's version and a different attested root version | Refresh whichever channel is behind, so both are the same release: `claude plugin update beads-superpowers` on the plugin channel, or re-run `install.sh` on a scripted install. The hook and the library it sources are two halves of one contract, and the deny is what stops a mismatch from surfacing later as an undefined shell function with nothing to act on. |
 
 Accepted risks and residuals for this contract are recorded privately, in the decision record's amendment and in `.mex/private/`, not on this page.

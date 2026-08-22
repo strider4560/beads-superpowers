@@ -104,13 +104,13 @@ node "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" --initiat
 
 ### 版本配对与回滚
 
-两个捆绑互相锁定成对：great_cto 3.0.x 对应 beads-superpowers 0.17.x，great_cto 3.1.0 对应 beads-superpowers 0.18.0。0.17.x 那一半的定义就是「锚点目录不存在」，因此一台主机处在哪一半是可以检查的，不必靠记忆：`$HOME/.agents/beads-superpowers` 在 0.18.0 上存在，在 0.17.x 上不存在。
+两个捆绑互相锁定成对：great_cto 3.0.x 对应 beads-superpowers 0.17.x，great_cto 3.1.0 对应 beads-superpowers 0.18.0，great_cto 3.2.0 对应 beads-superpowers 0.19.0。0.17.x 那一半的定义就是「锚点目录不存在」，因此一台主机处在哪一半是可以检查的，不必靠记忆：`$HOME/.agents/beads-superpowers` 在 0.18.0 及之后存在，在 0.17.x 上不存在。
 
 回滚按以下顺序进行，而第一步正是最容易做错的一步：
 
-1. 先运行 **0.18.0 自带的** `install.sh --uninstall`，然后才安装更旧的版本。移除某个产物的安装器必须是当初创建它的那一个，而 0.17.x 的安装器对锚点目录和完整性记录一无所知，会把两者都遗留下来。这一步会删除 `$HOME/.agents/beads-superpowers` 以及 `$HOME/.local/state/beads-superpowers/` 下的记录。
-2. 检出 great_cto 的 `v3.0.0` 并重跑它的安装器。
-3. 安装 beads-superpowers 0.17.0。
+1. 先运行 **当前所装版本自带的** `install.sh --uninstall`（处在当前配对上即 0.19.0 自带的），然后才安装更旧的版本。移除某个产物的安装器必须是当初创建它的那一个，而 0.17.x 的安装器对锚点目录和完整性记录一无所知，会把两者都遗留下来。这一步会删除 `$HOME/.agents/beads-superpowers` 以及 `$HOME/.local/state/beads-superpowers/` 下的记录。
+2. 检出你要回到的那一配对所对应的 great_cto 标签——回到 0.18.0 用 `v3.1.0`，回到 0.17.x 用 `v3.0.0`——并重跑它的安装器。
+3. 安装该配对对应的 beads-superpowers 版本。
 
 计划在 bead 上留下的 `paths` 与 `plan_path` 标记不需要撤销。它们是纯增量的元数据，0.17.x 的工具链会直接忽略，因此回滚只做向前修复。要重置流水线的会话状态，删除 `.internal/pipeline/` 即可。
 
@@ -128,5 +128,6 @@ node "$HOME/.agents/beads-superpowers/scripts/pipeline/graph-lint.mjs" --initiat
 |----------------|--------------|
 | 完整性记录缺失或不可读，或某个文件 `does not match its recorded hash` | 重跑 `install.sh`。记录由掌管该渠道的维护者写入——脚本化安装层级由 `install.sh` 写入，插件渠道由会话启动钩子写入——也只有该维护者能重写；在插件渠道上，这意味着开一个新会话，让该钩子重新为根目录背书。 |
 | `is running against beads-superpowers root`，且给出的版本与门控自身的版本不一致 | 重跑 `install.sh`，或刷新插件，让门控与已安装的根目录处于同一版本。 |
+| `install skew`，同时给出本钩子的版本与另一个已背书根目录的版本 | 刷新落后的那一个渠道，让两者处于同一发布版本：插件渠道运行 `claude plugin update beads-superpowers`，脚本化安装则重跑 `install.sh`。钩子与它所加载的库是同一份契约的两半，这条拒绝正是为了避免版本不一致在之后表现为一个未定义的 shell 函数，让人无从下手。 |
 
 本契约的既接受风险与残余项记录在私有位置——决策记录的修订件和 `.mex/private/`——而不在本页面上。

@@ -22,7 +22,7 @@ set -u
 # install checks stay with --stage, and --phase works even where great_cto is
 # absent. Only the `phase:` and `next:` line prefixes are contract; the
 # evidence lines between them are prose.
-BSP_PIPELINE_VERSION="0.18.0"  # synced by bump-version.sh
+BSP_PIPELINE_VERSION="0.19.0"  # synced by bump-version.sh
 # shellcheck source=scripts/pipeline/bundle-root.sh
 . "$(dirname "$0")/bundle-root.sh" || { echo "ERROR: cannot load bundle-root.sh" >&2; exit 1; }
 

@@ -9,7 +9,7 @@
     {
       "name": "beads-superpowers",
       "description": "Superpowers skills + Beads issue tracking for Claude Code, Codex, OpenCode, and 7 more AI coding agents: TDD, debugging, code review, and persistent task memory.",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "source": "./",
       "author": {
         "name": "Dillon Frawley",

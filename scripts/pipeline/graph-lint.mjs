@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const BSP_PIPELINE_VERSION = "0.18.0"; // synced by bump-version.sh
+const BSP_PIPELINE_VERSION = "0.19.0"; // synced by bump-version.sh
 
 // The root this script was loaded from: the version file is read relative to
 // it, so a copy under another root is judged against that root, not against
