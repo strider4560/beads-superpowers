@@ -323,9 +323,16 @@ const epicIds = new Set(epics.map((i) => i.id));
 // checks 2-6 are keyed on issue_type "epic"/"task", so a member of neither
 // type (a stray "chore" or "bug", say) would otherwise skip every one of them
 // without comment. Reported explicitly instead.
+//
+// CLOSED members are exempt (2026-08-22 ruling, CR-EPIC-001): the argument for
+// rejecting a non-task member is that it looks planned but can never dispatch —
+// `bd ready --parent <epic-id> -t task` never lists it. That argument holds
+// for an OPEN chore or bug and cannot apply to a CLOSED one, so the reject is
+// narrowed to exactly the case it was argued for. A member with no `status`
+// field is not closed and still hard-rejects.
 
 for (const issue of memberIssues) {
-  if (issue.issue_type !== "epic" && issue.issue_type !== "task") {
+  if (issue.issue_type !== "epic" && issue.issue_type !== "task" && issue.status !== "closed") {
     violation(
       issue.id,
       "issue_type",
