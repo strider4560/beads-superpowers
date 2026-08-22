@@ -403,7 +403,7 @@ bd list --all -n 0 --json > "$state" && node scripts/pipeline/graph-lint.mjs --i
 
 Exit 0 is the only pass. On exit 1 the lint prints one line per violation, each naming the bead id and the field, so fix those beads and run it again.
 
-Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M MUST match the counts you just captured. Every lint check is quantified over the initiative's children, so an initiative with none passes them all — an import that silently landed nothing reads as a clean graph, and the counts are what catch it.
+Read the success line as well: `graph-lint OK: <id> (N epics, M tasks)`. N and M MUST match the counts you just captured. The lint itself rejects a graph with zero epics and zero tasks — a completely silent import cannot exit 0 — but a partial import (fewer epics or tasks than the plan named) still passes structurally, so the counts are what catch that.
 
 ## Commit the Plan
 

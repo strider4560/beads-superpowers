@@ -319,6 +319,30 @@ const epics = memberIssues.filter((i) => i.issue_type === "epic");
 const tasks = memberIssues.filter((i) => i.issue_type === "task");
 const epicIds = new Set(epics.map((i) => i.id));
 
+// --- check 8: every initiative member must be an epic or a task -------------
+// checks 2-6 are keyed on issue_type "epic"/"task", so a member of neither
+// type (a stray "chore" or "bug", say) would otherwise skip every one of them
+// without comment. Reported explicitly instead.
+
+for (const issue of memberIssues) {
+  if (issue.issue_type !== "epic" && issue.issue_type !== "task") {
+    violation(
+      issue.id,
+      "issue_type",
+      `member is neither an epic nor a task (found '${issue.issue_type}') — checks 2-6 do not validate it`,
+    );
+  }
+}
+
+// --- check 9: the initiative has at least one epic or one task --------------
+// Checks 1-8 are universally quantified over the initiative's children, so an
+// initiative with none passes them all vacuously. A capture stage that
+// silently created nothing must not read as a clean graph.
+
+if (epics.length === 0 && tasks.length === 0) {
+  violation(initiative.id, "members", "initiative has zero child epics and zero tasks — an empty graph is not valid");
+}
+
 // --- epics (checks 2 and 3) -------------------------------------------------
 
 for (const epic of epics) {
