@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Sourced lib. resolve_bundle_root: echo the great_cto bundle root or fail
 # with the install instruction. The hard dependency check of the pipeline.
-# GREAT_CTO_MIN_VERSION is the great_cto rework release: the pipeline needs
-# planning-with-reviews without its wrapper role, implementing-epics without
-# plan import, and shared/tier-map.json. great_cto ships that as a minor over
-# 3.0.0. If it cuts the rework at a different version, this constant moves
-# with it — nothing reconciles the two repos automatically.
-GREAT_CTO_MIN_VERSION="3.1.0"
+# GREAT_CTO_MIN_VERSION is the great_cto release whose skills match this
+# pipeline's gate contract. 3.2.0 is the one that adopted the agent-authority
+# rework: below it the lifecycle skills still route on `tier-gate.sh --assert`
+# and the exit-4 SKIP, and this release removed both, so an agent following an
+# older skill runs a flag that no longer exists. It still needs everything
+# 3.1.0 brought as well — planning-with-reviews without its wrapper role,
+# implementing-epics without plan import, and shared/tier-map.json. If great_cto
+# cuts a later rework at a different version, this constant moves with it;
+# nothing reconciles the two repos automatically.
+GREAT_CTO_MIN_VERSION="3.2.0"
 
 # The beads-superpowers install anchor and the out-of-anchor integrity record
 # that governs it. The record path is FIXED — never $XDG_STATE_HOME: the four
